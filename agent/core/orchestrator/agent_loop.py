@@ -102,7 +102,7 @@ class AgentLoop:
                 )
                 session.add(record)
                 att["file_id"] = str(file_id)
-            await session.flush()
+            await session.commit()  # commit so other containers (code_executor) can see them
 
             file_context = "\n\n[Attached files:]\n"
             for att in incoming.attachments:
