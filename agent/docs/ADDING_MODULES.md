@@ -14,6 +14,8 @@ A module is an independent FastAPI microservice running in Docker. The orchestra
 - The orchestrator routes tool calls based on the prefix of the tool name (e.g. `my_module.do_thing` routes to the `my_module` service).
 - The orchestrator enforces permissions — the module just declares what permission level each tool requires.
 - Modules are independently deployable. The system keeps working if a module is stopped.
+- The orchestrator injects `user_id` into tool calls via the `ToolCall.user_id` field, so modules can associate data with users.
+- A default persona is auto-created/updated at startup with all modules in `module_services`. New modules are automatically included.
 
 ---
 
@@ -121,11 +123,21 @@ class MyModuleTools:
 ```
 
 **Important conventions:**
-- Method names must match the part after the `.` in the tool name (e.g. `my_module.do_something` → method `do_something`).
+- Method names must match the part after the `.` in the tool name (e.g. `my_module.do_something` -> method `do_something`).
 - Methods must be `async`.
 - Method parameters must match the names declared in `manifest.py`.
 - Return JSON-serializable data (dicts, lists, strings, numbers, booleans).
 - Raise exceptions on failure — the `main.py` handler catches them and returns an error `ToolResult`.
+
+**Accessing user context:** The orchestrator injects `user_id` into tool calls. To use it, accept `user_id: str | None = None` in your tool method and inject it in `main.py`:
+
+```python
+# In main.py execute handler:
+args = dict(call.arguments)
+if call.user_id:
+    args["user_id"] = call.user_id
+result = await tools.do_something(**args)
+```
 
 ### 4. Create the FastAPI app (`main.py`)
 
@@ -189,10 +201,15 @@ async def execute(call: ToolCall):
         # Strip module prefix to get the method name
         tool_name = call.tool_name.split(".")[-1]
 
+        # Inject user_id from orchestrator context if needed
+        args = dict(call.arguments)
+        if call.user_id:
+            args["user_id"] = call.user_id
+
         if tool_name == "do_something":
-            result = await tools.do_something(**call.arguments)
+            result = await tools.do_something(**args)
         # elif tool_name == "other_tool":
-        #     result = await tools.other_tool(**call.arguments)
+        #     result = await tools.other_tool(**args)
         else:
             return ToolResult(
                 tool_name=call.tool_name,
@@ -213,7 +230,7 @@ async def health():
 
 **The `/execute` endpoint contract:**
 
-- Receives: `{"tool_name": "my_module.do_something", "arguments": {"query": "hello", "limit": 5}}`
+- Receives: `{"tool_name": "my_module.do_something", "arguments": {"query": "hello", "limit": 5}, "user_id": "uuid-string"}`
 - Returns on success: `{"tool_name": "my_module.do_something", "success": true, "result": {...}, "error": null}`
 - Returns on failure: `{"tool_name": "my_module.do_something", "success": false, "result": null, "error": "description of what went wrong"}`
 
@@ -253,11 +270,14 @@ uvicorn[standard]>=0.27
 structlog>=24.1
 pydantic>=2.5
 pydantic-settings>=2.1
-sqlalchemy>=2.0
-asyncpg>=0.29
-pgvector>=0.3
-redis>=5.0
-tiktoken>=0.5
+
+# Add these if your module accesses the database:
+# sqlalchemy>=2.0
+# asyncpg>=0.29
+# pgvector>=0.3
+
+# Add these if your module uses Redis:
+# redis>=5.0
 
 # Module-specific
 # your-library>=1.0
@@ -269,7 +289,7 @@ tiktoken>=0.5
 # agent/modules/my_module/__init__.py
 ```
 
-### 8. Register the module in three places
+### 8. Register the module in two places
 
 **a) `agent/shared/shared/config.py`** — Add to `module_services` default dict:
 
@@ -278,6 +298,8 @@ module_services: dict[str, str] = {
     "research": "http://research:8000",
     "file_manager": "http://file-manager:8000",
     "injective": "http://injective:8000",
+    "code_executor": "http://code-executor:8000",
+    "knowledge": "http://knowledge:8000",
     "my_module": "http://my-module:8000",  # <-- add this
 }
 ```
@@ -299,13 +321,7 @@ module_services: dict[str, str] = {
 
 Note: The Docker service name (`my-module` with a hyphen) maps to the hostname on the Docker network. The config entry must match: `"http://my-module:8000"`.
 
-**c) Persona `allowed_modules`** — If you want the default persona to have access to your module, update the persona's `allowed_modules` JSON list. You can do this via the CLI:
-
-```bash
-python cli.py persona create --name "Updated" --prompt "..." --modules research,file_manager,my_module
-```
-
-Or update the default persona creation in `cli.py` to include it.
+**That's it!** The default persona is automatically updated at startup to include any new modules found in `module_services`. Guest users also get access via `default_guest_modules` in config. If you want to restrict the module, set `required_permission` on individual tools.
 
 ---
 
@@ -355,9 +371,9 @@ client = Minio(
 )
 ```
 
-### Orchestrator API (for LLM calls from modules)
+### Embeddings (via Core API)
 
-If your module needs to call the LLM (e.g. for summarization), POST to the orchestrator:
+If your module needs vector embeddings (e.g. for semantic search), call the core's `/embed` endpoint:
 
 ```python
 import httpx
@@ -365,18 +381,18 @@ from shared.config import get_settings
 
 settings = get_settings()
 
-async def call_llm(prompt: str) -> str:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            f"{settings.orchestrator_url}/message",
-            json={
-                "platform": "internal",
-                "platform_user_id": "system",
-                "platform_channel_id": "my_module",
-                "content": prompt,
-            },
-        )
-        return resp.json().get("content", "")
+async def get_embedding(text: str) -> list[float] | None:
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{settings.orchestrator_url}/embed",
+                json={"text": text},
+            )
+            if resp.status_code == 200:
+                return resp.json().get("embedding")
+    except Exception:
+        pass
+    return None
 ```
 
 ---
@@ -403,7 +419,6 @@ When building a new module, make sure you have:
 - [ ] `modules/my_module/requirements.txt`
 - [ ] Service entry in `docker-compose.yml`
 - [ ] URL entry in `module_services` dict in `shared/shared/config.py`
-- [ ] Module name added to relevant persona `allowed_modules` lists
 
 ---
 
@@ -441,6 +456,8 @@ Permission level for tools: [guest/user/admin/owner]
 
 | Module | Directory | Tools | Notes |
 |---|---|---|---|
-| `research` | `modules/research/` | `web_search`, `fetch_webpage`, `summarize_text` | Uses duckduckgo-search, httpx, beautifulsoup4 |
-| `file_manager` | `modules/file_manager/` | `create_document`, `list_files`, `get_file_link`, `delete_file` | Connects to MinIO and PostgreSQL |
+| `research` | `modules/research/` | `web_search`, `fetch_webpage`, `summarize_text`, `news_search` | Uses ddgs, httpx, beautifulsoup4 |
+| `code_executor` | `modules/code_executor/` | `run_python`, `run_shell` | Sandboxed subprocess execution. Includes numpy, pandas, matplotlib, scipy, sympy, requests. Shell commands validated against blocklist. |
+| `knowledge` | `modules/knowledge/` | `remember`, `recall`, `list_memories`, `forget` | Per-user persistent memory with pgvector semantic search. Uses core `/embed` endpoint for embeddings. |
+| `file_manager` | `modules/file_manager/` | `create_document`, `list_files`, `get_file_link`, `delete_file`, `read_document` | Connects to MinIO and PostgreSQL. Public-read bucket policy for download links. |
 | `injective` | `modules/injective/` | `get_portfolio`, `get_market_price`, `place_order`, `cancel_order`, `get_positions` | Scaffold with mock data, all owner-only |
