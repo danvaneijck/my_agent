@@ -2,9 +2,36 @@
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_list(v: object) -> list[str]:
+    """Parse a list field from either JSON or comma-separated string."""
+    if isinstance(v, list):
+        return v
+    if isinstance(v, str):
+        v = v.strip()
+        if not v:
+            return []
+        # Try JSON first
+        if v.startswith("["):
+            return json.loads(v)
+        # Fall back to comma-separated
+        return [item.strip() for item in v.split(",") if item.strip()]
+    return list(v)  # type: ignore[arg-type]
+
+
+def _parse_dict(v: object) -> dict[str, str]:
+    """Parse a dict field from a JSON string or pass through."""
+    if isinstance(v, dict):
+        return v
+    if isinstance(v, str):
+        return json.loads(v)
+    return dict(v)  # type: ignore[arg-type]
 
 
 class Settings(BaseSettings):
@@ -69,6 +96,17 @@ class Settings(BaseSettings):
         "gpt-4o",
         "gemini-2.0-flash",
     ]
+
+    # Validators for fields that can be set as comma-separated strings in .env
+    @field_validator("default_guest_modules", "fallback_chain", mode="before")
+    @classmethod
+    def parse_list_field(cls, v: object) -> list[str]:
+        return _parse_list(v)
+
+    @field_validator("module_services", "model_routing", mode="before")
+    @classmethod
+    def parse_dict_field(cls, v: object) -> dict[str, str]:
+        return _parse_dict(v)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
