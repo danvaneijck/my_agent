@@ -36,7 +36,7 @@ def setup():
     _run_migrations()
 
     click.echo("Creating MinIO bucket if not exists...")
-    run_async(_create_minio_bucket())
+    _create_minio_bucket()
 
     click.echo("Creating default persona if none exists...")
     run_async(_create_default_persona())
@@ -67,44 +67,47 @@ def _run_migrations():
     click.echo("  Warning: alembic.ini not found, skipping migrations.")
 
 
-async def _create_minio_bucket():
+def _create_minio_bucket():
     """Create the MinIO bucket if it doesn't exist."""
     try:
         from minio import Minio
 
-        from shared.config import get_settings
+        endpoint = os.environ.get("MINIO_ENDPOINT", "minio:9000")
+        access_key = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
+        secret_key = os.environ.get("MINIO_SECRET_KEY", "changeme")
+        bucket = os.environ.get("MINIO_BUCKET", "agent-files")
 
-        settings = get_settings()
         client = Minio(
-            settings.minio_endpoint,
-            access_key=settings.minio_access_key,
-            secret_key=settings.minio_secret_key,
+            endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
             secure=False,
         )
-        if not client.bucket_exists(settings.minio_bucket):
-            client.make_bucket(settings.minio_bucket)
-            click.echo(f"  Created bucket: {settings.minio_bucket}")
+        if not client.bucket_exists(bucket):
+            client.make_bucket(bucket)
+            click.echo(f"  Created bucket: {bucket}")
         else:
-            click.echo(f"  Bucket already exists: {settings.minio_bucket}")
+            click.echo(f"  Bucket already exists: {bucket}")
     except Exception as e:
         click.echo(f"  Warning: Could not create MinIO bucket: {e}")
 
 
 async def _create_default_persona():
     """Create a default persona if none exists."""
+    from sqlalchemy import select
+
     from shared.database import get_engine, get_session_factory
     from shared.models.persona import Persona
 
     session_factory = get_session_factory()
     async with session_factory() as session:
-        from sqlalchemy import select
-
         result = await session.execute(
             select(Persona).where(Persona.is_default.is_(True))
         )
         existing = result.scalar_one_or_none()
         if existing:
             click.echo(f"  Default persona already exists: {existing.name}")
+            await get_engine().dispose()
             return
 
         persona = Persona(
@@ -123,8 +126,7 @@ async def _create_default_persona():
         await session.commit()
         click.echo(f"  Created default persona: {persona.name}")
 
-    engine = get_engine()
-    await engine.dispose()
+    await get_engine().dispose()
 
 
 # --- User Management ---
