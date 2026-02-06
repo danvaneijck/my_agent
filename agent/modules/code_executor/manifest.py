@@ -26,7 +26,7 @@ MANIFEST = ModuleManifest(
                     required=False,
                 ),
             ],
-            required_permission="user",
+            required_permission="guest",
         ),
         ToolDefinition(
             name="code_executor.run_shell",
@@ -48,7 +48,7 @@ MANIFEST = ModuleManifest(
                     required=False,
                 ),
             ],
-            required_permission="user",
+            required_permission="guest",
         ),
     ],
 )

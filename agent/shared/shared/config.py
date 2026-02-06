@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     default_guest_token_budget: int = 5000
     # Stored as str to avoid pydantic-settings JSON parse issues with env vars.
     # Use parse_list() at the point of use.
-    default_guest_modules: str = "research"
+    default_guest_modules: str = "research,file_manager,code_executor"
 
     # Module services (set via JSON in .env if overriding)
     module_services: dict[str, str] = {
