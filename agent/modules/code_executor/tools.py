@@ -105,48 +105,83 @@ class CodeExecutorTools:
         if not self.minio.bucket_exists(bucket):
             self.minio.make_bucket(bucket)
 
-    def _upload_output_files(self) -> list[dict]:
-        """Scan OUTPUT_DIR for generated files and upload them to MinIO."""
+    # File extensions we consider as generated output (not temp/system files)
+    _OUTPUT_EXTENSIONS = set(MIME_TYPES.keys())
+
+    def _snapshot_tmp(self) -> set[str]:
+        """Record existing files in /tmp before execution."""
+        try:
+            return {
+                f for f in os.listdir("/tmp")
+                if os.path.isfile(os.path.join("/tmp", f))
+            }
+        except OSError:
+            return set()
+
+    def _collect_output_files(self, pre_snapshot: set[str]) -> list[dict]:
+        """Find new files generated during execution and upload to MinIO.
+
+        Checks both /tmp/output/ (explicit) and /tmp/ (for files with known
+        extensions that didn't exist before execution).
+        """
         uploaded = []
-        if not os.path.isdir(OUTPUT_DIR):
-            return uploaded
 
-        for fname in os.listdir(OUTPUT_DIR):
-            fpath = os.path.join(OUTPUT_DIR, fname)
-            if not os.path.isfile(fpath):
-                continue
+        # 1. Collect files from /tmp/output/ (explicit saves)
+        if os.path.isdir(OUTPUT_DIR):
+            for fname in os.listdir(OUTPUT_DIR):
+                fpath = os.path.join(OUTPUT_DIR, fname)
+                if os.path.isfile(fpath):
+                    uploaded.extend(self._upload_file(fpath, fname))
 
+        # 2. Scan /tmp for NEW files with known extensions
+        try:
+            current_files = set(os.listdir("/tmp"))
+        except OSError:
+            current_files = set()
+
+        new_files = current_files - pre_snapshot
+        for fname in new_files:
             ext = os.path.splitext(fname)[1].lower()
-            mime = MIME_TYPES.get(ext, "application/octet-stream")
-            minio_key = f"generated/{uuid.uuid4().hex[:8]}_{fname}"
-
-            try:
-                file_size = os.path.getsize(fpath)
-                with open(fpath, "rb") as f:
-                    self.minio.put_object(
-                        self.settings.minio_bucket,
-                        minio_key,
-                        f,
-                        length=file_size,
-                        content_type=mime,
-                    )
-                url = f"{self.settings.minio_public_url}/{minio_key}"
-                uploaded.append({
-                    "filename": fname,
-                    "url": url,
-                    "size_bytes": file_size,
-                    "mime_type": mime,
-                })
-                logger.info("output_file_uploaded", filename=fname, size=file_size)
-            except Exception as e:
-                logger.warning("output_file_upload_failed", filename=fname, error=str(e))
-            finally:
-                try:
-                    os.unlink(fpath)
-                except OSError:
-                    pass
+            if ext not in self._OUTPUT_EXTENSIONS:
+                continue
+            fpath = os.path.join("/tmp", fname)
+            if os.path.isfile(fpath):
+                uploaded.extend(self._upload_file(fpath, fname))
 
         return uploaded
+
+    def _upload_file(self, fpath: str, fname: str) -> list[dict]:
+        """Upload a single file to MinIO. Returns a list with one item, or empty on failure."""
+        ext = os.path.splitext(fname)[1].lower()
+        mime = MIME_TYPES.get(ext, "application/octet-stream")
+        minio_key = f"generated/{uuid.uuid4().hex[:8]}_{fname}"
+
+        try:
+            file_size = os.path.getsize(fpath)
+            with open(fpath, "rb") as f:
+                self.minio.put_object(
+                    self.settings.minio_bucket,
+                    minio_key,
+                    f,
+                    length=file_size,
+                    content_type=mime,
+                )
+            url = f"{self.settings.minio_public_url}/{minio_key}"
+            logger.info("output_file_uploaded", filename=fname, size=file_size)
+            return [{
+                "filename": fname,
+                "url": url,
+                "size_bytes": file_size,
+                "mime_type": mime,
+            }]
+        except Exception as e:
+            logger.warning("output_file_upload_failed", filename=fname, error=str(e))
+            return []
+        finally:
+            try:
+                os.unlink(fpath)
+            except OSError:
+                pass
 
     def _clean_output_dir(self):
         """Ensure output dir exists and is empty before execution."""
@@ -162,6 +197,7 @@ class CodeExecutorTools:
         timeout = min(max(timeout, 1), 60)
 
         self._clean_output_dir()
+        pre_snapshot = self._snapshot_tmp()
 
         # Write code to a temp file
         with tempfile.NamedTemporaryFile(
@@ -169,6 +205,9 @@ class CodeExecutorTools:
         ) as f:
             f.write(code)
             script_path = f.name
+
+        # Add the script itself to the snapshot so it's not treated as output
+        pre_snapshot.add(os.path.basename(script_path))
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -200,8 +239,8 @@ class CodeExecutorTools:
             stdout = _truncate(stdout_bytes.decode("utf-8", errors="replace"))
             stderr = _truncate(stderr_bytes.decode("utf-8", errors="replace"))
 
-            # Upload any files the code saved to /tmp/output/
-            files = self._upload_output_files()
+            # Upload files from /tmp/output/ AND any new files in /tmp with known extensions
+            files = self._collect_output_files(pre_snapshot)
 
             return {
                 "success": proc.returncode == 0,
