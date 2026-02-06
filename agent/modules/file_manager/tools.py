@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -23,6 +24,19 @@ MIME_TYPES = {
     "csv": "text/csv",
 }
 
+# MinIO anonymous read policy for the bucket
+_PUBLIC_READ_POLICY = {
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {"AWS": ["*"]},
+            "Action": ["s3:GetObject"],
+            "Resource": ["arn:aws:s3:::{bucket}/*"],
+        }
+    ],
+}
+
 
 class FileManagerTools:
     """Tool implementations for file management with MinIO."""
@@ -36,9 +50,12 @@ class FileManagerTools:
             secret_key=settings.minio_secret_key,
             secure=False,
         )
-        # Ensure bucket exists
-        if not self.minio.bucket_exists(settings.minio_bucket):
-            self.minio.make_bucket(settings.minio_bucket)
+        # Ensure bucket exists with public-read policy
+        bucket = settings.minio_bucket
+        if not self.minio.bucket_exists(bucket):
+            self.minio.make_bucket(bucket)
+        policy = json.loads(json.dumps(_PUBLIC_READ_POLICY).replace("{bucket}", bucket))
+        self.minio.set_bucket_policy(bucket, json.dumps(policy))
 
     async def create_document(
         self,
