@@ -80,7 +80,7 @@ class LLMRouter:
         # Embedding model: provider-aware fallback
         embed_defaults = {
             "openai": "text-embedding-3-small",
-            "google": "text-embedding-004",
+            "google": "gemini-embedding-001",
         }
         if not self._has_provider_for(self.settings.embedding_model):
             for prov_name, model in embed_defaults.items():
@@ -198,6 +198,6 @@ class LLMRouter:
 
         # Try Google
         if "google" in self.providers:
-            return await self.providers["google"].embed(text, "text-embedding-004")
+            return await self.providers["google"].embed(text, "gemini-embedding-001")
 
         raise RuntimeError("No embedding provider available.")

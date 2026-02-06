@@ -164,7 +164,7 @@ class GoogleProvider(LLMProvider):
             stop_reason=stop_reason,
         )
 
-    async def embed(self, text: str, model: str = "text-embedding-004") -> list[float]:
+    async def embed(self, text: str, model: str = "gemini-embedding-001") -> list[float]:
         """Generate embeddings using Google."""
         last_error = None
         for attempt in range(3):

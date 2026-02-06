@@ -79,8 +79,8 @@ class AgentLoop:
         tools = self.tool_registry.get_tools_for_user(user.permission_level, allowed_modules)
         openai_tools = self.tool_registry.tools_to_openai_format(tools) if tools else None
 
-        # 6. Determine model
-        model = (persona.default_model if persona and persona.default_model else self.settings.default_model)
+        # 6. Determine model (None lets the router pick its effective default)
+        model = persona.default_model if persona and persona.default_model else None
         max_tokens = persona.max_tokens_per_request if persona else 4000
 
         # 7. Build context
