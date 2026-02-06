@@ -172,9 +172,12 @@ class GoogleProvider(LLMProvider):
                 response = await asyncio.to_thread(
                     self.client.models.embed_content,
                     model=model,
-                    content=text,
+                    contents=text,
                 )
-                return response.embedding.values
+                # The new google-genai SDK returns embeddings as a list
+                if hasattr(response, "embeddings") and response.embeddings:
+                    return list(response.embeddings[0].values)
+                return list(response.embedding.values)
             except Exception as e:
                 last_error = e
                 logger.warning("google_embed_error", attempt=attempt, error=str(e))
