@@ -71,6 +71,7 @@ class Settings(BaseSettings):
         "research": "http://research:8000",
         "file_manager": "http://file-manager:8000",
         "injective": "http://injective:8000",
+        "code_executor": "http://code-executor:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)

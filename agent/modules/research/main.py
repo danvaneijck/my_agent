@@ -49,6 +49,8 @@ async def execute(call: ToolCall):
 
         if tool_name == "web_search":
             result = await tools.web_search(**call.arguments)
+        elif tool_name == "news_search":
+            result = await tools.news_search(**call.arguments)
         elif tool_name == "fetch_webpage":
             result = await tools.fetch_webpage(**call.arguments)
         elif tool_name == "summarize_text":

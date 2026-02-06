@@ -116,6 +116,35 @@ class FileManagerTools:
             "size_bytes": len(data),
         }
 
+    async def read_document(self, file_id: str) -> dict:
+        """Read the contents of a stored document."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
+            )
+            record = result.scalar_one_or_none()
+            if not record:
+                raise ValueError(f"File not found: {file_id}")
+
+            # Download from MinIO
+            response = self.minio.get_object(self.settings.minio_bucket, record.minio_key)
+            try:
+                content = response.read().decode("utf-8")
+            finally:
+                response.close()
+                response.release_conn()
+
+            # Truncate very large files to avoid blowing up context
+            if len(content) > 10000:
+                content = content[:10000] + "\n... [truncated at 10000 chars]"
+
+            return {
+                "file_id": str(record.id),
+                "filename": record.filename,
+                "content": content,
+                "size_bytes": record.size_bytes,
+            }
+
     async def list_files(self, user_id: str | None = None) -> list[dict]:
         """List files, optionally filtered by user."""
         async with self.session_factory() as session:

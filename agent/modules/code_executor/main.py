@@ -1,14 +1,12 @@
-"""File Manager module - FastAPI service."""
+"""Code Executor module - FastAPI service."""
 
 from __future__ import annotations
 
 import structlog
 from fastapi import FastAPI
 
-from modules.file_manager.manifest import MANIFEST
-from modules.file_manager.tools import FileManagerTools
-from shared.config import get_settings
-from shared.database import get_session_factory
+from modules.code_executor.manifest import MANIFEST
+from modules.code_executor.tools import CodeExecutorTools
 from shared.schemas.common import HealthResponse
 from shared.schemas.tools import ModuleManifest, ToolCall, ToolResult
 
@@ -20,18 +18,16 @@ structlog.configure(
 )
 
 logger = structlog.get_logger()
-app = FastAPI(title="File Manager Module", version="1.0.0")
+app = FastAPI(title="Code Executor Module", version="1.0.0")
 
-settings = get_settings()
-tools: FileManagerTools | None = None
+tools: CodeExecutorTools | None = None
 
 
 @app.on_event("startup")
 async def startup():
     global tools
-    session_factory = get_session_factory()
-    tools = FileManagerTools(settings, session_factory)
-    logger.info("file_manager_ready")
+    tools = CodeExecutorTools()
+    logger.info("code_executor_ready")
 
 
 @app.get("/manifest", response_model=ModuleManifest)
@@ -47,19 +43,12 @@ async def execute(call: ToolCall):
         return ToolResult(tool_name=call.tool_name, success=False, error="Module not ready")
 
     try:
-        # Strip module prefix
         tool_name = call.tool_name.split(".")[-1]
 
-        if tool_name == "create_document":
-            result = await tools.create_document(user_id=call.user_id, **call.arguments)
-        elif tool_name == "read_document":
-            result = await tools.read_document(**call.arguments)
-        elif tool_name == "list_files":
-            result = await tools.list_files(**call.arguments)
-        elif tool_name == "get_file_link":
-            result = await tools.get_file_link(**call.arguments)
-        elif tool_name == "delete_file":
-            result = await tools.delete_file(**call.arguments)
+        if tool_name == "run_python":
+            result = await tools.run_python(**call.arguments)
+        elif tool_name == "run_shell":
+            result = await tools.run_shell(**call.arguments)
         else:
             return ToolResult(
                 tool_name=call.tool_name,

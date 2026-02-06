@@ -34,6 +34,25 @@ class ResearchTools:
             logger.error("web_search_error", query=query, error=str(e))
             raise RuntimeError(f"Web search failed: {str(e)}")
 
+    async def news_search(self, query: str, max_results: int = 5) -> list[dict]:
+        """Search recent news articles using DuckDuckGo."""
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.news(query, max_results=max_results))
+            return [
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("url", r.get("link", "")),
+                    "snippet": r.get("body", ""),
+                    "source": r.get("source", ""),
+                    "date": r.get("date", ""),
+                }
+                for r in results
+            ]
+        except Exception as e:
+            logger.error("news_search_error", query=query, error=str(e))
+            raise RuntimeError(f"News search failed: {str(e)}")
+
     async def fetch_webpage(self, url: str) -> dict:
         """Fetch and extract text content from a URL."""
         try:
