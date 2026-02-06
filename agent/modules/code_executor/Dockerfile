@@ -2,13 +2,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install useful CLI tools for shell command execution
+# Install useful CLI tools and matplotlib system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     jq \
     bc \
+    libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Pre-configure matplotlib for non-interactive use
+ENV MPLBACKEND=Agg
 
 # Install shared package
 COPY shared/ /shared/

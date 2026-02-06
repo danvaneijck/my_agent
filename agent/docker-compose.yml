@@ -144,6 +144,18 @@ services:
       - agent-net
     restart: unless-stopped
 
+  knowledge:
+    build:
+      context: .
+      dockerfile: modules/knowledge/Dockerfile
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - agent-net
+    restart: unless-stopped
+
   # --- Admin Dashboard ---
   dashboard:
     build:

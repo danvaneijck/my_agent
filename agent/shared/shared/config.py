@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     default_guest_token_budget: int = 5000
     # Stored as str to avoid pydantic-settings JSON parse issues with env vars.
     # Use parse_list() at the point of use.
-    default_guest_modules: str = "research,file_manager,code_executor"
+    default_guest_modules: str = "research,file_manager,code_executor,knowledge"
 
     # Module services (set via JSON in .env if overriding)
     module_services: dict[str, str] = {
@@ -72,6 +72,7 @@ class Settings(BaseSettings):
         "file_manager": "http://file-manager:8000",
         "injective": "http://injective:8000",
         "code_executor": "http://code-executor:8000",
+        "knowledge": "http://knowledge:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
