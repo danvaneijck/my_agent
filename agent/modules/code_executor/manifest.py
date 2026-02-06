@@ -13,9 +13,12 @@ MANIFEST = ModuleManifest(
                 "Code runs in an isolated subprocess with a 30-second timeout. "
                 "Available libraries: math, json, datetime, collections, itertools, re, statistics, "
                 "numpy, pandas, matplotlib, requests, scipy, sympy. "
-                "To generate downloadable files (plots, CSVs, etc.), save them to /tmp/output/ — "
-                "e.g. plt.savefig('/tmp/output/chart.png'). Files saved there are automatically "
-                "uploaded and returned as download URLs."
+                "To generate downloadable files (plots, CSVs, etc.), save them to /tmp/ — "
+                "e.g. plt.savefig('/tmp/chart.png'). Files are automatically uploaded and "
+                "returned as download URLs. Generated files are also saved to the file manager "
+                "and can be recalled later with file_manager.list_files. "
+                "To work with previously stored files, first use code_executor.load_file to "
+                "download them into /tmp/, then reference the local_path in your code."
             ),
             parameters=[
                 ToolParameter(
@@ -28,6 +31,23 @@ MANIFEST = ModuleManifest(
                     type="integer",
                     description="Max execution time in seconds (default 30, max 60)",
                     required=False,
+                ),
+            ],
+            required_permission="guest",
+        ),
+        ToolDefinition(
+            name="code_executor.load_file",
+            description=(
+                "Download a previously stored file into /tmp/ so it can be used by run_python. "
+                "Use file_manager.list_files to find the file_id first. "
+                "Returns the local_path where the file was saved (e.g. /tmp/data.csv). "
+                "Then reference that path in your Python code."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="file_id",
+                    type="string",
+                    description="The UUID of the file to load (from file_manager.list_files)",
                 ),
             ],
             required_permission="guest",

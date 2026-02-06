@@ -119,6 +119,8 @@ services:
       dockerfile: modules/file_manager/Dockerfile
     env_file: .env
     depends_on:
+      postgres:
+        condition: service_healthy
       minio:
         condition: service_healthy
     networks:
@@ -139,6 +141,11 @@ services:
       context: .
       dockerfile: modules/code_executor/Dockerfile
     env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     networks:
       - agent-net
     restart: unless-stopped
