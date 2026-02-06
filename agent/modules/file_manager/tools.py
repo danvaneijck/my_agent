@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import uuid
@@ -18,10 +19,35 @@ from shared.models.file import FileRecord
 logger = structlog.get_logger()
 
 MIME_TYPES = {
+    # Text formats
     "md": "text/markdown",
     "txt": "text/plain",
     "json": "application/json",
     "csv": "text/csv",
+    "html": "text/html",
+    "xml": "application/xml",
+    "yaml": "application/x-yaml",
+    "yml": "application/x-yaml",
+    "py": "text/x-python",
+    "js": "text/javascript",
+    "ts": "text/typescript",
+    "css": "text/css",
+    "sql": "application/sql",
+    "sh": "text/x-shellscript",
+    "toml": "application/toml",
+    "ini": "text/plain",
+    "log": "text/plain",
+    "env": "text/plain",
+    # Binary formats (for upload_file)
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "svg": "image/svg+xml",
+    "webp": "image/webp",
+    "pdf": "application/pdf",
+    "zip": "application/zip",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 
 # MinIO anonymous read policy for the bucket
@@ -114,6 +140,58 @@ class FileManagerTools:
             "filename": filename,
             "url": public_url,
             "size_bytes": len(data),
+        }
+
+    async def upload_file(
+        self,
+        filename: str,
+        data_base64: str,
+        user_id: str | None = None,
+    ) -> dict:
+        """Upload a binary file (image, PDF, etc.) from base64-encoded data."""
+        raw = base64.b64decode(data_base64)
+
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+        mime_type = MIME_TYPES.get(ext, "application/octet-stream")
+
+        safe_name = "".join(c if c.isalnum() or c in "-_. " else "" for c in filename)
+        safe_name = safe_name.strip().replace(" ", "_") or "file"
+
+        minio_key = f"uploads/{uuid.uuid4().hex[:8]}_{safe_name}"
+
+        self.minio.put_object(
+            self.settings.minio_bucket,
+            minio_key,
+            io.BytesIO(raw),
+            length=len(raw),
+            content_type=mime_type,
+        )
+
+        public_url = f"{self.settings.minio_public_url}/{minio_key}"
+        uid = uuid.UUID(user_id) if user_id else uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+        file_id = uuid.uuid4()
+        async with self.session_factory() as session:
+            record = FileRecord(
+                id=file_id,
+                user_id=uid,
+                filename=safe_name,
+                minio_key=minio_key,
+                mime_type=mime_type,
+                size_bytes=len(raw),
+                public_url=public_url,
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(record)
+            await session.commit()
+
+        logger.info("file_uploaded", filename=safe_name, size=len(raw), mime=mime_type)
+        return {
+            "file_id": str(file_id),
+            "filename": safe_name,
+            "url": public_url,
+            "size_bytes": len(raw),
+            "mime_type": mime_type,
         }
 
     async def read_document(self, file_id: str) -> dict:

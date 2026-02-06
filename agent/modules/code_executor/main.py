@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from modules.code_executor.manifest import MANIFEST
 from modules.code_executor.tools import CodeExecutorTools
+from shared.config import get_settings
 from shared.schemas.common import HealthResponse
 from shared.schemas.tools import ModuleManifest, ToolCall, ToolResult
 
@@ -26,7 +27,8 @@ tools: CodeExecutorTools | None = None
 @app.on_event("startup")
 async def startup():
     global tools
-    tools = CodeExecutorTools()
+    settings = get_settings()
+    tools = CodeExecutorTools(settings)
     logger.info("code_executor_ready")
 
 

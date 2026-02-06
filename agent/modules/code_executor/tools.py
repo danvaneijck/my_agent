@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import json
 import os
 import re
 import tempfile
+import uuid
+from datetime import datetime, timezone
 
 import structlog
+from minio import Minio
+
+from shared.config import Settings
 
 logger = structlog.get_logger()
 
 MAX_OUTPUT = 8000  # chars
+OUTPUT_DIR = "/tmp/output"
 
 # Shell commands that are explicitly blocked (destructive / escape risk)
 _BLOCKED_SHELL_PATTERNS: list[re.Pattern[str]] = [
@@ -50,6 +58,23 @@ _BLOCKED_SHELL_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\bssh\b"),
 ]
 
+MIME_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+    ".pdf": "application/pdf",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".html": "text/html",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".zip": "application/zip",
+}
+
 
 def _truncate(text: str) -> str:
     if len(text) > MAX_OUTPUT:
@@ -68,9 +93,75 @@ def _validate_shell_command(command: str) -> str | None:
 class CodeExecutorTools:
     """Tool implementations for sandboxed code execution."""
 
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.minio = Minio(
+            settings.minio_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key,
+            secure=False,
+        )
+        bucket = settings.minio_bucket
+        if not self.minio.bucket_exists(bucket):
+            self.minio.make_bucket(bucket)
+
+    def _upload_output_files(self) -> list[dict]:
+        """Scan OUTPUT_DIR for generated files and upload them to MinIO."""
+        uploaded = []
+        if not os.path.isdir(OUTPUT_DIR):
+            return uploaded
+
+        for fname in os.listdir(OUTPUT_DIR):
+            fpath = os.path.join(OUTPUT_DIR, fname)
+            if not os.path.isfile(fpath):
+                continue
+
+            ext = os.path.splitext(fname)[1].lower()
+            mime = MIME_TYPES.get(ext, "application/octet-stream")
+            minio_key = f"generated/{uuid.uuid4().hex[:8]}_{fname}"
+
+            try:
+                file_size = os.path.getsize(fpath)
+                with open(fpath, "rb") as f:
+                    self.minio.put_object(
+                        self.settings.minio_bucket,
+                        minio_key,
+                        f,
+                        length=file_size,
+                        content_type=mime,
+                    )
+                url = f"{self.settings.minio_public_url}/{minio_key}"
+                uploaded.append({
+                    "filename": fname,
+                    "url": url,
+                    "size_bytes": file_size,
+                    "mime_type": mime,
+                })
+                logger.info("output_file_uploaded", filename=fname, size=file_size)
+            except Exception as e:
+                logger.warning("output_file_upload_failed", filename=fname, error=str(e))
+            finally:
+                try:
+                    os.unlink(fpath)
+                except OSError:
+                    pass
+
+        return uploaded
+
+    def _clean_output_dir(self):
+        """Ensure output dir exists and is empty before execution."""
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        for fname in os.listdir(OUTPUT_DIR):
+            try:
+                os.unlink(os.path.join(OUTPUT_DIR, fname))
+            except OSError:
+                pass
+
     async def run_python(self, code: str, timeout: int = 30) -> dict:
         """Execute Python code in an isolated subprocess."""
         timeout = min(max(timeout, 1), 60)
+
+        self._clean_output_dir()
 
         # Write code to a temp file
         with tempfile.NamedTemporaryFile(
@@ -88,6 +179,7 @@ class CodeExecutorTools:
                     "PATH": "/usr/local/bin:/usr/bin:/bin",
                     "HOME": "/tmp",
                     "PYTHONDONTWRITEBYTECODE": "1",
+                    "MPLBACKEND": "Agg",
                 },
             )
             try:
@@ -102,16 +194,21 @@ class CodeExecutorTools:
                     "stdout": "",
                     "stderr": f"Execution timed out after {timeout}s",
                     "exit_code": -1,
+                    "files": [],
                 }
 
             stdout = _truncate(stdout_bytes.decode("utf-8", errors="replace"))
             stderr = _truncate(stderr_bytes.decode("utf-8", errors="replace"))
+
+            # Upload any files the code saved to /tmp/output/
+            files = self._upload_output_files()
 
             return {
                 "success": proc.returncode == 0,
                 "stdout": stdout,
                 "stderr": stderr,
                 "exit_code": proc.returncode,
+                "files": files,
             }
         finally:
             try:

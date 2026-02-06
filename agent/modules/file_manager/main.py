@@ -52,6 +52,8 @@ async def execute(call: ToolCall):
 
         if tool_name == "create_document":
             result = await tools.create_document(user_id=call.user_id, **call.arguments)
+        elif tool_name == "upload_file":
+            result = await tools.upload_file(user_id=call.user_id, **call.arguments)
         elif tool_name == "read_document":
             result = await tools.read_document(**call.arguments)
         elif tool_name == "list_files":
