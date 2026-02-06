@@ -20,7 +20,7 @@ class Persona(Base):
     platform: Mapped[str | None] = mapped_column(default=None)
     platform_server_id: Mapped[str | None] = mapped_column(default=None)
     allowed_modules: Mapped[str] = mapped_column(
-        default='["research", "file_manager"]'
+        default='["research", "file_manager", "code_executor"]'
     )  # JSON list
     default_model: Mapped[str | None] = mapped_column(default=None)
     max_tokens_per_request: Mapped[int] = mapped_column(default=4000)

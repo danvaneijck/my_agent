@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import structlog
 from fastapi import FastAPI, HTTPException
+
+from sqlalchemy import select
 
 from core.llm_router.router import LLMRouter
 from core.memory.summarizer import ConversationSummarizer
@@ -14,6 +17,7 @@ from core.orchestrator.context_builder import ContextBuilder
 from core.orchestrator.tool_registry import ToolRegistry
 from shared.config import get_settings
 from shared.database import get_engine, get_session_factory
+from shared.models.persona import Persona
 from shared.redis import close_redis
 from shared.schemas.common import HealthResponse
 from shared.schemas.messages import AgentResponse, IncomingMessage
@@ -91,8 +95,35 @@ async def startup():
     if not tool_registry.manifests:
         asyncio.create_task(_delayed_discovery(tool_registry))
 
-    # Initialize context builder and agent loop
+    # Ensure a default persona exists
     session_factory = get_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(select(Persona).where(Persona.is_default.is_(True)))
+        default_persona = result.scalar_one_or_none()
+        if not default_persona:
+            modules = list(settings.module_services.keys())
+            default_persona = Persona(
+                name="Default Assistant",
+                system_prompt=(
+                    "You are a helpful AI assistant. Be concise, accurate, and helpful. "
+                    "Use your tools when they can help accomplish the user's task."
+                ),
+                allowed_modules=json.dumps(modules),
+                is_default=True,
+            )
+            session.add(default_persona)
+            await session.commit()
+            logger.info("created_default_persona", modules=modules)
+        else:
+            # Update allowed_modules on existing default persona to include any new modules
+            current_modules = json.loads(default_persona.allowed_modules)
+            all_modules = list(settings.module_services.keys())
+            if set(current_modules) != set(all_modules):
+                default_persona.allowed_modules = json.dumps(all_modules)
+                await session.commit()
+                logger.info("updated_default_persona_modules", modules=all_modules)
+
+    # Initialize context builder and agent loop
     context_builder = ContextBuilder(settings, llm_router)
     agent_loop = AgentLoop(
         settings=settings,
