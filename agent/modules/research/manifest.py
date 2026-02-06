@@ -4,13 +4,27 @@ from shared.schemas.tools import ModuleManifest, ToolDefinition, ToolParameter
 
 MANIFEST = ModuleManifest(
     module_name="research",
-    description="Research the web, fetch pages, and summarize information.",
+    description="Research the web, fetch pages, search news, and summarize information.",
     tools=[
         ToolDefinition(
             name="research.web_search",
             description="Search the web for information. Returns a list of results with titles, URLs, and snippets.",
             parameters=[
                 ToolParameter(name="query", type="string", description="The search query"),
+                ToolParameter(
+                    name="max_results",
+                    type="integer",
+                    description="Maximum number of results to return (default 5)",
+                    required=False,
+                ),
+            ],
+            required_permission="guest",
+        ),
+        ToolDefinition(
+            name="research.news_search",
+            description="Search recent news articles. Returns headlines, URLs, publication dates, and sources.",
+            parameters=[
+                ToolParameter(name="query", type="string", description="The news search query"),
                 ToolParameter(
                     name="max_results",
                     type="integer",

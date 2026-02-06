@@ -23,6 +23,14 @@ MANIFEST = ModuleManifest(
             required_permission="guest",
         ),
         ToolDefinition(
+            name="file_manager.read_document",
+            description="Read the contents of a previously stored document. Returns the full text content.",
+            parameters=[
+                ToolParameter(name="file_id", type="string", description="The file record ID"),
+            ],
+            required_permission="guest",
+        ),
+        ToolDefinition(
             name="file_manager.list_files",
             description="List all stored files, optionally filtered by user.",
             parameters=[
