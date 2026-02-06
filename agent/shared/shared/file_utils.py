@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import io
 import uuid
-from datetime import datetime, timezone
 
 import structlog
 from minio import Minio
-from sqlalchemy.ext.asyncio import async_sessionmaker
-
-from shared.models.file import FileRecord
 
 logger = structlog.get_logger()
 
@@ -41,19 +37,17 @@ MIME_MAP = {
 }
 
 
-async def ingest_attachment(
+def upload_attachment(
     minio_client: Minio,
-    session_factory: async_sessionmaker,
     bucket: str,
     public_url_base: str,
     raw_bytes: bytes,
     filename: str,
-    user_id: str | None,
 ) -> dict:
-    """Upload a user-attached file to MinIO and create a FileRecord.
+    """Upload a user-attached file to MinIO (no DB record — core creates that).
 
     Returns a dict suitable for IncomingMessage.attachments:
-        {file_id, filename, url, mime_type, size_bytes}
+        {filename, url, minio_key, mime_type, size_bytes}
     """
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
     mime_type = MIME_MAP.get(ext, "application/octet-stream")
@@ -73,28 +67,12 @@ async def ingest_attachment(
     )
 
     public_url = f"{public_url_base}/{minio_key}"
-    uid = uuid.UUID(user_id) if user_id else uuid.UUID("00000000-0000-0000-0000-000000000000")
 
-    file_id = uuid.uuid4()
-    async with session_factory() as session:
-        record = FileRecord(
-            id=file_id,
-            user_id=uid,
-            filename=safe_name,
-            minio_key=minio_key,
-            mime_type=mime_type,
-            size_bytes=len(raw_bytes),
-            public_url=public_url,
-            created_at=datetime.now(timezone.utc),
-        )
-        session.add(record)
-        await session.commit()
-
-    logger.info("attachment_ingested", filename=safe_name, size=len(raw_bytes))
+    logger.info("attachment_uploaded", filename=safe_name, size=len(raw_bytes))
     return {
-        "file_id": str(file_id),
         "filename": safe_name,
         "url": public_url,
+        "minio_key": minio_key,
         "mime_type": mime_type,
         "size_bytes": len(raw_bytes),
     }
