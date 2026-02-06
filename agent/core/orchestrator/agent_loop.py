@@ -15,7 +15,7 @@ from core.llm_router.router import LLMRouter
 from core.llm_router.token_counter import estimate_cost
 from core.orchestrator.context_builder import ContextBuilder
 from core.orchestrator.tool_registry import ToolRegistry
-from shared.config import Settings
+from shared.config import Settings, parse_list
 from shared.models.conversation import Conversation, Message
 from shared.models.persona import Persona
 from shared.models.token_usage import TokenLog
@@ -75,7 +75,7 @@ class AgentLoop:
         conversation = await self._resolve_conversation(session, user, incoming, persona)
 
         # 5. Get available tools
-        allowed_modules = json.loads(persona.allowed_modules) if persona else self.settings.default_guest_modules
+        allowed_modules = json.loads(persona.allowed_modules) if persona else parse_list(self.settings.default_guest_modules)
         tools = self.tool_registry.get_tools_for_user(user.permission_level, allowed_modules)
         openai_tools = self.tool_registry.tools_to_openai_format(tools) if tools else None
 

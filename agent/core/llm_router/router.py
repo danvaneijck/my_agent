@@ -5,7 +5,7 @@ from __future__ import annotations
 import structlog
 
 from core.llm_router.providers.base import LLMProvider, LLMResponse
-from shared.config import Settings
+from shared.config import Settings, parse_list
 
 logger = structlog.get_logger()
 
@@ -109,7 +109,7 @@ class LLMRouter:
             )
 
         # Try fallback chain
-        for fallback_model in self.settings.fallback_chain:
+        for fallback_model in parse_list(self.settings.fallback_chain):
             if fallback_model == target_model:
                 continue
             try:
