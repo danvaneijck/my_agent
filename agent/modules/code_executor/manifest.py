@@ -9,11 +9,13 @@ MANIFEST = ModuleManifest(
         ToolDefinition(
             name="code_executor.run_python",
             description=(
-                "Execute Python code and return stdout, stderr, and the return value. "
+                "Execute Python code and return stdout, stderr, and any generated files. "
                 "Code runs in an isolated subprocess with a 30-second timeout. "
                 "Available libraries: math, json, datetime, collections, itertools, re, statistics, "
                 "numpy, pandas, matplotlib, requests, scipy, sympy. "
-                "For plots, save to /tmp/plot.png with plt.savefig and print the path."
+                "To generate downloadable files (plots, CSVs, etc.), save them to /tmp/output/ — "
+                "e.g. plt.savefig('/tmp/output/chart.png'). Files saved there are automatically "
+                "uploaded and returned as download URLs."
             ),
             parameters=[
                 ToolParameter(
