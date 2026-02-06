@@ -20,13 +20,28 @@ class GoogleProvider(LLMProvider):
     def __init__(self, api_key: str):
         self.client = genai.Client(api_key=api_key)
 
-    def _convert_tools(self, tools: list[dict] | None) -> list[types.Tool] | None:
-        """Convert to Google's tool format."""
+    @staticmethod
+    def _sanitize_name(name: str) -> str:
+        """Google function names must be alphanumeric + underscore. Replace dots."""
+        return name.replace(".", "__")
+
+    def _convert_tools(
+        self, tools: list[dict] | None,
+    ) -> tuple[list[types.Tool] | None, dict[str, str]]:
+        """Convert to Google's tool format.
+
+        Returns (google_tools, name_map) where name_map maps sanitized → original names.
+        """
+        name_map: dict[str, str] = {}
         if not tools:
-            return None
+            return None, name_map
         declarations = []
         for tool in tools:
             func = tool.get("function", tool)
+            original_name = func["name"]
+            safe_name = self._sanitize_name(original_name)
+            name_map[safe_name] = original_name
+
             properties = {}
             required = []
             for param_name, param_def in func.get("parameters", {}).get("properties", {}).items():
@@ -47,7 +62,7 @@ class GoogleProvider(LLMProvider):
                 required = func["parameters"]["required"]
 
             declarations.append(types.FunctionDeclaration(
-                name=func["name"],
+                name=safe_name,
                 description=func.get("description", ""),
                 parameters=types.Schema(
                     type="OBJECT",
@@ -55,20 +70,24 @@ class GoogleProvider(LLMProvider):
                     required=required,
                 ),
             ))
-        return [types.Tool(function_declarations=declarations)]
+        return [types.Tool(function_declarations=declarations)], name_map
 
     def _convert_messages(self, messages: list[dict]) -> tuple[str | None, list[types.Content]]:
-        """Convert messages to Google format."""
-        system = None
+        """Convert messages to Google format.
+
+        Sanitizes function names in tool_call/tool_result messages to match
+        the names registered with Google (dots replaced with __).
+        """
+        system_parts: list[str] = []
         contents = []
         for msg in messages:
             if msg["role"] == "system":
-                system = msg["content"]
+                system_parts.append(msg["content"])
             elif msg["role"] == "tool_call":
                 contents.append(types.Content(
                     role="model",
                     parts=[types.Part(function_call=types.FunctionCall(
-                        name=msg.get("name", ""),
+                        name=self._sanitize_name(msg.get("name", "")),
                         args=msg.get("arguments", {}),
                     ))],
                 ))
@@ -76,7 +95,7 @@ class GoogleProvider(LLMProvider):
                 contents.append(types.Content(
                     role="user",
                     parts=[types.Part(function_response=types.FunctionResponse(
-                        name=msg.get("name", ""),
+                        name=self._sanitize_name(msg.get("name", "")),
                         response={"result": msg.get("content", "")},
                     ))],
                 ))
@@ -90,6 +109,7 @@ class GoogleProvider(LLMProvider):
                     role="user",
                     parts=[types.Part(text=msg["content"])],
                 ))
+        system = "\n\n".join(system_parts) if system_parts else None
         return system, contents
 
     async def chat(
@@ -102,7 +122,7 @@ class GoogleProvider(LLMProvider):
     ) -> LLMResponse:
         """Send a chat completion to Google Gemini."""
         system, contents = self._convert_messages(messages)
-        google_tools = self._convert_tools(tools)
+        google_tools, name_map = self._convert_tools(tools)
 
         config = types.GenerateContentConfig(
             max_output_tokens=max_tokens,
@@ -136,14 +156,26 @@ class GoogleProvider(LLMProvider):
 
         if response.candidates:
             candidate = response.candidates[0]
-            for part in candidate.content.parts:
+            parts = getattr(candidate.content, "parts", None) if candidate.content else None
+            for part in (parts or []):
                 if part.text:
                     content = (content or "") + part.text
                 if part.function_call:
+                    # Restore original dotted name from the sanitized version
+                    raw_name = part.function_call.name
+                    original_name = name_map.get(raw_name, raw_name)
                     tool_calls.append(ToolCall(
-                        tool_name=part.function_call.name,
+                        tool_name=original_name,
                         arguments=dict(part.function_call.args) if part.function_call.args else {},
                     ))
+
+        # If the model returned nothing useful, raise so fallback can retry
+        if content is None and not tool_calls:
+            block_reason = getattr(response, "prompt_feedback", None)
+            raise RuntimeError(
+                f"Gemini returned an empty response (no text, no tool calls). "
+                f"Prompt feedback: {block_reason}"
+            )
 
         stop_reason = "end_turn"
         if tool_calls:
