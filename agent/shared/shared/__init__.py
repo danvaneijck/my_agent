@@ -1,0 +1,5 @@
+"""Shared package for the AI agent system."""
+
+from shared.config import Settings, get_settings
+
+__all__ = ["Settings", "get_settings"]
