@@ -8,3 +8,4 @@ asyncpg>=0.29
 pgvector>=0.3
 redis>=5.0
 tiktoken>=0.5
+minio>=7.2

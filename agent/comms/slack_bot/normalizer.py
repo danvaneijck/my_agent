@@ -22,11 +22,7 @@ class SlackNormalizer:
         # Slack doesn't have a direct "server" concept, but team_id is similar
         server_id = event.get("team")
 
-        attachments = []
-        if "files" in event:
-            for f in event["files"]:
-                attachments.append(f.get("url_private", ""))
-
+        # Attachments are ingested by the bot (not the normalizer)
         return IncomingMessage(
             platform="slack",
             platform_user_id=event.get("user", "unknown"),
@@ -35,20 +31,15 @@ class SlackNormalizer:
             platform_thread_id=thread_id,
             platform_server_id=server_id,
             content=text,
-            attachments=attachments,
         )
 
     def format_response(self, response: AgentResponse) -> str:
-        """Format an AgentResponse for Slack."""
+        """Format an AgentResponse for Slack.
+
+        File attachments are uploaded natively to Slack by the bot.
+        """
         content = response.content
         if response.error:
             content += f"\n\n:warning: Error: {response.error}"
-
-        if response.files:
-            content += "\n\n:paperclip: Files:"
-            for f in response.files:
-                filename = f.get("filename", "file")
-                url = f.get("url", "")
-                content += f"\n- <{url}|{filename}>"
 
         return content

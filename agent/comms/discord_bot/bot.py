@@ -12,6 +12,8 @@ from minio import Minio
 
 from comms.discord_bot.normalizer import DiscordNormalizer
 from shared.config import Settings
+from shared.database import get_session_factory
+from shared.file_utils import ingest_attachment
 
 logger = structlog.get_logger()
 
@@ -27,6 +29,7 @@ class AgentDiscordBot(discord.Client):
 
         self.settings = settings
         self.normalizer = DiscordNormalizer()
+        self.session_factory = get_session_factory()
         self.minio = Minio(
             settings.minio_endpoint,
             access_key=settings.minio_access_key,
@@ -55,12 +58,17 @@ class AgentDiscordBot(discord.Client):
             content = content.replace(f"<@{self.user.id}>", "").strip()
             content = content.replace(f"<@!{self.user.id}>", "").strip()
 
-        if not content:
+        if not content and not message.attachments:
             return
 
         # Override content with cleaned version
         incoming = self.normalizer.to_incoming(message)
-        incoming.content = content
+        incoming.content = content or "(attached files)"
+
+        # Ingest file attachments → MinIO + FileRecord
+        incoming.attachments = await self._ingest_attachments(
+            message, incoming.platform_user_id
+        )
 
         # Show typing indicator while processing
         async with message.channel.typing():
@@ -87,17 +95,43 @@ class AgentDiscordBot(discord.Client):
                     error=str(e),
                 )
 
-        # Download file attachments from MinIO
-        attachments = await self._download_files(response.files)
+        # Download response file attachments from MinIO
+        discord_files = await self._download_files(response.files)
 
         # Send response chunks
         chunks = self.normalizer.format_response(response)
         for i, chunk in enumerate(chunks):
             is_last = i == len(chunks) - 1
-            if is_last and attachments:
-                await message.reply(chunk, files=attachments, mention_author=False)
+            if is_last and discord_files:
+                await message.reply(chunk, files=discord_files, mention_author=False)
             else:
                 await message.reply(chunk, mention_author=False)
+
+    async def _ingest_attachments(
+        self, message: discord.Message, platform_user_id: str
+    ) -> list[dict]:
+        """Download Discord attachments and ingest into MinIO + DB."""
+        ingested = []
+        for attachment in message.attachments:
+            try:
+                data = await attachment.read()
+                info = await ingest_attachment(
+                    minio_client=self.minio,
+                    session_factory=self.session_factory,
+                    bucket=self.settings.minio_bucket,
+                    public_url_base=self.settings.minio_public_url,
+                    raw_bytes=data,
+                    filename=attachment.filename,
+                    user_id=None,  # resolved by core from platform_user_id
+                )
+                ingested.append(info)
+            except Exception as e:
+                logger.error(
+                    "discord_attachment_ingest_failed",
+                    filename=attachment.filename,
+                    error=str(e),
+                )
+        return ingested
 
     async def _download_files(self, files: list[dict]) -> list[discord.File]:
         """Download files from MinIO and return as discord.File objects."""
