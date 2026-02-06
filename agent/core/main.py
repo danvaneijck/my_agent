@@ -38,6 +38,20 @@ summarizer: ConversationSummarizer | None = None
 _summarizer_task: asyncio.Task | None = None
 
 
+async def _delayed_discovery(registry: ToolRegistry):
+    """Retry module discovery after a delay (modules may not be ready at startup)."""
+    for delay in (5, 10, 20):
+        await asyncio.sleep(delay)
+        try:
+            await registry.discover_all()
+            if registry.manifests:
+                logger.info("delayed_discovery_succeeded", modules=list(registry.manifests.keys()))
+                return
+        except Exception as e:
+            logger.warning("delayed_discovery_attempt_failed", error=str(e))
+    logger.warning("delayed_discovery_exhausted", msg="Use POST /refresh-tools to retry manually")
+
+
 async def _summarization_loop():
     """Background task that periodically summarizes old conversations."""
     while True:
@@ -72,6 +86,10 @@ async def startup():
         await tool_registry.discover_all()
     except Exception as e:
         logger.warning("initial_discovery_failed", error=str(e))
+
+    # If no modules were discovered, schedule a background retry
+    if not tool_registry.manifests:
+        asyncio.create_task(_delayed_discovery(tool_registry))
 
     # Initialize context builder and agent loop
     session_factory = get_session_factory()

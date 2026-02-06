@@ -51,6 +51,54 @@ class LLMRouter:
             "text-embedding": "openai",
         }
 
+        # Auto-select a working default model if the configured one has no provider
+        self._resolve_effective_defaults()
+
+    def _resolve_effective_defaults(self) -> None:
+        """Pick a default model and embedding model that match available providers."""
+        # Default chat model: provider-aware fallback
+        provider_defaults = {
+            "anthropic": "claude-sonnet-4-20250514",
+            "openai": "gpt-4o",
+            "google": "gemini-2.0-flash",
+        }
+        if not self._has_provider_for(self.settings.default_model):
+            for prov_name, model in provider_defaults.items():
+                if prov_name in self.providers:
+                    logger.info(
+                        "auto_default_model",
+                        configured=self.settings.default_model,
+                        resolved=model,
+                    )
+                    self.effective_default_model = model
+                    break
+            else:
+                self.effective_default_model = self.settings.default_model
+        else:
+            self.effective_default_model = self.settings.default_model
+
+        # Embedding model: provider-aware fallback
+        embed_defaults = {
+            "openai": "text-embedding-3-small",
+            "google": "text-embedding-004",
+        }
+        if not self._has_provider_for(self.settings.embedding_model):
+            for prov_name, model in embed_defaults.items():
+                if prov_name in self.providers:
+                    self.effective_embedding_model = model
+                    break
+            else:
+                self.effective_embedding_model = self.settings.embedding_model
+        else:
+            self.effective_embedding_model = self.settings.embedding_model
+
+    def _has_provider_for(self, model: str) -> bool:
+        """Check if a registered provider can handle this model."""
+        for prefix, provider_name in self.model_map.items():
+            if model.startswith(prefix):
+                return provider_name in self.providers
+        return False
+
     def _get_provider_for_model(self, model: str) -> tuple[str, LLMProvider]:
         """Find the provider that handles a given model."""
         for prefix, provider_name in self.model_map.items():
@@ -88,7 +136,7 @@ class LLMRouter:
         elif task_type and task_type in self.settings.model_routing:
             target_model = self.settings.model_routing[task_type]
         else:
-            target_model = self.settings.default_model
+            target_model = self.effective_default_model
 
         # Try the target model first
         try:
@@ -135,7 +183,7 @@ class LLMRouter:
 
     async def embed(self, text: str) -> list[float]:
         """Generate an embedding using the configured embedding model."""
-        model = self.settings.embedding_model
+        model = self.effective_embedding_model
 
         # Try to find a provider that supports embeddings
         try:
