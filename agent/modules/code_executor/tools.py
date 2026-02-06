@@ -13,8 +13,11 @@ from datetime import datetime, timezone
 
 import structlog
 from minio import Minio
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared.config import Settings
+from shared.models.file import FileRecord
 
 logger = structlog.get_logger()
 
@@ -93,8 +96,9 @@ def _validate_shell_command(command: str) -> str | None:
 class CodeExecutorTools:
     """Tool implementations for sandboxed code execution."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, session_factory: async_sessionmaker):
         self.settings = settings
+        self.session_factory = session_factory
         self.minio = Minio(
             settings.minio_endpoint,
             access_key=settings.minio_access_key,
@@ -173,6 +177,7 @@ class CodeExecutorTools:
                 "url": url,
                 "size_bytes": file_size,
                 "mime_type": mime,
+                "minio_key": minio_key,
             }]
         except Exception as e:
             logger.warning("output_file_upload_failed", filename=fname, error=str(e))
@@ -183,6 +188,32 @@ class CodeExecutorTools:
             except OSError:
                 pass
 
+    async def _register_file_records(self, files: list[dict], user_id: str | None) -> None:
+        """Create FileRecord entries so generated files appear in file_manager.list_files."""
+        if not files:
+            return
+
+        uid = uuid.UUID(user_id) if user_id else uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+        try:
+            async with self.session_factory() as session:
+                for f in files:
+                    record = FileRecord(
+                        id=uuid.uuid4(),
+                        user_id=uid,
+                        filename=f["filename"],
+                        minio_key=f["minio_key"],
+                        mime_type=f.get("mime_type"),
+                        size_bytes=f.get("size_bytes"),
+                        public_url=f["url"],
+                        created_at=datetime.now(timezone.utc),
+                    )
+                    session.add(record)
+                await session.commit()
+            logger.info("file_records_registered", count=len(files))
+        except Exception as e:
+            logger.error("file_record_registration_failed", error=str(e))
+
     def _clean_output_dir(self):
         """Ensure output dir exists and is empty before execution."""
         os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -192,7 +223,37 @@ class CodeExecutorTools:
             except OSError:
                 pass
 
-    async def run_python(self, code: str, timeout: int = 30) -> dict:
+    async def load_file(self, file_id: str) -> dict:
+        """Download a file from the file manager into /tmp so Python code can use it."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
+            )
+            record = result.scalar_one_or_none()
+            if not record:
+                raise ValueError(f"File not found: {file_id}")
+
+        # Download from MinIO into /tmp
+        local_path = f"/tmp/{record.filename}"
+        resp = self.minio.get_object(self.settings.minio_bucket, record.minio_key)
+        try:
+            with open(local_path, "wb") as f:
+                for chunk in resp.stream(8192):
+                    f.write(chunk)
+        finally:
+            resp.close()
+            resp.release_conn()
+
+        logger.info("file_loaded", file_id=file_id, filename=record.filename, path=local_path)
+        return {
+            "file_id": str(record.id),
+            "filename": record.filename,
+            "local_path": local_path,
+            "size_bytes": record.size_bytes,
+            "mime_type": record.mime_type,
+        }
+
+    async def run_python(self, code: str, timeout: int = 30, user_id: str | None = None) -> dict:
         """Execute Python code in an isolated subprocess."""
         timeout = min(max(timeout, 1), 60)
 
@@ -241,6 +302,9 @@ class CodeExecutorTools:
 
             # Upload files from /tmp/output/ AND any new files in /tmp with known extensions
             files = self._collect_output_files(pre_snapshot)
+
+            # Register files in the DB so they appear in file_manager.list_files
+            await self._register_file_records(files, user_id)
 
             # Append file URLs to stdout so the LLM always sees them
             if files:

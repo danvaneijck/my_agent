@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from modules.code_executor.manifest import MANIFEST
 from modules.code_executor.tools import CodeExecutorTools
 from shared.config import get_settings
+from shared.database import get_session_factory
 from shared.schemas.common import HealthResponse
 from shared.schemas.tools import ModuleManifest, ToolCall, ToolResult
 
@@ -28,7 +29,8 @@ tools: CodeExecutorTools | None = None
 async def startup():
     global tools
     settings = get_settings()
-    tools = CodeExecutorTools(settings)
+    session_factory = get_session_factory()
+    tools = CodeExecutorTools(settings, session_factory)
     logger.info("code_executor_ready")
 
 
@@ -48,7 +50,9 @@ async def execute(call: ToolCall):
         tool_name = call.tool_name.split(".")[-1]
 
         if tool_name == "run_python":
-            result = await tools.run_python(**call.arguments)
+            result = await tools.run_python(user_id=call.user_id, **call.arguments)
+        elif tool_name == "load_file":
+            result = await tools.load_file(**call.arguments)
         elif tool_name == "run_shell":
             result = await tools.run_shell(**call.arguments)
         else:
