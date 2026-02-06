@@ -1,6 +1,6 @@
 # AI Agent System
 
-A modular, self-hosted AI agent that connects to Discord, Telegram, and Slack. The agent can orchestrate multi-step tasks using pluggable modules (web research, file management, blockchain trading, etc.), supports multiple LLM providers, and maintains persistent memory with intelligent context management.
+A modular, self-hosted AI agent that connects to Discord, Telegram, and Slack. The agent can orchestrate multi-step tasks using pluggable modules (web research, code execution, persistent memory, file management, etc.), supports multiple LLM providers with automatic fallback, and maintains persistent memory with semantic recall.
 
 ## Architecture
 
@@ -29,9 +29,9 @@ A modular, self-hosted AI agent that connects to Discord, Telegram, and Slack. T
        ▼                                         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      Module Layer                            │
-│   Research     │  File Manager  │  Injective  │  (yours)    │
-│   (web search,   (MinIO CRUD)    (scaffold)     ...         │
-│    scrape, etc.)                                             │
+│  Research  │ Code Executor │ Knowledge │ File Mgr │ (yours) │
+│  (search,    (Python/shell   (remember/   (MinIO     ...    │
+│   scrape)     + data sci)     recall)      CRUD)            │
 └─────────────────────────────────────────────────────────────┘
        │
 ┌──────┴──────────────────────────────────────────────────────┐
@@ -60,7 +60,7 @@ Edit `.env` and fill in at minimum:
 make setup
 ```
 
-This builds all containers, starts Postgres/Redis/MinIO, runs database migrations, creates the MinIO bucket, and creates a default persona.
+This builds all containers, starts Postgres/Redis/MinIO, runs database migrations, and creates the MinIO bucket. A default persona is automatically created on first startup with access to all registered modules.
 
 ### 3. Create your owner account
 
@@ -89,12 +89,37 @@ make restart         # Restart all services
 make logs            # Tail logs from all services
 make logs-core       # Tail logs from core only
 make status          # Show service status
-make setup           # First-time setup (migrations, bucket, default persona)
+make setup           # First-time setup (migrations, bucket)
 make migrate         # Run database migrations
 make refresh-tools   # Re-discover module manifests
 make shell           # Open a shell in the core container
 make psql            # Open a PostgreSQL shell
 ```
+
+## Modules
+
+| Module | Tools | Description |
+|--------|-------|-------------|
+| `research` | `web_search`, `fetch_webpage`, `summarize_text`, `news_search` | Search the web, scrape pages, summarize content, search recent news |
+| `code_executor` | `run_python`, `run_shell` | Execute Python code (with numpy, pandas, matplotlib, scipy, sympy, requests) and shell commands in sandboxed subprocesses |
+| `knowledge` | `remember`, `recall`, `list_memories`, `forget` | Persistent per-user knowledge base with semantic search via pgvector |
+| `file_manager` | `create_document`, `list_files`, `get_file_link`, `delete_file`, `read_document` | Create, read, and manage documents in MinIO storage |
+| `injective` | `get_portfolio`, `get_market_price`, `place_order`, `cancel_order`, `get_positions` | Blockchain trading (scaffold, owner-only) |
+
+### Adding New Modules
+
+See [docs/ADDING_MODULES.md](agent/docs/ADDING_MODULES.md) for a complete guide and prompt template.
+
+## Admin Dashboard
+
+A web-based analytics dashboard is available at `http://localhost:8501` (configurable via `DASHBOARD_PORT`). It shows:
+
+- User statistics and token usage
+- Conversation history
+- System health (Postgres, Redis, MinIO)
+- Tool usage breakdown
+- Platform distribution
+- Persona management overview
 
 ## User Management
 
@@ -116,7 +141,7 @@ docker compose exec core python /app/cli.py user list
 
 ## Persona Management
 
-Personas control the system prompt, which modules are available, and which LLM model to use.
+Personas control the system prompt, which modules are available, and which LLM model to use. A default persona is automatically created at startup with access to all registered modules, and is updated whenever new modules are added.
 
 ```bash
 # Create a persona bound to a specific Discord server
@@ -125,7 +150,7 @@ docker compose exec core python /app/cli.py persona create \
   --prompt "You are a research assistant. Be thorough and cite sources." \
   --platform discord \
   --server-id 123456789 \
-  --modules research,file_manager
+  --modules research,file_manager,code_executor,knowledge
 
 # List personas
 docker compose exec core python /app/cli.py persona list
@@ -143,37 +168,17 @@ docker compose exec core python /app/cli.py persona set-default --id <persona-uu
 | `user` | Standard access | Configurable |
 | `guest` | Auto-created on first message, limited modules | 5,000 tokens/month |
 
-## Modules
-
-| Module | Tools | Description |
-|--------|-------|-------------|
-| `research` | `web_search`, `fetch_webpage`, `summarize_text` | Search the web, scrape pages, summarize content |
-| `file_manager` | `create_document`, `list_files`, `get_file_link`, `delete_file` | Create and manage documents in MinIO storage |
-| `injective` | `get_portfolio`, `get_market_price`, `place_order`, `cancel_order`, `get_positions` | Blockchain trading (scaffold, owner-only) |
-
-### Adding New Modules
-
-See [docs/ADDING_MODULES.md](agent/docs/ADDING_MODULES.md) for a complete guide and prompt template.
-
 ## LLM Providers
 
-The system supports multiple providers with automatic fallback:
+The system supports multiple providers with automatic fallback. Only one API key is required — the system automatically selects a working default model based on available providers.
 
 | Provider | Models | Required Key |
 |----------|--------|-------------|
 | Anthropic | Claude Sonnet, Haiku, etc. | `ANTHROPIC_API_KEY` |
 | OpenAI | GPT-4o, GPT-4o-mini, embeddings | `OPENAI_API_KEY` |
-| Google | Gemini 2.0 Flash, etc. | `GOOGLE_API_KEY` |
+| Google | Gemini 2.0 Flash, embeddings | `GOOGLE_API_KEY` |
 
-Configure the default model and task-specific routing in `.env`:
-
-```env
-DEFAULT_MODEL=claude-sonnet-4-20250514    # Main chat model
-SUMMARIZATION_MODEL=gpt-4o-mini           # Used for memory summarization
-EMBEDDING_MODEL=text-embedding-3-small    # Used for semantic recall
-```
-
-If the primary model fails, the system tries the fallback chain: Claude -> GPT-4o -> Gemini.
+If the primary model fails, the system tries the fallback chain. Models requiring unavailable providers are skipped instantly.
 
 ## Project Structure
 
@@ -190,10 +195,14 @@ agent/
 │   └── slack_bot/
 ├── modules/         # Pluggable tool modules
 │   ├── research/
+│   ├── code_executor/
+│   ├── knowledge/
 │   ├── file_manager/
 │   └── injective/
+├── dashboard/       # Admin analytics dashboard
 ├── alembic/         # Database migrations
 ├── nginx/           # Reverse proxy config
+├── docs/            # Documentation
 ├── cli.py           # Admin CLI
 └── docker-compose.yml
 ```
