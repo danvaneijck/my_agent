@@ -13,6 +13,9 @@ from shared.schemas.tools import ToolCall
 
 logger = structlog.get_logger()
 
+# Maximum retries for MALFORMED_FUNCTION_CALL (known transient issue)
+_MAX_MALFORMED_RETRIES = 2
+
 
 class GoogleProvider(LLMProvider):
     """Provider for Google Gemini models."""
@@ -28,9 +31,9 @@ class GoogleProvider(LLMProvider):
     def _convert_tools(
         self, tools: list[dict] | None,
     ) -> tuple[list[types.Tool] | None, dict[str, str]]:
-        """Convert to Google's tool format.
+        """Convert to Google's tool format using parameters_json_schema.
 
-        Returns (google_tools, name_map) where name_map maps sanitized → original names.
+        Returns (google_tools, name_map) where name_map maps sanitized -> original names.
         """
         name_map: dict[str, str] = {}
         if not tools:
@@ -42,33 +45,13 @@ class GoogleProvider(LLMProvider):
             safe_name = self._sanitize_name(original_name)
             name_map[safe_name] = original_name
 
-            properties = {}
-            required = []
-            for param_name, param_def in func.get("parameters", {}).get("properties", {}).items():
-                type_map = {
-                    "string": "STRING",
-                    "integer": "INTEGER",
-                    "number": "NUMBER",
-                    "boolean": "BOOLEAN",
-                    "array": "ARRAY",
-                    "object": "OBJECT",
-                }
-                schema_type = type_map.get(param_def.get("type", "string"), "STRING")
-                properties[param_name] = types.Schema(
-                    type=schema_type,
-                    description=param_def.get("description", ""),
-                )
-            if "required" in func.get("parameters", {}):
-                required = func["parameters"]["required"]
+            # Pass the JSON schema dict directly — preserves enums, types, etc.
+            params = func.get("parameters", {"type": "object", "properties": {}})
 
             declarations.append(types.FunctionDeclaration(
                 name=safe_name,
                 description=func.get("description", ""),
-                parameters=types.Schema(
-                    type="OBJECT",
-                    properties=properties,
-                    required=required,
-                ),
+                parameters_json_schema=params,
             ))
         return [types.Tool(function_declarations=declarations)], name_map
 
@@ -151,17 +134,33 @@ class GoogleProvider(LLMProvider):
         else:
             raise last_error  # type: ignore[misc]
 
+        # Parse the response, retrying on MALFORMED_FUNCTION_CALL
+        return await self._parse_response(
+            response, name_map, model, contents, config,
+        )
+
+    async def _parse_response(
+        self,
+        response,
+        name_map: dict[str, str],
+        model: str,
+        contents: list[types.Content],
+        config: types.GenerateContentConfig,
+        malformed_attempt: int = 0,
+    ) -> LLMResponse:
+        """Parse a Gemini response, retrying on MALFORMED_FUNCTION_CALL."""
         content = None
         tool_calls = []
 
+        finish_reason = None
         if response.candidates:
             candidate = response.candidates[0]
+            finish_reason = getattr(candidate, "finish_reason", None)
             parts = getattr(candidate.content, "parts", None) if candidate.content else None
             for part in (parts or []):
                 if part.text:
                     content = (content or "") + part.text
                 if part.function_call:
-                    # Restore original dotted name from the sanitized version
                     raw_name = part.function_call.name
                     original_name = name_map.get(raw_name, raw_name)
                     tool_calls.append(ToolCall(
@@ -169,20 +168,38 @@ class GoogleProvider(LLMProvider):
                         arguments=dict(part.function_call.args) if part.function_call.args else {},
                     ))
 
+        # Retry on MALFORMED_FUNCTION_CALL (known transient Gemini issue)
+        fr_str = str(finish_reason) if finish_reason else ""
+        if "MALFORMED_FUNCTION_CALL" in fr_str and malformed_attempt < _MAX_MALFORMED_RETRIES:
+            logger.warning(
+                "gemini_malformed_function_call_retry",
+                attempt=malformed_attempt + 1,
+            )
+            await asyncio.sleep(1)
+            try:
+                response = await asyncio.to_thread(
+                    self.client.models.generate_content,
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as e:
+                raise RuntimeError(f"Gemini retry failed: {e}") from e
+            return await self._parse_response(
+                response, name_map, model, contents, config,
+                malformed_attempt=malformed_attempt + 1,
+            )
+
         # If the model returned nothing useful, log diagnostics and raise
         if content is None and not tool_calls:
-            # Gather diagnostics
-            diag: dict = {}
-            diag["has_candidates"] = bool(response.candidates)
+            diag: dict = {
+                "has_candidates": bool(response.candidates),
+                "finish_reason": fr_str,
+                "prompt_feedback": str(getattr(response, "prompt_feedback", None)),
+            }
             if response.candidates:
                 c = response.candidates[0]
-                diag["finish_reason"] = getattr(c, "finish_reason", None)
                 diag["safety_ratings"] = str(getattr(c, "safety_ratings", None))
-                diag["has_content"] = c.content is not None
-                if c.content:
-                    diag["has_parts"] = getattr(c.content, "parts", None) is not None
-                    diag["parts_len"] = len(c.content.parts) if c.content.parts else 0
-            diag["prompt_feedback"] = str(getattr(response, "prompt_feedback", None))
             logger.error("gemini_empty_response", **diag)
             raise RuntimeError(
                 f"Gemini returned an empty response. Diagnostics: {diag}"
