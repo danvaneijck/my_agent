@@ -242,6 +242,13 @@ class CodeExecutorTools:
             # Upload files from /tmp/output/ AND any new files in /tmp with known extensions
             files = self._collect_output_files(pre_snapshot)
 
+            # Append file URLs to stdout so the LLM always sees them
+            if files:
+                file_lines = "\n\n--- Generated Files ---\n"
+                for f in files:
+                    file_lines += f"[{f['filename']}]({f['url']})\n"
+                stdout = stdout + file_lines
+
             return {
                 "success": proc.returncode == 0,
                 "stdout": stdout,
