@@ -169,12 +169,23 @@ class GoogleProvider(LLMProvider):
                         arguments=dict(part.function_call.args) if part.function_call.args else {},
                     ))
 
-        # If the model returned nothing useful, raise so fallback can retry
+        # If the model returned nothing useful, log diagnostics and raise
         if content is None and not tool_calls:
-            block_reason = getattr(response, "prompt_feedback", None)
+            # Gather diagnostics
+            diag: dict = {}
+            diag["has_candidates"] = bool(response.candidates)
+            if response.candidates:
+                c = response.candidates[0]
+                diag["finish_reason"] = getattr(c, "finish_reason", None)
+                diag["safety_ratings"] = str(getattr(c, "safety_ratings", None))
+                diag["has_content"] = c.content is not None
+                if c.content:
+                    diag["has_parts"] = getattr(c.content, "parts", None) is not None
+                    diag["parts_len"] = len(c.content.parts) if c.content.parts else 0
+            diag["prompt_feedback"] = str(getattr(response, "prompt_feedback", None))
+            logger.error("gemini_empty_response", **diag)
             raise RuntimeError(
-                f"Gemini returned an empty response (no text, no tool calls). "
-                f"Prompt feedback: {block_reason}"
+                f"Gemini returned an empty response. Diagnostics: {diag}"
             )
 
         stop_reason = "end_turn"
