@@ -105,9 +105,12 @@ class LLMRouter:
             if model.startswith(prefix):
                 if provider_name in self.providers:
                     return provider_name, self.providers[provider_name]
-                break
+                raise RuntimeError(
+                    f"Model '{model}' requires the '{provider_name}' provider, "
+                    f"but no API key is set for it."
+                )
 
-        # If no match, try first available provider
+        # If no prefix match, try first available provider
         if self.providers:
             name = next(iter(self.providers))
             return name, self.providers[name]
