@@ -34,16 +34,14 @@ class DiscordNormalizer:
         )
 
     def format_response(self, response: AgentResponse) -> list[str]:
-        """Format an AgentResponse for Discord, splitting at 2000 chars."""
+        """Format an AgentResponse for Discord, splitting at 2000 chars.
+
+        File links are NOT added here — the bot attaches them
+        as native discord.File objects so images display inline.
+        """
         content = response.content
         if response.error:
             content += f"\n\n⚠️ Error: {response.error}"
-
-        # Add file links
-        if response.files:
-            content += "\n\n📎 Files:"
-            for f in response.files:
-                content += f"\n- [{f.get('filename', 'file')}]({f.get('url', '')})"
 
         # Split at Discord's 2000 char limit
         chunks = []

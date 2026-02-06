@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
+
 import httpx
 import structlog
 import discord
 from discord import Intents
+from minio import Minio
 
 from comms.discord_bot.normalizer import DiscordNormalizer
 from shared.config import Settings
@@ -24,6 +27,12 @@ class AgentDiscordBot(discord.Client):
 
         self.settings = settings
         self.normalizer = DiscordNormalizer()
+        self.minio = Minio(
+            settings.minio_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key,
+            secure=False,
+        )
 
     async def on_ready(self):
         logger.info("discord_bot_ready", user=str(self.user))
@@ -78,7 +87,48 @@ class AgentDiscordBot(discord.Client):
                     error=str(e),
                 )
 
-        # Send response
+        # Download file attachments from MinIO
+        attachments = await self._download_files(response.files)
+
+        # Send response chunks
         chunks = self.normalizer.format_response(response)
-        for chunk in chunks:
-            await message.reply(chunk, mention_author=False)
+        for i, chunk in enumerate(chunks):
+            is_last = i == len(chunks) - 1
+            if is_last and attachments:
+                await message.reply(chunk, files=attachments, mention_author=False)
+            else:
+                await message.reply(chunk, mention_author=False)
+
+    async def _download_files(self, files: list[dict]) -> list[discord.File]:
+        """Download files from MinIO and return as discord.File objects."""
+        attachments: list[discord.File] = []
+        if not files:
+            return attachments
+
+        public_prefix = self.settings.minio_public_url.rstrip("/") + "/"
+
+        for f in files:
+            url = f.get("url", "")
+            filename = f.get("filename", "file")
+            try:
+                # Extract the MinIO object key from the public URL
+                if url.startswith(public_prefix):
+                    key = url[len(public_prefix):]
+                else:
+                    logger.warning("unknown_file_url_format", url=url)
+                    continue
+
+                # Download from MinIO using internal Docker network
+                resp = self.minio.get_object(self.settings.minio_bucket, key)
+                data = resp.read()
+                resp.close()
+                resp.release_conn()
+
+                attachments.append(
+                    discord.File(io.BytesIO(data), filename=filename)
+                )
+                logger.info("file_attached", filename=filename, size=len(data))
+            except Exception as e:
+                logger.error("file_download_failed", filename=filename, error=str(e))
+
+        return attachments
