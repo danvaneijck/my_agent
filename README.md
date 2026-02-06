@@ -6,18 +6,18 @@ A modular, self-hosted AI agent that connects to Discord, Telegram, and Slack. T
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Communication Layer                       │
+│                    Communication Layer                      │
 │   Discord Bot  │  Telegram Bot  │  Slack Bot                │
 │   (discord.py)   (python-telegram-bot) (slack-bolt)         │
 └──────┬─────────────────┬────────────────────┬───────────────┘
        │   IncomingMessage (normalized)       │
        ▼                 ▼                    ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Orchestrator Core                         │
-│  ┌──────────────┐ ┌────────────────┐ ┌──────────────────┐  │
-│  │  Agent Loop   │ │ Context Builder│ │  Tool Registry   │  │
-│  │ (reason/act)  │ │ (memory+ctx)   │ │ (HTTP discovery) │  │
-│  └──────┬───────┘ └────────────────┘ └────────┬─────────┘  │
+│                    Orchestrator Core                        │
+│  ┌──────────────┐ ┌────────────────┐ ┌──────────────────┐   │
+│  │  Agent Loop  │ │ Context Builder│ │  Tool Registry   │   │
+│  │ (reason/act) │ │ (memory+ctx)   │ │ (HTTP discovery) │   │
+│  └──────┬───────┘ └────────────────┘ └─────────┬────────┘   │
 │         │                                      │            │
 │  ┌──────┴───────┐          ┌──────────────────┐│            │
 │  │  LLM Router  │          │  Memory System   ││            │
@@ -28,14 +28,14 @@ A modular, self-hosted AI agent that connects to Discord, Telegram, and Slack. T
        │  POST /execute                          │
        ▼                                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      Module Layer                            │
+│                      Module Layer                           │
 │   Research     │  File Manager  │  Injective  │  (yours)    │
 │   (web search,   (MinIO CRUD)    (scaffold)     ...         │
-│    scrape, etc.)                                             │
+│    scrape, etc.)                                            │
 └─────────────────────────────────────────────────────────────┘
        │
 ┌──────┴──────────────────────────────────────────────────────┐
-│                    Infrastructure                            │
+│                    Infrastructure                           │
 │   PostgreSQL (pgvector)  │  Redis  │  MinIO (S3)            │
 └─────────────────────────────────────────────────────────────┘
 ```
