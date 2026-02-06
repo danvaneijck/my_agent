@@ -135,6 +135,15 @@ services:
       - agent-net
     restart: unless-stopped
 
+  code-executor:
+    build:
+      context: .
+      dockerfile: modules/code_executor/Dockerfile
+    env_file: .env
+    networks:
+      - agent-net
+    restart: unless-stopped
+
   # --- Admin Dashboard ---
   dashboard:
     build:
