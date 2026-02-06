@@ -164,8 +164,14 @@ class GoogleProvider(LLMProvider):
             stop_reason=stop_reason,
         )
 
-    async def embed(self, text: str, model: str = "gemini-embedding-001") -> list[float]:
-        """Generate embeddings using Google."""
+    async def embed(
+        self, text: str, model: str = "gemini-embedding-001", dimensions: int = 1536,
+    ) -> list[float]:
+        """Generate embeddings using Google.
+
+        Uses output_dimensionality to match the DB vector column size (default 1536).
+        """
+        config = types.EmbedContentConfig(output_dimensionality=dimensions)
         last_error = None
         for attempt in range(3):
             try:
@@ -173,6 +179,7 @@ class GoogleProvider(LLMProvider):
                     self.client.models.embed_content,
                     model=model,
                     contents=text,
+                    config=config,
                 )
                 # The new google-genai SDK returns embeddings as a list
                 if hasattr(response, "embeddings") and response.embeddings:
