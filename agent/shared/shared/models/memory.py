@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, ForeignKey, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.models.base import Base
@@ -23,5 +23,5 @@ class MemorySummary(Base):
     summary: Mapped[str] = mapped_column(Text)
     embedding = Column(Vector(1536), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
