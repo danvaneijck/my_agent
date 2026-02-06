@@ -232,6 +232,13 @@ class AgentLoop:
                             "filename": result.result.get("filename", "file"),
                             "url": result.result["url"],
                         })
+                    # Also handle nested files list (e.g. from code_executor)
+                    for f in result.result.get("files", []):
+                        if isinstance(f, dict) and "url" in f:
+                            files.append({
+                                "filename": f.get("filename", "file"),
+                                "url": f["url"],
+                            })
 
         else:
             # Max iterations reached
