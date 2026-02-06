@@ -51,7 +51,7 @@ async def execute(call: ToolCall):
         tool_name = call.tool_name.split(".")[-1]
 
         if tool_name == "create_document":
-            result = await tools.create_document(**call.arguments)
+            result = await tools.create_document(user_id=call.user_id, **call.arguments)
         elif tool_name == "list_files":
             result = await tools.list_files(**call.arguments)
         elif tool_name == "get_file_link":

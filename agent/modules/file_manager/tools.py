@@ -45,6 +45,7 @@ class FileManagerTools:
         title: str,
         content: str,
         format: str = "md",
+        user_id: str | None = None,
     ) -> dict:
         """Create a document and store it in MinIO."""
         file_ext = format if format in MIME_TYPES else "md"
@@ -71,12 +72,15 @@ class FileManagerTools:
 
         public_url = f"{self.settings.minio_public_url}/{minio_key}"
 
+        # Resolve user_id
+        uid = uuid.UUID(user_id) if user_id else uuid.UUID("00000000-0000-0000-0000-000000000000")
+
         # Save record in database
         file_id = uuid.uuid4()
         async with self.session_factory() as session:
             record = FileRecord(
                 id=file_id,
-                user_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),  # placeholder
+                user_id=uid,
                 filename=filename,
                 minio_key=minio_key,
                 mime_type=mime_type,

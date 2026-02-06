@@ -136,13 +136,13 @@ class ToolRegistry:
         url = self.settings.module_services[module_name]
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
-                resp = await client.post(
-                    f"{url}/execute",
-                    json={
-                        "tool_name": tool_call.tool_name,
-                        "arguments": tool_call.arguments,
-                    },
-                )
+                payload = {
+                    "tool_name": tool_call.tool_name,
+                    "arguments": tool_call.arguments,
+                }
+                if tool_call.user_id:
+                    payload["user_id"] = tool_call.user_id
+                resp = await client.post(f"{url}/execute", json=payload)
                 if resp.status_code == 200:
                     return ToolResult(**resp.json())
                 else:

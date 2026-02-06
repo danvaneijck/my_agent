@@ -180,6 +180,9 @@ class AgentLoop:
                 )
                 session.add(tc_msg)
 
+                # Inject user context so modules can associate resources
+                tool_call.user_id = str(user.id)
+
                 # Execute tool
                 result = await self.tool_registry.execute_tool(tool_call)
 

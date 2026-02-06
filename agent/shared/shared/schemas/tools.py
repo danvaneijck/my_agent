@@ -39,6 +39,7 @@ class ToolCall(BaseModel):
 
     tool_name: str
     arguments: dict
+    user_id: str | None = None  # injected by orchestrator, not set by LLM
 
 
 class ToolResult(BaseModel):
