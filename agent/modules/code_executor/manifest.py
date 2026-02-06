@@ -11,7 +11,9 @@ MANIFEST = ModuleManifest(
             description=(
                 "Execute Python code and return stdout, stderr, and the return value. "
                 "Code runs in an isolated subprocess with a 30-second timeout. "
-                "Common libraries (math, json, datetime, collections, itertools, re, statistics) are available."
+                "Available libraries: math, json, datetime, collections, itertools, re, statistics, "
+                "numpy, pandas, matplotlib, requests, scipy, sympy. "
+                "For plots, save to /tmp/plot.png with plt.savefig and print the path."
             ),
             parameters=[
                 ToolParameter(

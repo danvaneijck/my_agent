@@ -196,3 +196,23 @@ async def refresh_tools():
 
     await tool_registry.discover_all()
     return {"status": "ok", "modules": list(tool_registry.manifests.keys())}
+
+
+from pydantic import BaseModel
+
+
+class EmbedRequest(BaseModel):
+    text: str
+
+
+@app.post("/embed")
+async def embed(req: EmbedRequest):
+    """Generate an embedding for a given text. Used by modules like knowledge."""
+    if llm_router is None:
+        raise HTTPException(status_code=503, detail="LLM router not ready")
+
+    try:
+        embedding = await llm_router.embed(req.text)
+        return {"embedding": embedding}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
