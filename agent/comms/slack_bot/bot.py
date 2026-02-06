@@ -12,8 +12,7 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 from comms.slack_bot.normalizer import SlackNormalizer
 from shared.config import Settings
-from shared.database import get_session_factory
-from shared.file_utils import ingest_attachment
+from shared.file_utils import upload_attachment
 from shared.schemas.messages import AgentResponse
 
 logger = structlog.get_logger()
@@ -26,7 +25,6 @@ class AgentSlackBot:
         self.settings = settings
         self.normalizer = SlackNormalizer()
         self.bot_user_id: str | None = None
-        self.session_factory = get_session_factory()
         self.minio = Minio(
             settings.minio_endpoint,
             access_key=settings.minio_access_key,
@@ -107,7 +105,7 @@ class AgentSlackBot:
             await self._upload_response_file(client, event.get("channel", ""), thread_ts, f)
 
     async def _ingest_attachments(self, event: dict, client) -> list[dict]:
-        """Download Slack file attachments and ingest into MinIO + DB."""
+        """Download Slack file attachments and upload to MinIO."""
         ingested = []
         if "files" not in event:
             return ingested
@@ -130,14 +128,12 @@ class AgentSlackBot:
                         continue
                     raw_bytes = resp.content
 
-                info = await ingest_attachment(
+                info = upload_attachment(
                     minio_client=self.minio,
-                    session_factory=self.session_factory,
                     bucket=self.settings.minio_bucket,
                     public_url_base=self.settings.minio_public_url,
                     raw_bytes=raw_bytes,
                     filename=filename,
-                    user_id=None,
                 )
                 ingested.append(info)
             except Exception as e:

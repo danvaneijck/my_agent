@@ -17,6 +17,7 @@ from core.orchestrator.context_builder import ContextBuilder
 from core.orchestrator.tool_registry import ToolRegistry
 from shared.config import Settings, parse_list
 from shared.models.conversation import Conversation, Message
+from shared.models.file import FileRecord
 from shared.models.persona import Persona
 from shared.models.token_usage import TokenLog
 from shared.models.user import User, UserPlatformLink
@@ -83,9 +84,26 @@ class AgentLoop:
         model = persona.default_model if persona and persona.default_model else None
         max_tokens = persona.max_tokens_per_request if persona else 4000
 
-        # 7. Enrich content with file attachment context
+        # 7. Register attachments as FileRecords and enrich content
         message_content = incoming.content
         if incoming.attachments:
+            # Create FileRecord for each attachment now that we have the real user_id
+            for att in incoming.attachments:
+                file_id = uuid.uuid4()
+                record = FileRecord(
+                    id=file_id,
+                    user_id=user.id,
+                    filename=att.get("filename", "file"),
+                    minio_key=att.get("minio_key", ""),
+                    mime_type=att.get("mime_type"),
+                    size_bytes=att.get("size_bytes"),
+                    public_url=att.get("url", ""),
+                    created_at=datetime.now(timezone.utc),
+                )
+                session.add(record)
+                att["file_id"] = str(file_id)
+            await session.flush()
+
             file_context = "\n\n[Attached files:]\n"
             for att in incoming.attachments:
                 fname = att.get("filename", "file")

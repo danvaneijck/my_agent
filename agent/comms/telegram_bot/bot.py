@@ -18,8 +18,7 @@ from telegram.ext import (
 
 from comms.telegram_bot.normalizer import TelegramNormalizer
 from shared.config import Settings
-from shared.database import get_session_factory
-from shared.file_utils import ingest_attachment
+from shared.file_utils import upload_attachment
 from shared.schemas.messages import AgentResponse
 
 logger = structlog.get_logger()
@@ -31,7 +30,6 @@ class AgentTelegramBot:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.normalizer = TelegramNormalizer()
-        self.session_factory = get_session_factory()
         self.minio = Minio(
             settings.minio_endpoint,
             access_key=settings.minio_access_key,
@@ -144,7 +142,7 @@ class AgentTelegramBot:
             await message.reply_document(document=data, filename=fname)
 
     async def _ingest_attachments(self, message, context) -> list[dict]:
-        """Download Telegram attachments and ingest into MinIO + DB."""
+        """Download Telegram attachments and upload to MinIO."""
         ingested = []
 
         items = []
@@ -159,14 +157,12 @@ class AgentTelegramBot:
                 tg_file = await context.bot.get_file(file_id)
                 buf = await tg_file.download_as_bytearray()
 
-                info = await ingest_attachment(
+                info = upload_attachment(
                     minio_client=self.minio,
-                    session_factory=self.session_factory,
                     bucket=self.settings.minio_bucket,
                     public_url_base=self.settings.minio_public_url,
                     raw_bytes=bytes(buf),
                     filename=filename,
-                    user_id=None,
                 )
                 ingested.append(info)
             except Exception as e:

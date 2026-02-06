@@ -12,8 +12,7 @@ from minio import Minio
 
 from comms.discord_bot.normalizer import DiscordNormalizer
 from shared.config import Settings
-from shared.database import get_session_factory
-from shared.file_utils import ingest_attachment
+from shared.file_utils import upload_attachment
 
 logger = structlog.get_logger()
 
@@ -29,7 +28,6 @@ class AgentDiscordBot(discord.Client):
 
         self.settings = settings
         self.normalizer = DiscordNormalizer()
-        self.session_factory = get_session_factory()
         self.minio = Minio(
             settings.minio_endpoint,
             access_key=settings.minio_access_key,
@@ -110,19 +108,17 @@ class AgentDiscordBot(discord.Client):
     async def _ingest_attachments(
         self, message: discord.Message, platform_user_id: str
     ) -> list[dict]:
-        """Download Discord attachments and ingest into MinIO + DB."""
+        """Download Discord attachments and upload to MinIO."""
         ingested = []
         for attachment in message.attachments:
             try:
                 data = await attachment.read()
-                info = await ingest_attachment(
+                info = upload_attachment(
                     minio_client=self.minio,
-                    session_factory=self.session_factory,
                     bucket=self.settings.minio_bucket,
                     public_url_base=self.settings.minio_public_url,
                     raw_bytes=data,
                     filename=attachment.filename,
-                    user_id=None,  # resolved by core from platform_user_id
                 )
                 ingested.append(info)
             except Exception as e:
