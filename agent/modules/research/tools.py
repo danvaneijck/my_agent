@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import structlog
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 import httpx
 
