@@ -15,7 +15,7 @@ class IncomingMessage(BaseModel):
     platform_thread_id: str | None = None
     platform_server_id: str | None = None
     content: str
-    attachments: list[str] = []  # URLs
+    attachments: list[dict] = []  # [{file_id, filename, url, mime_type, size_bytes}]
 
 
 class AgentResponse(BaseModel):

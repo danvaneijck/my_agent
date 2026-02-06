@@ -20,8 +20,7 @@ class DiscordNormalizer:
         if message.guild:
             server_id = str(message.guild.id)
 
-        attachments = [a.url for a in message.attachments]
-
+        # Attachments are ingested by the bot (not the normalizer)
         return IncomingMessage(
             platform="discord",
             platform_user_id=str(message.author.id),
@@ -30,7 +29,6 @@ class DiscordNormalizer:
             platform_thread_id=thread_id,
             platform_server_id=server_id,
             content=message.content,
-            attachments=attachments,
         )
 
     def format_response(self, response: AgentResponse) -> list[str]:

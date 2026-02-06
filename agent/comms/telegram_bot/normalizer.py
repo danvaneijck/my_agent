@@ -24,12 +24,7 @@ class TelegramNormalizer:
         if chat and chat.type in ("group", "supergroup"):
             server_id = str(chat.id)
 
-        attachments = []
-        if message and message.document:
-            attachments.append(message.document.file_id)
-        if message and message.photo:
-            attachments.append(message.photo[-1].file_id)
-
+        # Attachments are ingested by the bot (not the normalizer)
         return IncomingMessage(
             platform="telegram",
             platform_user_id=str(user.id) if user else "unknown",
@@ -38,21 +33,16 @@ class TelegramNormalizer:
             platform_thread_id=thread_id,
             platform_server_id=server_id,
             content=message.text or message.caption or "" if message else "",
-            attachments=attachments,
         )
 
     def format_response(self, response: AgentResponse) -> str:
-        """Format an AgentResponse for Telegram with markdown."""
+        """Format an AgentResponse for Telegram with markdown.
+
+        File attachments are sent separately as native Telegram documents.
+        """
         content = response.content
         if response.error:
             content += f"\n\n⚠️ Error: {response.error}"
-
-        if response.files:
-            content += "\n\n📎 Files:"
-            for f in response.files:
-                filename = f.get("filename", "file")
-                url = f.get("url", "")
-                content += f"\n- [{filename}]({url})"
 
         # Telegram message limit is 4096
         if len(content) > 4096:

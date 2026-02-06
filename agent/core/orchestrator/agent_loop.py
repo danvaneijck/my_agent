@@ -83,13 +83,31 @@ class AgentLoop:
         model = persona.default_model if persona and persona.default_model else None
         max_tokens = persona.max_tokens_per_request if persona else 4000
 
-        # 7. Build context
+        # 7. Enrich content with file attachment context
+        message_content = incoming.content
+        if incoming.attachments:
+            file_context = "\n\n[Attached files:]\n"
+            for att in incoming.attachments:
+                fname = att.get("filename", "file")
+                fid = att.get("file_id", "")
+                fsize = att.get("size_bytes", 0)
+                fmime = att.get("mime_type", "")
+                file_context += (
+                    f"- {fname} (file_id: {fid}, {fsize} bytes, {fmime})\n"
+                )
+            file_context += (
+                "Use file_manager.read_document(file_id) to read text files, "
+                "or code_executor.load_file(file_id) then run_python to process them."
+            )
+            message_content += file_context
+
+        # 8. Build context
         context = await self.context_builder.build(
             session=session,
             user=user,
             conversation=conversation,
             persona=persona,
-            incoming_message=incoming.content,
+            incoming_message=message_content,
             model=model,
         )
 
@@ -98,7 +116,7 @@ class AgentLoop:
             id=uuid.uuid4(),
             conversation_id=conversation.id,
             role="user",
-            content=incoming.content,
+            content=message_content,
             created_at=datetime.now(timezone.utc),
         )
         session.add(user_msg)
