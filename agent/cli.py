@@ -33,7 +33,7 @@ def cli():
 def setup():
     """Run migrations, create MinIO bucket, and create default persona."""
     click.echo("Running database migrations...")
-    os.system("cd /app && alembic upgrade head")
+    _run_migrations()
 
     click.echo("Creating MinIO bucket if not exists...")
     run_async(_create_minio_bucket())
@@ -42,6 +42,29 @@ def setup():
     run_async(_create_default_persona())
 
     click.echo("Setup complete.")
+
+
+def _run_migrations():
+    """Run Alembic migrations using the Python API."""
+    from alembic import command
+    from alembic.config import Config
+
+    # Look for alembic.ini in /app (Docker) or alongside this script (local)
+    for candidate in ["/app/alembic.ini", os.path.join(os.path.dirname(__file__), "alembic.ini")]:
+        if os.path.exists(candidate):
+            alembic_cfg = Config(candidate)
+            # Override script_location to an absolute path if running from /app
+            script_dir = os.path.join(os.path.dirname(candidate), "alembic")
+            if os.path.isdir(script_dir):
+                alembic_cfg.set_main_option("script_location", script_dir)
+            # Override DB URL from env if available
+            db_url = os.environ.get("DATABASE_URL")
+            if db_url:
+                alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+            command.upgrade(alembic_cfg, "head")
+            return
+
+    click.echo("  Warning: alembic.ini not found, skipping migrations.")
 
 
 async def _create_minio_bucket():
