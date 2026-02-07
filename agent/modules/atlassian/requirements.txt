@@ -1,0 +1,13 @@
+# Base (required by all modules)
+fastapi>=0.109
+uvicorn[standard]>=0.27
+structlog>=24.1
+pydantic>=2.5
+pydantic-settings>=2.1
+
+# Atlassian
+atlassian-python-api==4.0.7
+
+# Content formatting
+markdown>=3.5
+beautifulsoup4>=4.12
