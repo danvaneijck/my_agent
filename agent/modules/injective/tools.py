@@ -60,8 +60,7 @@ class InjectiveTools:
 
             self.network = Network.custom(
                 lcd_endpoint=lcd or defaults.lcd_endpoint,
-                tm_websocket_endpoint=defaults.tm_websocket_endpoint,
-                grpc_endpoint=chain_grpc or defaults.grpc_endpoint,
+                grpc_endpoint=chain_grpc or defaults.grpc_chain_endpoint,
                 grpc_exchange_endpoint=exchange_grpc or defaults.grpc_exchange_endpoint,
                 grpc_explorer_endpoint=defaults.grpc_explorer_endpoint,
                 chain_stream_endpoint=defaults.chain_stream_endpoint,
@@ -100,7 +99,10 @@ class InjectiveTools:
             pk_hex = self._mnemonic_to_hex(mnemonic)
             await self._init_wallet(pk_hex)
         else:
-            logger.warning("injective_no_credentials", msg="Read-only mode — set INJECTIVE_PRIVATE_KEY or INJECTIVE_MNEMONIC")
+            logger.warning(
+                "injective_no_credentials",
+                msg="Read-only mode — set INJECTIVE_PRIVATE_KEY or INJECTIVE_MNEMONIC",
+            )
 
         # Pre-load market cache
         await self.market_cache.refresh(self.indexer_client)
@@ -157,7 +159,9 @@ class InjectiveTools:
 
     def _convert_spot_price(self, raw_price: str, market_id: str) -> str:
         base_denom, quote_denom, _ = self._market_denoms(market_id)
-        return self.token_registry.chain_price_to_human_spot(raw_price, base_denom, quote_denom)
+        return self.token_registry.chain_price_to_human_spot(
+            raw_price, base_denom, quote_denom
+        )
 
     def _convert_deriv_price(self, raw_price: str, market_id: str) -> str:
         _, quote_denom, _ = self._market_denoms(market_id)
@@ -197,13 +201,16 @@ class InjectiveTools:
     async def _get_spot_price(self, market_id: str) -> dict:
         from pyinjective.client.model.pagination import PaginationOption
 
-        ob = await self.indexer_client.fetch_spot_orderbook_v2(market_id=market_id, depth=1)
+        ob = await self.indexer_client.fetch_spot_orderbook_v2(
+            market_id=market_id, depth=1
+        )
         raw_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
         raw_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
 
         pagination = PaginationOption(skip=0, limit=1)
         trades = await self.indexer_client.fetch_spot_trades(
-            market_ids=[market_id], pagination=pagination,
+            market_ids=[market_id],
+            pagination=pagination,
         )
         raw_last = ""
         trade_list = trades.get("trades", [])
@@ -222,13 +229,16 @@ class InjectiveTools:
     async def _get_derivative_price(self, market_id: str) -> dict:
         from pyinjective.client.model.pagination import PaginationOption
 
-        ob = await self.indexer_client.fetch_derivative_orderbook_v2(market_id=market_id, depth=1)
+        ob = await self.indexer_client.fetch_derivative_orderbook_v2(
+            market_id=market_id, depth=1
+        )
         raw_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
         raw_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
 
         pagination = PaginationOption(skip=0, limit=1)
         trades = await self.indexer_client.fetch_derivative_trades(
-            market_ids=[market_id], pagination=pagination,
+            market_ids=[market_id],
+            pagination=pagination,
         )
         raw_last = ""
         trade_list = trades.get("trades", [])
@@ -251,18 +261,25 @@ class InjectiveTools:
         if is_spot is True or is_spot is None:
             try:
                 ob = await self.indexer_client.fetch_spot_orderbook_v2(
-                    market_id=market_id, depth=depth,
+                    market_id=market_id,
+                    depth=depth,
                 )
                 return {
                     "market_id": market_id,
                     "market_type": "spot",
                     "bids": format_orderbook_side(
                         ob.get("buys", [])[:depth],
-                        self.token_registry, base_denom, quote_denom, is_spot=True,
+                        self.token_registry,
+                        base_denom,
+                        quote_denom,
+                        is_spot=True,
                     ),
                     "asks": format_orderbook_side(
                         ob.get("sells", [])[:depth],
-                        self.token_registry, base_denom, quote_denom, is_spot=True,
+                        self.token_registry,
+                        base_denom,
+                        quote_denom,
+                        is_spot=True,
                     ),
                 }
             except Exception:
@@ -270,18 +287,25 @@ class InjectiveTools:
                     raise
 
         ob = await self.indexer_client.fetch_derivative_orderbook_v2(
-            market_id=market_id, depth=depth,
+            market_id=market_id,
+            depth=depth,
         )
         return {
             "market_id": market_id,
             "market_type": "derivative",
             "bids": format_orderbook_side(
                 ob.get("buys", [])[:depth],
-                self.token_registry, "", quote_denom, is_spot=False,
+                self.token_registry,
+                "",
+                quote_denom,
+                is_spot=False,
             ),
             "asks": format_orderbook_side(
                 ob.get("sells", [])[:depth],
-                self.token_registry, "", quote_denom, is_spot=False,
+                self.token_registry,
+                "",
+                quote_denom,
+                is_spot=False,
             ),
         }
 
@@ -299,12 +323,14 @@ class InjectiveTools:
         for b in raw.get("balances", []):
             deposit = b.get("deposit", {})
             denom = b.get("denom", "")
-            balances.append({
-                "denom": denom,
-                "symbol": self.token_registry.get_symbol(denom),
-                "available": deposit.get("availableBalance", "0"),
-                "total": deposit.get("totalBalance", "0"),
-            })
+            balances.append(
+                {
+                    "denom": denom,
+                    "symbol": self.token_registry.get_symbol(denom),
+                    "available": deposit.get("availableBalance", "0"),
+                    "total": deposit.get("totalBalance", "0"),
+                }
+            )
 
         return {
             "subaccount_index": subaccount_index,
@@ -324,23 +350,27 @@ class InjectiveTools:
         bank_balances = []
         for b in portfolio.get("bankBalances", []):
             denom = b.get("denom", "")
-            bank_balances.append({
-                "denom": denom,
-                "symbol": self.token_registry.get_symbol(denom),
-                "amount": b.get("amount", "0"),
-            })
+            bank_balances.append(
+                {
+                    "denom": denom,
+                    "symbol": self.token_registry.get_symbol(denom),
+                    "amount": b.get("amount", "0"),
+                }
+            )
 
         subaccounts = []
         for sa in portfolio.get("subaccounts", []):
             deposit = sa.get("deposit", {})
             denom = sa.get("denom", "")
-            subaccounts.append({
-                "subaccount_id": sa.get("subaccountId", ""),
-                "denom": denom,
-                "symbol": self.token_registry.get_symbol(denom),
-                "available": deposit.get("availableBalance", "0"),
-                "total": deposit.get("totalBalance", "0"),
-            })
+            subaccounts.append(
+                {
+                    "subaccount_id": sa.get("subaccountId", ""),
+                    "denom": denom,
+                    "symbol": self.token_registry.get_symbol(denom),
+                    "available": deposit.get("availableBalance", "0"),
+                    "total": deposit.get("totalBalance", "0"),
+                }
+            )
 
         return {
             "address": self.acc_address,
@@ -496,17 +526,21 @@ class InjectiveTools:
         orders = []
         for o in raw.get("orders", []):
             mid = o.get("marketId", "")
-            orders.append({
-                "order_hash": o.get("orderHash", ""),
-                "market_id": mid,
-                "order_type": o.get("orderType", ""),
-                "order_side": o.get("orderSide", ""),
-                "price": self._convert_spot_price(o.get("price", ""), mid),
-                "quantity": self._convert_spot_quantity(o.get("quantity", ""), mid),
-                "unfilled_quantity": self._convert_spot_quantity(o.get("unfilledQuantity", ""), mid),
-                "state": o.get("state", ""),
-                "created_at": o.get("createdAt", ""),
-            })
+            orders.append(
+                {
+                    "order_hash": o.get("orderHash", ""),
+                    "market_id": mid,
+                    "order_type": o.get("orderType", ""),
+                    "order_side": o.get("orderSide", ""),
+                    "price": self._convert_spot_price(o.get("price", ""), mid),
+                    "quantity": self._convert_spot_quantity(o.get("quantity", ""), mid),
+                    "unfilled_quantity": self._convert_spot_quantity(
+                        o.get("unfilledQuantity", ""), mid
+                    ),
+                    "state": o.get("state", ""),
+                    "created_at": o.get("createdAt", ""),
+                }
+            )
         return {"count": len(orders), "orders": orders}
 
     # ── Derivative / Perp Trading ────────────────────────────────────────
@@ -611,18 +645,20 @@ class InjectiveTools:
         orders = []
         for o in raw.get("orders", []):
             mid = o.get("marketId", "")
-            orders.append({
-                "order_hash": o.get("orderHash", ""),
-                "market_id": mid,
-                "order_type": o.get("orderType", ""),
-                "order_side": o.get("orderSide", ""),
-                "price": self._convert_deriv_price(o.get("price", ""), mid),
-                "quantity": o.get("quantity", ""),
-                "margin": self._convert_deriv_price(o.get("margin", ""), mid),
-                "unfilled_quantity": o.get("unfilledQuantity", ""),
-                "state": o.get("state", ""),
-                "created_at": o.get("createdAt", ""),
-            })
+            orders.append(
+                {
+                    "order_hash": o.get("orderHash", ""),
+                    "market_id": mid,
+                    "order_type": o.get("orderType", ""),
+                    "order_side": o.get("orderSide", ""),
+                    "price": self._convert_deriv_price(o.get("price", ""), mid),
+                    "quantity": o.get("quantity", ""),
+                    "margin": self._convert_deriv_price(o.get("margin", ""), mid),
+                    "unfilled_quantity": o.get("unfilledQuantity", ""),
+                    "state": o.get("state", ""),
+                    "created_at": o.get("createdAt", ""),
+                }
+            )
         return {"count": len(orders), "orders": orders}
 
     async def get_positions(
@@ -642,17 +678,25 @@ class InjectiveTools:
         positions = []
         for p in raw.get("positions", []):
             mid = p.get("marketId", "")
-            positions.append({
-                "market_id": mid,
-                "ticker": p.get("ticker", ""),
-                "direction": p.get("direction", ""),
-                "quantity": p.get("quantity", ""),
-                "entry_price": self._convert_deriv_price(p.get("entryPrice", ""), mid),
-                "mark_price": self._convert_deriv_price(p.get("markPrice", ""), mid),
-                "margin": self._convert_deriv_price(p.get("margin", ""), mid),
-                "aggregate_reduce_only_quantity": p.get("aggregateReduceOnlyQuantity", ""),
-                "updated_at": p.get("updatedAt", ""),
-            })
+            positions.append(
+                {
+                    "market_id": mid,
+                    "ticker": p.get("ticker", ""),
+                    "direction": p.get("direction", ""),
+                    "quantity": p.get("quantity", ""),
+                    "entry_price": self._convert_deriv_price(
+                        p.get("entryPrice", ""), mid
+                    ),
+                    "mark_price": self._convert_deriv_price(
+                        p.get("markPrice", ""), mid
+                    ),
+                    "margin": self._convert_deriv_price(p.get("margin", ""), mid),
+                    "aggregate_reduce_only_quantity": p.get(
+                        "aggregateReduceOnlyQuantity", ""
+                    ),
+                    "updated_at": p.get("updatedAt", ""),
+                }
+            )
         return {"count": len(positions), "positions": positions}
 
     async def close_position(
@@ -691,18 +735,23 @@ class InjectiveTools:
         # If no price given, use orderbook with 5% slippage
         if price is None:
             ob = await self.indexer_client.fetch_derivative_orderbook_v2(
-                market_id=market_id, depth=1,
+                market_id=market_id,
+                depth=1,
             )
             if close_side == "SELL":
                 bids = ob.get("buys", [])
                 if not bids:
-                    raise ValueError("No bids in orderbook — cannot determine close price")
+                    raise ValueError(
+                        "No bids in orderbook — cannot determine close price"
+                    )
                 best_bid = Decimal(bids[0].get("price", "0"))
                 dec_price = best_bid * Decimal("0.95")
             else:
                 asks = ob.get("sells", [])
                 if not asks:
-                    raise ValueError("No asks in orderbook — cannot determine close price")
+                    raise ValueError(
+                        "No asks in orderbook — cannot determine close price"
+                    )
                 best_ask = Decimal(asks[0].get("price", "0"))
                 dec_price = best_ask * Decimal("1.05")
         else:
