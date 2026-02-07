@@ -212,13 +212,14 @@ async def main() -> None:
                 await asyncio.sleep(3)
                 orders = await tools.get_spot_orders(market_id=spot_market_id)
                 if orders["orders"]:
-                    oh = orders["orders"][0]["order_hash"]
-                    print(f"\n>>> cancel_spot_order(order_hash='{oh[:16]}...')")
-                    cancel_result = await tools.cancel_spot_order(
-                        market_id=spot_market_id,
-                        order_hash=oh,
-                    )
-                    _pp("cancel_spot_order", cancel_result)
+                    for o in orders["orders"]:
+                        oh = o["order_hash"]
+                        print(f"\n>>> cancel_spot_order(order_hash='{oh[:16]}...')")
+                        cancel_result = await tools.cancel_spot_order(
+                            market_id=spot_market_id,
+                            order_hash=oh,
+                        )
+                        _pp("cancel_spot_order", cancel_result)
         except Exception as e:
             print(f"  ERROR: {e}")
 
@@ -244,16 +245,18 @@ async def main() -> None:
                 await asyncio.sleep(3)
                 orders = await tools.get_derivative_orders(market_id=deriv_market_id)
                 if orders["orders"]:
-                    o = orders["orders"][0]
-                    oh = o["order_hash"]
-                    print(f"\n>>> cancel_derivative_order(order_hash='{oh[:16]}...')")
-                    cancel_result = await tools.cancel_derivative_order(
-                        market_id=deriv_market_id,
-                        order_hash=oh,
-                        is_buy=o.get("order_side") == "buy",
-                        is_conditional=o.get("is_conditional", False),
-                    )
-                    _pp("cancel_derivative_order", cancel_result)
+                    for o in orders["orders"]:
+                        oh = o["order_hash"]
+                        print(
+                            f"\n>>> cancel_derivative_order(order_hash='{oh[:16]}...')"
+                        )
+                        cancel_result = await tools.cancel_derivative_order(
+                            market_id=deriv_market_id,
+                            order_hash=oh,
+                            is_buy=o.get("order_side") == "buy",
+                            is_conditional=o.get("is_conditional", False),
+                        )
+                        _pp("cancel_derivative_order", cancel_result)
         except Exception as e:
             print(f"  ERROR: {e}")
 

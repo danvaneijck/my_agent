@@ -362,7 +362,6 @@ class InjectiveTools:
         raw = await self.indexer_client.fetch_portfolio(
             account_address=self.acc_address,
         )
-        print(raw)
         portfolio = raw.get("portfolio", {})
 
         bank_balances = []
@@ -438,9 +437,6 @@ class InjectiveTools:
                 denom=denom,
             )
         elif action == "transfer":
-            print(
-                f"Transferring {amount} {denom} from subaccount {source_index} to {dest_index}"
-            )
             msg = self.composer.msg_subaccount_transfer(
                 sender=self.acc_address,
                 source_subaccount_id=self._subaccount_id(source_index),
@@ -673,7 +669,6 @@ class InjectiveTools:
             kwargs["market_ids"] = [market_id]
 
         raw = await self.indexer_client.fetch_derivative_orders(**kwargs)
-        print(raw)
         orders = []
         for o in raw.get("orders", []):
             mid = o.get("marketId", "")
@@ -708,7 +703,6 @@ class InjectiveTools:
             kwargs["market_ids"] = [market_id]
 
         raw = await self.indexer_client.fetch_derivative_positions_v2(**kwargs)
-        print(raw)
         positions = []
         for p in raw.get("positions", []):
             mid = p.get("marketId", "")
