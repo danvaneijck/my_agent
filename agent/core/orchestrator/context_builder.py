@@ -205,7 +205,12 @@ class ContextBuilder:
         budget: int,
         model: str,
     ) -> list[dict]:
-        """Trim messages to fit within the token budget."""
+        """Trim messages to fit within the token budget.
+
+        Tool call/result pairs are treated as atomic groups so that
+        trimming never produces an orphaned tool_result without its
+        preceding tool_call (which causes API errors on all providers).
+        """
         total = count_messages_tokens(messages, model)
         if total <= budget:
             return messages
@@ -215,10 +220,30 @@ class ContextBuilder:
         user_msg = messages[-1]  # The new user message
         middle_msgs = [m for m in messages if m["role"] != "system" and m is not user_msg]
 
-        # Remove oldest middle messages until we fit
-        while middle_msgs and count_messages_tokens(
-            system_msgs + middle_msgs + [user_msg], model
-        ) > budget:
-            middle_msgs.pop(0)
+        # Group messages so that consecutive tool_call/tool_result runs
+        # are treated as a single removable unit.
+        groups: list[list[dict]] = []
+        for msg in middle_msgs:
+            if msg["role"] in ("tool_call", "tool_result"):
+                # Attach to the current tool group if one exists
+                if groups and groups[-1][0]["role"] in ("tool_call", "tool_result"):
+                    groups[-1].append(msg)
+                else:
+                    groups.append([msg])
+            else:
+                groups.append([msg])
 
-        return system_msgs + middle_msgs + [user_msg]
+        # Remove oldest groups until we fit
+        while groups and count_messages_tokens(
+            system_msgs + [m for g in groups for m in g] + [user_msg], model
+        ) > budget:
+            groups.pop(0)
+
+        trimmed_middle = [m for g in groups for m in g]
+
+        # Safety: strip any leading orphaned tool_result messages that
+        # could remain if the DB already contained broken history.
+        while trimmed_middle and trimmed_middle[0]["role"] == "tool_result":
+            trimmed_middle.pop(0)
+
+        return system_msgs + trimmed_middle + [user_msg]
