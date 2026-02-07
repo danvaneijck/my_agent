@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import re
 from comms.slack_bot.block_builder import BlockBuilder
@@ -18,6 +19,15 @@ from shared.file_utils import upload_attachment
 from shared.schemas.messages import AgentResponse
 
 logger = structlog.get_logger()
+
+THINKING_FRAMES = [
+    ":thinking_face: *Thinking...*",
+    ":hourglass_flowing_sand: *Processing...*",
+    ":gear: *Working on it...*",
+    ":brain: *Reasoning...*",
+    ":mag: *Researching...*",
+    ":pencil2: *Composing response...*",
+]
 
 
 class AgentSlackBot:
@@ -94,11 +104,14 @@ class AgentSlackBot:
         channel_id = event.get("channel")
 
         loading_msg = await say(
-            text=":thinking_face: *Thinking...*", thread_ts=thread_ts
+            text=THINKING_FRAMES[0], thread_ts=thread_ts
         )
         loading_ts = loading_msg[
             "ts"
         ]  # We need this timestamp to edit the message later
+
+        # Start animated thinking indicator
+        stop_thinking = await self._animate_thinking(client, channel_id, loading_ts)
 
         try:
             incoming = self.normalizer.to_incoming(event, self.bot_user_id)
@@ -108,6 +121,7 @@ class AgentSlackBot:
 
             if not incoming.content and not incoming.attachments:
                 # If nothing to process, delete the loading message
+                stop_thinking.set()
                 await client.chat_delete(channel=channel_id, ts=loading_ts)
                 return
 
@@ -115,7 +129,7 @@ class AgentSlackBot:
                 incoming.content = "(attached files)"
 
             # Call Orchestrator
-            async with httpx.AsyncClient(timeout=60.0) as http_client:
+            async with httpx.AsyncClient(timeout=120.0) as http_client:
                 resp = await http_client.post(
                     f"{self.settings.orchestrator_url}/message",
                     json=incoming.model_dump(),
@@ -127,6 +141,9 @@ class AgentSlackBot:
                         content="Sorry, I encountered an error processing your request.",
                         error=f"HTTP {resp.status_code}",
                     )
+
+            # Stop the thinking animation before updating with the real response
+            stop_thinking.set()
 
             # Format Response (Using the markdown helper we made earlier)
             raw_text = self.normalizer.format_response(response)
@@ -148,6 +165,7 @@ class AgentSlackBot:
                 await self._upload_response_file(client, channel_id, thread_ts, f)
 
         except Exception as e:
+            stop_thinking.set()
             logger.error("slack_processing_error", error=str(e))
 
             # If it fails, update the loading message to show the error
@@ -307,8 +325,40 @@ class AgentSlackBot:
         except Exception as e:
             logger.error("slack_file_upload_failed", filename=filename, error=str(e))
 
+    async def _animate_thinking(self, client, channel: str, ts: str) -> asyncio.Event:
+        """Update the thinking message every few seconds to show the bot is active.
+
+        Returns an asyncio.Event that should be set to stop the animation.
+        """
+        stop = asyncio.Event()
+
+        async def _loop():
+            frame = 1  # Frame 0 was already sent as the initial message
+            while not stop.is_set():
+                await asyncio.sleep(3)
+                if stop.is_set():
+                    break
+                try:
+                    text = THINKING_FRAMES[frame % len(THINKING_FRAMES)]
+                    await client.chat_update(channel=channel, ts=ts, text=text)
+                    frame += 1
+                except Exception:
+                    break
+
+        asyncio.create_task(_loop())
+        return stop
+
     async def run(self):
         """Start the bot with Socket Mode."""
         logger.info("starting_slack_bot")
+
+        # Set presence to "auto" so the bot shows as online (green dot)
+        try:
+            temp_client = self.app.client
+            await temp_client.users_setPresence(presence="auto")
+            logger.info("slack_presence_set", presence="auto")
+        except Exception as e:
+            logger.warning("slack_presence_failed", error=str(e))
+
         handler = AsyncSocketModeHandler(self.app, self.settings.slack_app_token)
         await handler.start_async()
