@@ -631,7 +631,14 @@ class InjectiveTools:
             "tx_hash": getattr(result, "txhash", str(result)),
         }
 
-    async def cancel_derivative_order(self, market_id: str, order_hash: str) -> dict:
+    async def cancel_derivative_order(
+        self,
+        market_id: str,
+        order_hash: str,
+        is_buy: bool = False,
+        is_market_order: bool = False,
+        is_conditional: bool = False,
+    ) -> dict:
         """Cancel an open derivative order."""
         require_wallet(self.address)
 
@@ -640,6 +647,9 @@ class InjectiveTools:
             sender=self.acc_address,
             subaccount_id=self._subaccount_id(1),
             order_hash=order_hash,
+            is_buy=is_buy,
+            is_market_order=is_market_order,
+            is_conditional=is_conditional,
         )
         result = await self.broadcaster.broadcast([msg])
         return {
@@ -678,6 +688,7 @@ class InjectiveTools:
                     "margin": self._convert_deriv_price(o.get("margin", ""), mid),
                     "unfilled_quantity": o.get("unfilledQuantity", ""),
                     "state": o.get("state", ""),
+                    "is_conditional": o.get("isConditional", False),
                     "created_at": o.get("createdAt", ""),
                 }
             )
