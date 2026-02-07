@@ -6,7 +6,7 @@ import asyncio
 import re
 
 import structlog
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, BadRequestError
 
 from core.llm_router.providers.base import LLMProvider, LLMResponse
 from shared.schemas.tools import ToolCall
@@ -155,6 +155,8 @@ class AnthropicProvider(LLMProvider):
             try:
                 response = await self.client.messages.create(**kwargs)
                 break
+            except BadRequestError:
+                raise  # 400 = bad payload, retrying won't help
             except Exception as e:
                 last_error = e
                 logger.warning("anthropic_api_error", attempt=attempt, error=str(e))

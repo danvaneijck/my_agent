@@ -179,6 +179,10 @@ class GoogleProvider(LLMProvider):
                 )
                 break
             except Exception as e:
+                # Don't retry 400-class errors (bad payload won't change)
+                status = getattr(e, "status_code", None) or getattr(e, "code", None)
+                if status in (400, "400", "INVALID_ARGUMENT"):
+                    raise
                 last_error = e
                 logger.warning("google_api_error", attempt=attempt, error=str(e))
                 if attempt < 2:

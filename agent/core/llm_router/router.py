@@ -10,6 +10,22 @@ from shared.config import Settings, parse_list
 logger = structlog.get_logger()
 
 
+def _is_bad_request(exc: Exception) -> bool:
+    """Return True if the exception is a 400-class client error.
+
+    These indicate a malformed payload (e.g. orphaned tool_result) that
+    will never succeed regardless of how many providers or retries we try.
+    """
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int) and 400 <= status < 500:
+        return True
+    # Some SDKs use .code instead of .status_code
+    code = getattr(exc, "code", None)
+    if code in (400, "400", "INVALID_ARGUMENT"):
+        return True
+    return False
+
+
 class LLMRouter:
     """Routes LLM requests to the appropriate provider based on model name."""
 
@@ -153,6 +169,14 @@ class LLMRouter:
             )
             return response
         except Exception as e:
+            # 400-class errors mean the payload is broken — fallback won't help
+            if _is_bad_request(e):
+                logger.error(
+                    "bad_request_no_fallback",
+                    model=target_model,
+                    error=str(e),
+                )
+                raise
             logger.warning(
                 "primary_model_failed",
                 model=target_model,

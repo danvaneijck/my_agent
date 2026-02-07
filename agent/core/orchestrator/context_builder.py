@@ -119,6 +119,11 @@ class ContextBuilder:
         # Trim to fit within budget
         messages = self._trim_to_budget(messages, budget, target_model)
 
+        # Sanitize: remove orphaned tool_call/tool_result messages.
+        # This handles working-memory window cuts and any pre-existing
+        # broken history in the DB.
+        messages = self._sanitize_tool_pairs(messages)
+
         return messages
 
     def _build_system_prompt(self, persona: Persona | None) -> str:
@@ -247,3 +252,54 @@ class ContextBuilder:
             trimmed_middle.pop(0)
 
         return system_msgs + trimmed_middle + [user_msg]
+
+    @staticmethod
+    def _sanitize_tool_pairs(messages: list[dict]) -> list[dict]:
+        """Remove tool_call/tool_result messages that lack a matching partner.
+
+        All LLM providers require that every tool_result references a
+        tool_use_id from a preceding tool_call (assistant) message.
+        Orphans arise when the working-memory window or token trimming
+        splits a pair apart.  Drop any unmatched messages so the
+        payload is always valid.
+        """
+        # Collect all tool_use_ids from tool_call messages
+        call_ids: set[str] = set()
+        for msg in messages:
+            if msg.get("role") == "tool_call":
+                tid = msg.get("tool_use_id")
+                if tid:
+                    call_ids.add(tid)
+
+        # Collect all tool_use_ids from tool_result messages
+        result_ids: set[str] = set()
+        for msg in messages:
+            if msg.get("role") == "tool_result":
+                tid = msg.get("tool_use_id")
+                if tid:
+                    result_ids.add(tid)
+
+        # IDs that appear in results but have no matching call
+        orphan_result_ids = result_ids - call_ids
+        # IDs that appear in calls but have no matching result
+        orphan_call_ids = call_ids - result_ids
+
+        if not orphan_result_ids and not orphan_call_ids:
+            return messages
+
+        logger.warning(
+            "sanitized_orphan_tool_messages",
+            orphan_results=list(orphan_result_ids),
+            orphan_calls=list(orphan_call_ids),
+        )
+
+        cleaned: list[dict] = []
+        for msg in messages:
+            role = msg.get("role")
+            tid = msg.get("tool_use_id")
+            if role == "tool_result" and tid in orphan_result_ids:
+                continue  # drop orphaned result
+            if role == "tool_call" and tid in orphan_call_ids:
+                continue  # drop orphaned call
+            cleaned.append(msg)
+        return cleaned
