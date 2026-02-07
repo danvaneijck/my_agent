@@ -344,8 +344,12 @@ class InjectiveTools:
                 {
                     "denom": denom,
                     "symbol": self.token_registry.get_symbol(denom),
-                    "available": deposit.get("availableBalance", "0"),
-                    "total": deposit.get("totalBalance", "0"),
+                    "available": self.token_registry.chain_amount_to_human(
+                        deposit.get("availableBalance", "0"), denom,
+                    ),
+                    "total": self.token_registry.chain_amount_to_human(
+                        deposit.get("totalBalance", "0"), denom,
+                    ),
                 }
             )
 
@@ -371,7 +375,9 @@ class InjectiveTools:
                 {
                     "denom": denom,
                     "symbol": self.token_registry.get_symbol(denom),
-                    "amount": b.get("amount", "0"),
+                    "amount": self.token_registry.chain_amount_to_human(
+                        b.get("amount", "0"), denom,
+                    ),
                 }
             )
 
@@ -384,8 +390,12 @@ class InjectiveTools:
                     "subaccount_id": sa.get("subaccountId", ""),
                     "denom": denom,
                     "symbol": self.token_registry.get_symbol(denom),
-                    "available": deposit.get("availableBalance", "0"),
-                    "total": deposit.get("totalBalance", "0"),
+                    "available": self.token_registry.chain_amount_to_human(
+                        deposit.get("availableBalance", "0"), denom,
+                    ),
+                    "total": self.token_registry.chain_amount_to_human(
+                        deposit.get("totalBalance", "0"), denom,
+                    ),
                 }
             )
 

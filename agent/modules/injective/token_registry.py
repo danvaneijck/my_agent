@@ -159,12 +159,23 @@ class TokenRegistry:
         return _fmt(human)
 
     def format_balance(self, amount: str, denom: str) -> dict:
-        """Return a balance dict with symbol added (balances from indexer are already human-readable)."""
+        """Return a balance dict with symbol and human-readable amount."""
         return {
             "denom": denom,
             "symbol": self.get_symbol(denom),
-            "amount": amount,
+            "amount": self.chain_amount_to_human(amount, denom),
         }
+
+    def chain_amount_to_human(self, raw_amount: str, denom: str) -> str:
+        """Convert a raw chain amount (e.g. '17000000000000000') to human-readable.
+
+        Uses the token's decimals: human = raw / 10^decimals
+        """
+        if not raw_amount:
+            return "0"
+        decimals = self.get_decimals(denom)
+        human = Decimal(raw_amount) / Decimal(10) ** decimals
+        return _fmt(human)
 
     def human_to_chain_amount(self, human_amount: Decimal, denom: str) -> int:
         """Convert a human-readable amount to chain base units (for deposits/withdrawals)."""
