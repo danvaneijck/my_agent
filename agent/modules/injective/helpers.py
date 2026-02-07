@@ -101,13 +101,33 @@ def _parse_derivative_markets(raw: dict) -> list[dict]:
     return markets
 
 
-def format_orderbook_side(levels: list) -> list[dict]:
-    """Format orderbook price levels into a clean list."""
+def format_orderbook_side(
+    levels: list,
+    token_registry=None,
+    base_denom: str = "",
+    quote_denom: str = "",
+    is_spot: bool = True,
+) -> list[dict]:
+    """Format orderbook price levels with human-readable prices."""
     result = []
     for level in levels:
+        raw_price = level.get("price", "")
+        raw_qty = level.get("quantity", "")
+
+        if token_registry and raw_price:
+            if is_spot:
+                price = token_registry.chain_price_to_human_spot(raw_price, base_denom, quote_denom)
+                quantity = token_registry.chain_quantity_to_human_spot(raw_qty, base_denom)
+            else:
+                price = token_registry.chain_price_to_human_deriv(raw_price, quote_denom)
+                quantity = raw_qty  # derivative quantities are already human-readable
+        else:
+            price = raw_price
+            quantity = raw_qty
+
         result.append({
-            "price": level.get("price", ""),
-            "quantity": level.get("quantity", ""),
+            "price": price,
+            "quantity": quantity,
             "timestamp": level.get("timestamp", ""),
         })
     return result
