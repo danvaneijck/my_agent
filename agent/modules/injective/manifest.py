@@ -256,7 +256,7 @@ MANIFEST = ModuleManifest(
         ),
         ToolDefinition(
             name="injective.cancel_derivative_order",
-            description="Cancel an open derivative order by its order hash.",
+            description="Cancel an open derivative order by its order hash. Use the order_side and is_conditional fields from get_derivative_orders to fill is_buy and is_conditional.",
             parameters=[
                 ToolParameter(
                     name="market_id",
@@ -267,6 +267,23 @@ MANIFEST = ModuleManifest(
                     name="order_hash",
                     type="string",
                     description="The order hash to cancel",
+                ),
+                ToolParameter(
+                    name="is_buy",
+                    type="boolean",
+                    description="True if the order is a buy order (order_side == 'buy')",
+                ),
+                ToolParameter(
+                    name="is_market_order",
+                    type="boolean",
+                    description="True if the order is a market order (default false for limit orders)",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="is_conditional",
+                    type="boolean",
+                    description="True if the order is a conditional/trigger order",
+                    required=False,
                 ),
             ],
             required_permission="owner",

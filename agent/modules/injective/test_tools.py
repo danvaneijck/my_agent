@@ -244,11 +244,14 @@ async def main() -> None:
                 await asyncio.sleep(3)
                 orders = await tools.get_derivative_orders(market_id=deriv_market_id)
                 if orders["orders"]:
-                    oh = orders["orders"][0]["order_hash"]
+                    o = orders["orders"][0]
+                    oh = o["order_hash"]
                     print(f"\n>>> cancel_derivative_order(order_hash='{oh[:16]}...')")
                     cancel_result = await tools.cancel_derivative_order(
                         market_id=deriv_market_id,
                         order_hash=oh,
+                        is_buy=o.get("order_side") == "buy",
+                        is_conditional=o.get("is_conditional", False),
                     )
                     _pp("cancel_derivative_order", cancel_result)
         except Exception as e:
