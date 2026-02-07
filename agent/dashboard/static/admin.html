@@ -155,6 +155,28 @@
   }
   .platform-chip .remove { cursor: pointer; color: var(--red); font-weight: bold; }
   .platform-chip .remove:hover { opacity: 0.7; }
+
+  /* Login gate */
+  .login-gate {
+    display: flex; align-items: center; justify-content: center;
+    min-height: calc(100vh - 60px);
+  }
+  .login-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 32px; width: 380px; text-align: center;
+  }
+  .login-box h2 { font-size: 18px; margin-bottom: 8px; }
+  .login-box p { font-size: 13px; color: var(--text-dim); margin-bottom: 20px; }
+  .login-box input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 14px; color: var(--text); font-size: 14px;
+    font-family: 'SF Mono', 'Fira Code', monospace; text-align: center;
+  }
+  .login-box input:focus { outline: none; border-color: var(--accent); }
+  .login-box .btn { margin-top: 14px; width: 100%; padding: 10px; font-size: 14px; }
+  .login-error { color: var(--red); font-size: 13px; margin-top: 10px; display: none; }
+  .app-content { display: none; }
+  .app-content.visible { display: block; }
 </style>
 </head>
 <body>
@@ -163,9 +185,23 @@
   <h1>Admin Portal</h1>
   <div class="header-nav">
     <a href="/">Dashboard</a>
+    <a href="#" id="logout-btn" onclick="logout()" style="display:none">Logout</a>
   </div>
 </div>
 
+<!-- Login Gate -->
+<div id="login-gate" class="login-gate">
+  <div class="login-box">
+    <h2>Admin Access</h2>
+    <p>Enter admin API key to continue</p>
+    <input type="password" id="admin-key-input" placeholder="ADMIN_API_KEY" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn btn-primary" onclick="doLogin()">Authenticate</button>
+    <div class="login-error" id="login-error">Invalid admin key</div>
+  </div>
+</div>
+
+<!-- Main App (hidden until auth) -->
+<div id="app-content" class="app-content">
 <div class="container">
   <div class="tabs">
     <div class="tab active" onclick="switchTab('users')">Users</div>
@@ -411,9 +447,57 @@
   </div>
 </div>
 
+</div><!-- /app-content -->
+
 <div id="toast-container"></div>
 
 <script>
+// ---- Auth ----
+function getAdminKey() { return sessionStorage.getItem('admin_api_key') || ''; }
+
+function showApp() {
+  document.getElementById('login-gate').style.display = 'none';
+  document.getElementById('app-content').classList.add('visible');
+  document.getElementById('logout-btn').style.display = '';
+}
+
+function showLogin() {
+  document.getElementById('login-gate').style.display = 'flex';
+  document.getElementById('app-content').classList.remove('visible');
+  document.getElementById('logout-btn').style.display = 'none';
+}
+
+async function doLogin() {
+  const key = document.getElementById('admin-key-input').value.trim();
+  if (!key) return;
+  // Test the key against an admin endpoint
+  try {
+    const resp = await fetch('/api/admin/users', {
+      headers: {'X-Admin-Key': key}
+    });
+    if (resp.ok) {
+      sessionStorage.setItem('admin_api_key', key);
+      document.getElementById('login-error').style.display = 'none';
+      showApp();
+      loadUsers();
+      loadPersonas();
+    } else {
+      const data = await resp.json().catch(() => ({}));
+      document.getElementById('login-error').textContent = data.detail || 'Invalid admin key';
+      document.getElementById('login-error').style.display = 'block';
+    }
+  } catch(e) {
+    document.getElementById('login-error').textContent = 'Connection error';
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function logout() {
+  sessionStorage.removeItem('admin_api_key');
+  showLogin();
+  document.getElementById('admin-key-input').value = '';
+}
+
 // ---- Helpers ----
 const roleTag = r => `<span class="tag tag-${r}">${r}</span>`;
 const platformTag = p => `<span class="tag tag-${p}">${p}</span>`;
@@ -434,9 +518,15 @@ function toast(msg, type='success') {
 }
 
 async function api(url, method='GET', body=null) {
-  const opts = {method, headers: {'Content-Type':'application/json'}};
+  const key = getAdminKey();
+  const opts = {method, headers: {'Content-Type':'application/json', 'X-Admin-Key': key}};
   if (body) opts.body = JSON.stringify(body);
   const resp = await fetch(url, opts);
+  if (resp.status === 401) {
+    sessionStorage.removeItem('admin_api_key');
+    showLogin();
+    throw new Error('Session expired — please log in again');
+  }
   const data = await resp.json();
   if (!resp.ok) {
     throw new Error(data.detail || JSON.stringify(data));
@@ -724,8 +814,22 @@ async function deletePersona(personaId) {
 }
 
 // ---- Init ----
-loadUsers();
-loadPersonas();
+// If we have a saved key, verify it still works
+(async () => {
+  const key = getAdminKey();
+  if (!key) { showLogin(); return; }
+  try {
+    const resp = await fetch('/api/admin/users', {headers: {'X-Admin-Key': key}});
+    if (resp.ok) {
+      showApp();
+      loadUsers();
+      loadPersonas();
+    } else {
+      sessionStorage.removeItem('admin_api_key');
+      showLogin();
+    }
+  } catch(e) { showLogin(); }
+})();
 </script>
 </body>
 </html>

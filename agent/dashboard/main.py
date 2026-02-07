@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import sys
@@ -9,7 +10,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, text
@@ -28,6 +29,20 @@ from shared.models.user import User, UserPlatformLink
 
 app = FastAPI(title="Agent Admin Dashboard", version="1.0.0")
 settings = get_settings()
+
+
+# --------------- Admin auth ---------------
+
+
+async def require_admin(x_admin_key: str = Header()):
+    """Dependency that validates the admin API key on every /api/admin/ call."""
+    if not settings.admin_api_key:
+        raise HTTPException(
+            503,
+            "Admin portal is disabled — set ADMIN_API_KEY in your .env",
+        )
+    if not hmac.compare_digest(x_admin_key, settings.admin_api_key):
+        raise HTTPException(401, "Invalid admin key")
 
 
 # --------------- Pydantic schemas for CRUD ---------------
@@ -427,7 +442,7 @@ async def system_health():
 # --------------- User CRUD ---------------
 
 
-@app.post("/api/admin/users")
+@app.post("/api/admin/users", dependencies=[Depends(require_admin)])
 async def create_user(body: UserCreate):
     """Create a new user."""
     factory = get_session_factory()
@@ -444,7 +459,7 @@ async def create_user(body: UserCreate):
         return {"id": str(user.id), "permission_level": user.permission_level}
 
 
-@app.put("/api/admin/users/{user_id}")
+@app.put("/api/admin/users/{user_id}", dependencies=[Depends(require_admin)])
 async def update_user(user_id: str, body: UserUpdate):
     """Update user fields."""
     factory = get_session_factory()
@@ -466,7 +481,7 @@ async def update_user(user_id: str, body: UserUpdate):
         return {"ok": True}
 
 
-@app.delete("/api/admin/users/{user_id}")
+@app.delete("/api/admin/users/{user_id}", dependencies=[Depends(require_admin)])
 async def delete_user(user_id: str):
     """Delete a user and their platform links."""
     factory = get_session_factory()
@@ -485,7 +500,7 @@ async def delete_user(user_id: str):
         return {"ok": True}
 
 
-@app.post("/api/admin/users/{user_id}/reset-budget")
+@app.post("/api/admin/users/{user_id}/reset-budget", dependencies=[Depends(require_admin)])
 async def reset_user_budget(user_id: str):
     """Reset a user's monthly token usage to 0."""
     factory = get_session_factory()
@@ -504,7 +519,7 @@ async def reset_user_budget(user_id: str):
 # --------------- Platform Link CRUD ---------------
 
 
-@app.post("/api/admin/users/{user_id}/links")
+@app.post("/api/admin/users/{user_id}/links", dependencies=[Depends(require_admin)])
 async def add_platform_link(user_id: str, body: PlatformLinkCreate):
     """Add a platform link to a user."""
     factory = get_session_factory()
@@ -538,7 +553,7 @@ async def add_platform_link(user_id: str, body: PlatformLinkCreate):
         return {"id": str(link.id)}
 
 
-@app.delete("/api/admin/links/{link_id}")
+@app.delete("/api/admin/links/{link_id}", dependencies=[Depends(require_admin)])
 async def delete_platform_link(link_id: str):
     """Remove a platform link."""
     factory = get_session_factory()
@@ -558,7 +573,7 @@ async def delete_platform_link(link_id: str):
 # --------------- Persona CRUD ---------------
 
 
-@app.post("/api/admin/personas")
+@app.post("/api/admin/personas", dependencies=[Depends(require_admin)])
 async def create_persona(body: PersonaCreate):
     """Create a new persona."""
     factory = get_session_factory()
@@ -584,7 +599,7 @@ async def create_persona(body: PersonaCreate):
         return {"id": str(persona.id), "name": persona.name}
 
 
-@app.put("/api/admin/personas/{persona_id}")
+@app.put("/api/admin/personas/{persona_id}", dependencies=[Depends(require_admin)])
 async def update_persona(persona_id: str, body: PersonaUpdate):
     """Update a persona."""
     factory = get_session_factory()
@@ -618,7 +633,7 @@ async def update_persona(persona_id: str, body: PersonaUpdate):
         return {"ok": True}
 
 
-@app.delete("/api/admin/personas/{persona_id}")
+@app.delete("/api/admin/personas/{persona_id}", dependencies=[Depends(require_admin)])
 async def delete_persona(persona_id: str):
     """Delete a persona."""
     factory = get_session_factory()
@@ -633,7 +648,7 @@ async def delete_persona(persona_id: str):
         return {"ok": True}
 
 
-@app.get("/api/admin/personas/{persona_id}")
+@app.get("/api/admin/personas/{persona_id}", dependencies=[Depends(require_admin)])
 async def get_persona(persona_id: str):
     """Get full persona details including system prompt."""
     factory = get_session_factory()
@@ -658,7 +673,7 @@ async def get_persona(persona_id: str):
 
 
 # Also return platform link IDs in the users list for the admin portal
-@app.get("/api/admin/users")
+@app.get("/api/admin/users", dependencies=[Depends(require_admin)])
 async def admin_users_list():
     """All users with full platform link details (including link IDs)."""
     factory = get_session_factory()

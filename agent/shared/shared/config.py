@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     conversation_timeout_minutes: int = 30
     working_memory_messages: int = 20
 
+    # Admin portal
+    admin_api_key: str = ""
+
     # Defaults for new users
     default_guest_token_budget: int = 5000
     # Stored as str to avoid pydantic-settings JSON parse issues with env vars.
