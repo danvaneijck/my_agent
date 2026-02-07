@@ -53,8 +53,13 @@ class AtlassianTools:
     def _issue_url(self, key: str) -> str:
         return f"{self.base_url}/browse/{key}"
 
-    def _page_url(self, page_id: str) -> str:
-        return f"{self.base_url}/wiki/pages/{page_id}" if self.cloud else f"{self.base_url}/pages/viewpage.action?pageId={page_id}"
+    def _page_url(self, page_id: str, space: str = "") -> str:
+        space = space or self.default_space
+        if self.cloud:
+            if space:
+                return f"{self.base_url}/wiki/spaces/{space}/pages/{page_id}"
+            return f"{self.base_url}/wiki/pages/{page_id}"
+        return f"{self.base_url}/pages/viewpage.action?pageId={page_id}"
 
     def _resolve_space(self, space: str | None) -> str:
         resolved = space or self.default_space
@@ -266,7 +271,7 @@ class AtlassianTools:
                     "title": title,
                     "space": space_key or space or "",
                     "excerpt": excerpt[:300] if excerpt else "",
-                    "url": self._page_url(page_id) if page_id else "",
+                    "url": self._page_url(page_id, space_key or space or "") if page_id else "",
                 })
             return {
                 "total": results.get("totalSize", len(pages)),
@@ -303,7 +308,7 @@ class AtlassianTools:
                 "space": page.get("space", {}).get("key", space or ""),
                 "version": page.get("version", {}).get("number"),
                 "content": text_content,
-                "url": self._page_url(page["id"]),
+                "url": self._page_url(page["id"], page.get("space", {}).get("key", space or "")),
             }
 
         return await asyncio.to_thread(_get)
@@ -336,7 +341,7 @@ class AtlassianTools:
                 "page_id": page_id,
                 "title": result.get("title", title),
                 "space": space,
-                "url": self._page_url(page_id),
+                "url": self._page_url(page_id, space),
             }
 
         return await asyncio.to_thread(_create)
@@ -388,7 +393,7 @@ class AtlassianTools:
             return {
                 "page_id": pid,
                 "title": new_title or title or "",
-                "url": self._page_url(pid),
+                "url": self._page_url(pid, space or ""),
                 "appended": append,
             }
 
@@ -469,7 +474,7 @@ class AtlassianTools:
             "page_id": page_id,
             "title": title,
             "space": space,
-            "url": self._page_url(page_id),
+            "url": self._page_url(page_id, space),
             "jira_issues_created": len(jira_links),
             "jira_issues": jira_links,
         }
@@ -541,7 +546,7 @@ class AtlassianTools:
             "title": title,
             "space": space,
             "template": template,
-            "url": self._page_url(page_id),
+            "url": self._page_url(page_id, space),
             "jira_issues_created": len(jira_links),
             "jira_issues": jira_links,
         }
