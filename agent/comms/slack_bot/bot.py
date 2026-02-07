@@ -348,17 +348,26 @@ class AgentSlackBot:
         asyncio.create_task(_loop())
         return stop
 
+    async def _presence_heartbeat(self):
+        """Periodically re-assert 'auto' presence so the green dot stays on.
+
+        Socket Mode doesn't maintain presence the way legacy RTM did,
+        so we need to remind Slack that we're still online.
+        """
+        client = self.app.client
+        while True:
+            try:
+                await client.users_setPresence(presence="auto")
+            except Exception as e:
+                logger.warning("presence_heartbeat_failed", error=str(e))
+            await asyncio.sleep(30)
+
     async def run(self):
         """Start the bot with Socket Mode."""
         logger.info("starting_slack_bot")
 
-        # Set presence to "auto" so the bot shows as online (green dot)
-        try:
-            temp_client = self.app.client
-            await temp_client.users_setPresence(presence="auto")
-            logger.info("slack_presence_set", presence="auto")
-        except Exception as e:
-            logger.warning("slack_presence_failed", error=str(e))
+        # Start a background heartbeat to keep the green dot active
+        asyncio.create_task(self._presence_heartbeat())
 
         handler = AsyncSocketModeHandler(self.app, self.settings.slack_app_token)
         await handler.start_async()
