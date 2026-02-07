@@ -162,6 +162,17 @@ services:
       - agent-net
     restart: unless-stopped
 
+  atlassian:
+    build:
+      context: .
+      dockerfile: modules/atlassian/Dockerfile
+    env_file: .env
+    depends_on:
+      - core
+    networks:
+      - agent-net
+    restart: unless-stopped
+
   # --- Admin Dashboard ---
   dashboard:
     build:

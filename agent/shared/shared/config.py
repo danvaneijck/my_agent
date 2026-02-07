@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     # Admin portal
     admin_api_key: str = ""
 
+    # Atlassian
+    atlassian_url: str = ""
+    atlassian_username: str = ""
+    atlassian_api_token: str = ""
+    atlassian_cloud: bool = True
+    confluence_default_space: str = ""
+
     # Defaults for new users
     default_guest_token_budget: int = 5000
     # Stored as str to avoid pydantic-settings JSON parse issues with env vars.
@@ -76,6 +83,7 @@ class Settings(BaseSettings):
         "injective": "http://injective:8000",
         "code_executor": "http://code-executor:8000",
         "knowledge": "http://knowledge:8000",
+        "atlassian": "http://atlassian:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
