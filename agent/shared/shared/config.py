@@ -112,6 +112,19 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    def model_post_init(self, __context: object) -> None:
+        """Sync top-level model settings into model_routing.
+
+        The ``SUMMARIZATION_MODEL``, ``DEFAULT_MODEL``, and ``EMBEDDING_MODEL``
+        env vars are the user-facing knobs.  ``model_routing`` is the internal
+        dispatch table.  Keep them in sync so task_type-based routing honours
+        the env vars.
+        """
+        self.model_routing["default"] = self.default_model
+        self.model_routing["summarization"] = self.summarization_model
+        self.model_routing["memory_summarization"] = self.summarization_model
+        self.model_routing["embedding"] = self.embedding_model
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -10,9 +10,11 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.llm_router.router import LLMRouter
+from core.llm_router.token_counter import estimate_cost
 from shared.config import Settings
 from shared.models.conversation import Conversation, Message
 from shared.models.memory import MemorySummary
+from shared.models.token_usage import TokenLog
 
 logger = structlog.get_logger()
 
@@ -118,6 +120,25 @@ class ConversationSummarizer:
         )
 
         summary_text = llm_response.content or "No summary generated."
+
+        # Track token usage for the summarization call
+        model_used = llm_response.model or "unknown"
+        cost = estimate_cost(
+            model_used,
+            llm_response.input_tokens,
+            llm_response.output_tokens,
+        )
+        token_log = TokenLog(
+            id=uuid.uuid4(),
+            user_id=conversation.user_id,
+            conversation_id=conversation.id,
+            model=model_used,
+            input_tokens=llm_response.input_tokens,
+            output_tokens=llm_response.output_tokens,
+            cost_estimate=cost,
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(token_log)
 
         # Generate embedding for the summary
         embedding = None
