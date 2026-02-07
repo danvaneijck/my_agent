@@ -27,7 +27,7 @@ MANIFEST = ModuleManifest(
                     enum=["spot", "derivative"],
                 ),
             ],
-            required_permission="user",
+            required_permission="guest",
         ),
         ToolDefinition(
             name="injective.get_price",
@@ -42,7 +42,7 @@ MANIFEST = ModuleManifest(
                     description="Hex market ID (from search_markets)",
                 ),
             ],
-            required_permission="user",
+            required_permission="guest",
         ),
         ToolDefinition(
             name="injective.get_orderbook",
@@ -60,7 +60,7 @@ MANIFEST = ModuleManifest(
                     required=False,
                 ),
             ],
-            required_permission="user",
+            required_permission="guest",
         ),
         # ── Account & Subaccount ─────────────────────────────────────────
         ToolDefinition(
