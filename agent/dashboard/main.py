@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
-from sqlalchemy import func, select, text
+from pydantic import BaseModel
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -25,6 +28,48 @@ from shared.models.user import User, UserPlatformLink
 
 app = FastAPI(title="Agent Admin Dashboard", version="1.0.0")
 settings = get_settings()
+
+
+# --------------- Pydantic schemas for CRUD ---------------
+
+
+class UserCreate(BaseModel):
+    permission_level: str = "guest"
+    token_budget_monthly: int | None = None
+
+
+class UserUpdate(BaseModel):
+    permission_level: str | None = None
+    token_budget_monthly: int | None = None
+    tokens_used_this_month: int | None = None
+
+
+class PlatformLinkCreate(BaseModel):
+    platform: str
+    platform_user_id: str
+    platform_username: str | None = None
+
+
+class PersonaCreate(BaseModel):
+    name: str
+    system_prompt: str
+    platform: str | None = None
+    platform_server_id: str | None = None
+    allowed_modules: str = '["research", "file_manager", "code_executor"]'
+    default_model: str | None = None
+    max_tokens_per_request: int = 4000
+    is_default: bool = False
+
+
+class PersonaUpdate(BaseModel):
+    name: str | None = None
+    system_prompt: str | None = None
+    platform: str | None = None
+    platform_server_id: str | None = None
+    allowed_modules: str | None = None
+    default_model: str | None = None
+    max_tokens_per_request: int | None = None
+    is_default: bool | None = None
 
 
 async def _get_session() -> AsyncSession:
@@ -379,8 +424,290 @@ async def system_health():
     return results
 
 
+# --------------- User CRUD ---------------
+
+
+@app.post("/api/admin/users")
+async def create_user(body: UserCreate):
+    """Create a new user."""
+    factory = get_session_factory()
+    async with factory() as s:
+        if body.permission_level not in ("guest", "user", "admin", "owner"):
+            raise HTTPException(400, "Invalid permission_level")
+        user = User(
+            permission_level=body.permission_level,
+            token_budget_monthly=body.token_budget_monthly,
+        )
+        s.add(user)
+        await s.commit()
+        await s.refresh(user)
+        return {"id": str(user.id), "permission_level": user.permission_level}
+
+
+@app.put("/api/admin/users/{user_id}")
+async def update_user(user_id: str, body: UserUpdate):
+    """Update user fields."""
+    factory = get_session_factory()
+    async with factory() as s:
+        user = (await s.execute(
+            select(User).where(User.id == uuid.UUID(user_id))
+        )).scalar_one_or_none()
+        if not user:
+            raise HTTPException(404, "User not found")
+        if body.permission_level is not None:
+            if body.permission_level not in ("guest", "user", "admin", "owner"):
+                raise HTTPException(400, "Invalid permission_level")
+            user.permission_level = body.permission_level
+        if body.token_budget_monthly is not None:
+            user.token_budget_monthly = body.token_budget_monthly
+        if body.tokens_used_this_month is not None:
+            user.tokens_used_this_month = body.tokens_used_this_month
+        await s.commit()
+        return {"ok": True}
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def delete_user(user_id: str):
+    """Delete a user and their platform links."""
+    factory = get_session_factory()
+    async with factory() as s:
+        uid = uuid.UUID(user_id)
+        user = (await s.execute(
+            select(User).where(User.id == uid)
+        )).scalar_one_or_none()
+        if not user:
+            raise HTTPException(404, "User not found")
+        await s.execute(
+            delete(UserPlatformLink).where(UserPlatformLink.user_id == uid)
+        )
+        await s.delete(user)
+        await s.commit()
+        return {"ok": True}
+
+
+@app.post("/api/admin/users/{user_id}/reset-budget")
+async def reset_user_budget(user_id: str):
+    """Reset a user's monthly token usage to 0."""
+    factory = get_session_factory()
+    async with factory() as s:
+        user = (await s.execute(
+            select(User).where(User.id == uuid.UUID(user_id))
+        )).scalar_one_or_none()
+        if not user:
+            raise HTTPException(404, "User not found")
+        user.tokens_used_this_month = 0
+        user.budget_reset_at = datetime.now(timezone.utc)
+        await s.commit()
+        return {"ok": True}
+
+
+# --------------- Platform Link CRUD ---------------
+
+
+@app.post("/api/admin/users/{user_id}/links")
+async def add_platform_link(user_id: str, body: PlatformLinkCreate):
+    """Add a platform link to a user."""
+    factory = get_session_factory()
+    async with factory() as s:
+        uid = uuid.UUID(user_id)
+        user = (await s.execute(
+            select(User).where(User.id == uid)
+        )).scalar_one_or_none()
+        if not user:
+            raise HTTPException(404, "User not found")
+        if body.platform not in ("discord", "telegram", "slack"):
+            raise HTTPException(400, "Invalid platform")
+        # Check for duplicate
+        existing = (await s.execute(
+            select(UserPlatformLink).where(
+                UserPlatformLink.platform == body.platform,
+                UserPlatformLink.platform_user_id == body.platform_user_id,
+            )
+        )).scalar_one_or_none()
+        if existing:
+            raise HTTPException(409, "Platform link already exists")
+        link = UserPlatformLink(
+            user_id=uid,
+            platform=body.platform,
+            platform_user_id=body.platform_user_id,
+            platform_username=body.platform_username,
+        )
+        s.add(link)
+        await s.commit()
+        await s.refresh(link)
+        return {"id": str(link.id)}
+
+
+@app.delete("/api/admin/links/{link_id}")
+async def delete_platform_link(link_id: str):
+    """Remove a platform link."""
+    factory = get_session_factory()
+    async with factory() as s:
+        link = (await s.execute(
+            select(UserPlatformLink).where(
+                UserPlatformLink.id == uuid.UUID(link_id)
+            )
+        )).scalar_one_or_none()
+        if not link:
+            raise HTTPException(404, "Link not found")
+        await s.delete(link)
+        await s.commit()
+        return {"ok": True}
+
+
+# --------------- Persona CRUD ---------------
+
+
+@app.post("/api/admin/personas")
+async def create_persona(body: PersonaCreate):
+    """Create a new persona."""
+    factory = get_session_factory()
+    async with factory() as s:
+        # Validate allowed_modules is valid JSON list
+        try:
+            json.loads(body.allowed_modules)
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(400, "allowed_modules must be a JSON list string")
+        persona = Persona(
+            name=body.name,
+            system_prompt=body.system_prompt,
+            platform=body.platform,
+            platform_server_id=body.platform_server_id,
+            allowed_modules=body.allowed_modules,
+            default_model=body.default_model,
+            max_tokens_per_request=body.max_tokens_per_request,
+            is_default=body.is_default,
+        )
+        s.add(persona)
+        await s.commit()
+        await s.refresh(persona)
+        return {"id": str(persona.id), "name": persona.name}
+
+
+@app.put("/api/admin/personas/{persona_id}")
+async def update_persona(persona_id: str, body: PersonaUpdate):
+    """Update a persona."""
+    factory = get_session_factory()
+    async with factory() as s:
+        persona = (await s.execute(
+            select(Persona).where(Persona.id == uuid.UUID(persona_id))
+        )).scalar_one_or_none()
+        if not persona:
+            raise HTTPException(404, "Persona not found")
+        if body.name is not None:
+            persona.name = body.name
+        if body.system_prompt is not None:
+            persona.system_prompt = body.system_prompt
+        if body.platform is not None:
+            persona.platform = body.platform if body.platform else None
+        if body.platform_server_id is not None:
+            persona.platform_server_id = body.platform_server_id if body.platform_server_id else None
+        if body.allowed_modules is not None:
+            try:
+                json.loads(body.allowed_modules)
+            except (json.JSONDecodeError, TypeError):
+                raise HTTPException(400, "allowed_modules must be a JSON list string")
+            persona.allowed_modules = body.allowed_modules
+        if body.default_model is not None:
+            persona.default_model = body.default_model if body.default_model else None
+        if body.max_tokens_per_request is not None:
+            persona.max_tokens_per_request = body.max_tokens_per_request
+        if body.is_default is not None:
+            persona.is_default = body.is_default
+        await s.commit()
+        return {"ok": True}
+
+
+@app.delete("/api/admin/personas/{persona_id}")
+async def delete_persona(persona_id: str):
+    """Delete a persona."""
+    factory = get_session_factory()
+    async with factory() as s:
+        persona = (await s.execute(
+            select(Persona).where(Persona.id == uuid.UUID(persona_id))
+        )).scalar_one_or_none()
+        if not persona:
+            raise HTTPException(404, "Persona not found")
+        await s.delete(persona)
+        await s.commit()
+        return {"ok": True}
+
+
+@app.get("/api/admin/personas/{persona_id}")
+async def get_persona(persona_id: str):
+    """Get full persona details including system prompt."""
+    factory = get_session_factory()
+    async with factory() as s:
+        persona = (await s.execute(
+            select(Persona).where(Persona.id == uuid.UUID(persona_id))
+        )).scalar_one_or_none()
+        if not persona:
+            raise HTTPException(404, "Persona not found")
+        return {
+            "id": str(persona.id),
+            "name": persona.name,
+            "system_prompt": persona.system_prompt,
+            "platform": persona.platform,
+            "platform_server_id": persona.platform_server_id,
+            "allowed_modules": persona.allowed_modules,
+            "default_model": persona.default_model,
+            "max_tokens_per_request": persona.max_tokens_per_request,
+            "is_default": persona.is_default,
+            "created_at": persona.created_at.isoformat() if persona.created_at else None,
+        }
+
+
+# Also return platform link IDs in the users list for the admin portal
+@app.get("/api/admin/users")
+async def admin_users_list():
+    """All users with full platform link details (including link IDs)."""
+    factory = get_session_factory()
+    async with factory() as s:
+        users_result = await s.execute(
+            select(User).order_by(User.created_at.desc())
+        )
+        users = users_result.scalars().all()
+
+        data = []
+        for u in users:
+            links_result = await s.execute(
+                select(UserPlatformLink).where(UserPlatformLink.user_id == u.id)
+            )
+            links = links_result.scalars().all()
+
+            data.append({
+                "id": str(u.id),
+                "permission_level": u.permission_level,
+                "token_budget_monthly": u.token_budget_monthly,
+                "tokens_used_this_month": u.tokens_used_this_month,
+                "budget_reset_at": u.budget_reset_at.isoformat() if u.budget_reset_at else None,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "platforms": [
+                    {
+                        "id": str(lnk.id),
+                        "platform": lnk.platform,
+                        "platform_user_id": lnk.platform_user_id,
+                        "platform_username": lnk.platform_username,
+                    }
+                    for lnk in links
+                ],
+            })
+
+        return data
+
+
+# --------------- HTML routes ---------------
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     """Serve the dashboard HTML."""
     html_path = Path(__file__).parent / "static" / "index.html"
+    return HTMLResponse(content=html_path.read_text())
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_portal():
+    """Serve the admin portal HTML."""
+    html_path = Path(__file__).parent / "static" / "admin.html"
     return HTMLResponse(content=html_path.read_text())
