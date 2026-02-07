@@ -7,7 +7,7 @@ import json
 import re
 
 import structlog
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 
 from core.llm_router.providers.base import LLMProvider, LLMResponse
 from shared.schemas.tools import ToolCall
@@ -166,6 +166,8 @@ class OpenAIProvider(LLMProvider):
             try:
                 response = await self.client.chat.completions.create(**kwargs)
                 break
+            except BadRequestError:
+                raise  # 400 = bad payload, retrying won't help
             except Exception as e:
                 last_error = e
                 logger.warning("openai_api_error", attempt=attempt, error=str(e))
