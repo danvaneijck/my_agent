@@ -60,11 +60,14 @@ class InjectiveTools:
 
             self.network = Network.custom(
                 lcd_endpoint=lcd or defaults.lcd_endpoint,
-                grpc_chain_endpoint=chain_grpc or defaults.grpc_chain_endpoint,
+                tm_websocket_endpoint=defaults.tm_websocket_endpoint,
+                grpc_endpoint=chain_grpc or defaults.grpc_endpoint,
                 grpc_exchange_endpoint=exchange_grpc or defaults.grpc_exchange_endpoint,
                 grpc_explorer_endpoint=defaults.grpc_explorer_endpoint,
-                chain_stream_endpoint=getattr(defaults, "chain_stream_endpoint", ""),
+                chain_stream_endpoint=defaults.chain_stream_endpoint,
                 chain_id=chain_id,
+                env=defaults.env,
+                official_tokens_list_url=defaults.official_tokens_list_url,
             )
             logger.info(
                 "injective_custom_network",
