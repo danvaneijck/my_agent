@@ -138,7 +138,7 @@ class InjectiveTools:
     async def _get_spot_price(self, market_id: str) -> dict:
         from pyinjective.client.model.pagination import PaginationOption
 
-        ob = await self.indexer_client.fetch_spot_orderbook_v2(market_id=market_id)
+        ob = await self.indexer_client.fetch_spot_orderbook_v2(market_id=market_id, depth=1)
         best_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
         best_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
 
@@ -163,7 +163,7 @@ class InjectiveTools:
     async def _get_derivative_price(self, market_id: str) -> dict:
         from pyinjective.client.model.pagination import PaginationOption
 
-        ob = await self.indexer_client.fetch_derivative_orderbook_v2(market_id=market_id)
+        ob = await self.indexer_client.fetch_derivative_orderbook_v2(market_id=market_id, depth=1)
         best_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
         best_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
 
@@ -192,7 +192,7 @@ class InjectiveTools:
         if is_spot is True or is_spot is None:
             try:
                 ob = await self.indexer_client.fetch_spot_orderbook_v2(
-                    market_id=market_id,
+                    market_id=market_id, depth=depth,
                 )
                 return {
                     "market_id": market_id,
@@ -205,7 +205,7 @@ class InjectiveTools:
                     raise
 
         ob = await self.indexer_client.fetch_derivative_orderbook_v2(
-            market_id=market_id,
+            market_id=market_id, depth=depth,
         )
         return {
             "market_id": market_id,
@@ -608,7 +608,7 @@ class InjectiveTools:
         # If no price given, use orderbook with 5% slippage
         if price is None:
             ob = await self.indexer_client.fetch_derivative_orderbook_v2(
-                market_id=market_id,
+                market_id=market_id, depth=1,
             )
             if close_side == "SELL":
                 # Selling to close long — use best bid with 5% slippage down
