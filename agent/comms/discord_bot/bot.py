@@ -71,16 +71,18 @@ class AgentDiscordBot(discord.Client):
         # Show typing indicator while processing
         async with message.channel.typing():
             try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
+                async with httpx.AsyncClient(timeout=120) as client:
                     resp = await client.post(
                         f"{self.settings.orchestrator_url}/message",
                         json=incoming.model_dump(),
                     )
                     if resp.status_code == 200:
                         from shared.schemas.messages import AgentResponse
+
                         response = AgentResponse(**resp.json())
                     else:
                         from shared.schemas.messages import AgentResponse
+
                         response = AgentResponse(
                             content="Sorry, I encountered an error processing your request.",
                             error=f"HTTP {resp.status_code}",
@@ -88,6 +90,7 @@ class AgentDiscordBot(discord.Client):
             except Exception as e:
                 logger.error("discord_orchestrator_error", error=str(e))
                 from shared.schemas.messages import AgentResponse
+
                 response = AgentResponse(
                     content="Sorry, I'm having trouble connecting to my brain. Please try again.",
                     error=str(e),
@@ -143,7 +146,7 @@ class AgentDiscordBot(discord.Client):
             try:
                 # Extract the MinIO object key from the public URL
                 if url.startswith(public_prefix):
-                    key = url[len(public_prefix):]
+                    key = url[len(public_prefix) :]
                 else:
                     logger.warning("unknown_file_url_format", url=url)
                     continue
@@ -154,9 +157,7 @@ class AgentDiscordBot(discord.Client):
                 resp.close()
                 resp.release_conn()
 
-                attachments.append(
-                    discord.File(io.BytesIO(data), filename=filename)
-                )
+                attachments.append(discord.File(io.BytesIO(data), filename=filename))
                 logger.info("file_attached", filename=filename, size=len(data))
             except Exception as e:
                 logger.error("file_download_failed", filename=filename, error=str(e))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import discord
 
 from shared.schemas.messages import AgentResponse, IncomingMessage
@@ -20,7 +21,6 @@ class DiscordNormalizer:
         if message.guild:
             server_id = str(message.guild.id)
 
-        # Attachments are ingested by the bot (not the normalizer)
         return IncomingMessage(
             platform="discord",
             platform_user_id=str(message.author.id),
@@ -32,19 +32,25 @@ class DiscordNormalizer:
         )
 
     def format_response(self, response: AgentResponse) -> list[str]:
-        """Format an AgentResponse for Discord, splitting at 2000 chars.
-
-        File links are NOT added here — the bot attaches them
-        as native discord.File objects so images display inline.
-        """
+        """Format an AgentResponse for Discord, splitting at 2000 chars."""
         content = response.content
         if response.error:
             content += f"\n\n⚠️ Error: {response.error}"
 
+        def _fix_markdown_link(match):
+            text = match.group(1)
+            url = match.group(2)
+
+            if text == url:
+                return url
+
+            return f"{text}: <{url}>"
+
+        content = re.sub(r"\[(.*?)\]\((.*?)\)", _fix_markdown_link, content)
+
         # Split at Discord's 2000 char limit
         chunks = []
         while len(content) > 2000:
-            # Find a good split point
             split_at = content.rfind("\n", 0, 2000)
             if split_at == -1:
                 split_at = content.rfind(" ", 0, 2000)
@@ -57,4 +63,8 @@ class DiscordNormalizer:
         if content:
             chunks.append(content)
 
-        return chunks if chunks else ["I processed your request but have no response to show."]
+        return (
+            chunks
+            if chunks
+            else ["I processed your request but have no response to show."]
+        )

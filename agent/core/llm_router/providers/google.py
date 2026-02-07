@@ -28,16 +28,41 @@ class GoogleProvider(LLMProvider):
         """Google function names must be alphanumeric + underscore. Replace dots."""
         return name.replace(".", "__")
 
-    def _convert_tools(
-        self, tools: list[dict] | None,
-    ) -> tuple[list[types.Tool] | None, dict[str, str]]:
-        """Convert to Google's tool format using parameters_json_schema.
+    def _clean_schema(self, schema: dict) -> dict:
+        """Recursively cleans JSON schema for Gemini compatibility."""
+        if not isinstance(schema, dict):
+            return schema
 
-        Returns (google_tools, name_map) where name_map maps sanitized -> original names.
-        """
+        new_schema = schema.copy()
+
+        # 1. Remove 'title' (adds noise, Gemini prefers 'description')
+        if "title" in new_schema:
+            del new_schema["title"]
+
+        # 2. Ensure 'type' exists if 'properties' exists (default to object)
+        if "properties" in new_schema and "type" not in new_schema:
+            new_schema["type"] = "object"
+
+        # 3. Handle specific types recursively
+        if "properties" in new_schema:
+            new_props = {}
+            for k, v in new_schema["properties"].items():
+                new_props[k] = self._clean_schema(v)
+            new_schema["properties"] = new_props
+
+        if "items" in new_schema:
+            new_schema["items"] = self._clean_schema(new_schema["items"])
+
+        return new_schema
+
+    def _convert_tools(
+        self,
+        tools: list[dict] | None,
+    ) -> tuple[list[types.Tool] | None, dict[str, str]]:
         name_map: dict[str, str] = {}
         if not tools:
             return None, name_map
+
         declarations = []
         for tool in tools:
             func = tool.get("function", tool)
@@ -45,17 +70,24 @@ class GoogleProvider(LLMProvider):
             safe_name = self._sanitize_name(original_name)
             name_map[safe_name] = original_name
 
-            # Pass the JSON schema dict directly — preserves enums, types, etc.
-            params = func.get("parameters", {"type": "object", "properties": {}})
+            params = func.get("parameters")
+            if params is None:
+                params = {"type": "object", "properties": {}}
 
-            declarations.append(types.FunctionDeclaration(
-                name=safe_name,
-                description=func.get("description", ""),
-                parameters_json_schema=params,
-            ))
+            clean_params = self._clean_schema(params)
+
+            declarations.append(
+                types.FunctionDeclaration(
+                    name=safe_name,
+                    description=func.get("description", ""),
+                    parameters_json_schema=clean_params,
+                )
+            )
         return [types.Tool(function_declarations=declarations)], name_map
 
-    def _convert_messages(self, messages: list[dict]) -> tuple[str | None, list[types.Content]]:
+    def _convert_messages(
+        self, messages: list[dict]
+    ) -> tuple[str | None, list[types.Content]]:
         """Convert messages to Google format.
 
         Sanitizes function names in tool_call/tool_result messages to match
@@ -67,31 +99,51 @@ class GoogleProvider(LLMProvider):
             if msg["role"] == "system":
                 system_parts.append(msg["content"])
             elif msg["role"] == "tool_call":
-                contents.append(types.Content(
-                    role="model",
-                    parts=[types.Part(function_call=types.FunctionCall(
-                        name=self._sanitize_name(msg.get("name", "")),
-                        args=msg.get("arguments", {}),
-                    ))],
-                ))
+                args = msg.get("arguments")
+                if args is None:
+                    args = {}
+
+                contents.append(
+                    types.Content(
+                        role="model",
+                        parts=[
+                            types.Part(
+                                function_call=types.FunctionCall(
+                                    name=self._sanitize_name(msg.get("name", "")),
+                                    args=args,
+                                )
+                            )
+                        ],
+                    )
+                )
             elif msg["role"] == "tool_result":
-                contents.append(types.Content(
-                    role="user",
-                    parts=[types.Part(function_response=types.FunctionResponse(
-                        name=self._sanitize_name(msg.get("name", "")),
-                        response={"result": msg.get("content", "")},
-                    ))],
-                ))
+                contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part(
+                                function_response=types.FunctionResponse(
+                                    name=self._sanitize_name(msg.get("name", "")),
+                                    response={"result": msg.get("content", "")},
+                                )
+                            )
+                        ],
+                    )
+                )
             elif msg["role"] == "assistant":
-                contents.append(types.Content(
-                    role="model",
-                    parts=[types.Part(text=msg["content"])],
-                ))
+                contents.append(
+                    types.Content(
+                        role="model",
+                        parts=[types.Part(text=msg["content"])],
+                    )
+                )
             else:
-                contents.append(types.Content(
-                    role="user",
-                    parts=[types.Part(text=msg["content"])],
-                ))
+                contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[types.Part(text=msg["content"])],
+                    )
+                )
         system = "\n\n".join(system_parts) if system_parts else None
         return system, contents
 
@@ -130,13 +182,17 @@ class GoogleProvider(LLMProvider):
                 last_error = e
                 logger.warning("google_api_error", attempt=attempt, error=str(e))
                 if attempt < 2:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
         else:
             raise last_error  # type: ignore[misc]
 
         # Parse the response, retrying on MALFORMED_FUNCTION_CALL
         return await self._parse_response(
-            response, name_map, model, contents, config,
+            response,
+            name_map,
+            model,
+            contents,
+            config,
         )
 
     async def _parse_response(
@@ -156,21 +212,62 @@ class GoogleProvider(LLMProvider):
         if response.candidates:
             candidate = response.candidates[0]
             finish_reason = getattr(candidate, "finish_reason", None)
-            parts = getattr(candidate.content, "parts", None) if candidate.content else None
-            for part in (parts or []):
+            parts = (
+                getattr(candidate.content, "parts", None) if candidate.content else None
+            )
+            for part in parts or []:
                 if part.text:
                     content = (content or "") + part.text
                 if part.function_call:
                     raw_name = part.function_call.name
                     original_name = name_map.get(raw_name, raw_name)
-                    tool_calls.append(ToolCall(
-                        tool_name=original_name,
-                        arguments=dict(part.function_call.args) if part.function_call.args else {},
-                    ))
+                    tool_calls.append(
+                        ToolCall(
+                            tool_name=original_name,
+                            arguments=(
+                                dict(part.function_call.args)
+                                if part.function_call.args
+                                else {}
+                            ),
+                        )
+                    )
 
         # Retry on MALFORMED_FUNCTION_CALL (known transient Gemini issue)
         fr_str = str(finish_reason) if finish_reason else ""
-        if "MALFORMED_FUNCTION_CALL" in fr_str and malformed_attempt < _MAX_MALFORMED_RETRIES:
+
+        # --- DEBUG BLOCK START ---
+        if "MALFORMED_FUNCTION_CALL" in fr_str:
+            import json
+
+            # 1. Inspect what the model actually tried to output (sometimes it's partial JSON in text)
+            raw_parts = []
+            if response.candidates and response.candidates[0].content:
+                for p in response.candidates[0].content.parts:
+                    # Dump the raw part dictionary
+                    raw_parts.append(
+                        p.to_json_dict() if hasattr(p, "to_json_dict") else str(p)
+                    )
+
+            logger.error(
+                "malformed_function_call_debug",
+                finish_reason=fr_str,
+                model_output_parts=raw_parts,
+            )
+
+            # 2. Inspect the Schema you sent (Crucial Step)
+            # We need to see if the schema has "anyOf", missing types, or "null" usage
+            if config.tools:
+                # Convert Google tool objects back to dicts for logging
+                tool_dump = [t.to_json_dict() for t in config.tools]
+                logger.error(
+                    "malformed_schema_dump", tools=json.dumps(tool_dump, indent=2)
+                )
+        # --- DEBUG BLOCK END ---
+
+        if (
+            "MALFORMED_FUNCTION_CALL" in fr_str
+            and malformed_attempt < _MAX_MALFORMED_RETRIES
+        ):
             logger.warning(
                 "gemini_malformed_function_call_retry",
                 attempt=malformed_attempt + 1,
@@ -186,7 +283,11 @@ class GoogleProvider(LLMProvider):
             except Exception as e:
                 raise RuntimeError(f"Gemini retry failed: {e}") from e
             return await self._parse_response(
-                response, name_map, model, contents, config,
+                response,
+                name_map,
+                model,
+                contents,
+                config,
                 malformed_attempt=malformed_attempt + 1,
             )
 
@@ -225,7 +326,10 @@ class GoogleProvider(LLMProvider):
         )
 
     async def embed(
-        self, text: str, model: str = "gemini-embedding-001", dimensions: int = 1536,
+        self,
+        text: str,
+        model: str = "gemini-embedding-001",
+        dimensions: int = 1536,
     ) -> list[float]:
         """Generate embeddings using Google.
 
@@ -249,5 +353,5 @@ class GoogleProvider(LLMProvider):
                 last_error = e
                 logger.warning("google_embed_error", attempt=attempt, error=str(e))
                 if attempt < 2:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
         raise last_error  # type: ignore[misc]

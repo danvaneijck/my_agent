@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 
 import structlog
 from anthropic import AsyncAnthropic
@@ -19,13 +20,36 @@ class AnthropicProvider(LLMProvider):
     def __init__(self, api_key: str):
         self.client = AsyncAnthropic(api_key=api_key)
 
-    def _convert_tools(self, tools: list[dict] | None) -> list[dict] | None:
-        """Convert OpenAI-style tool definitions to Anthropic format."""
+    def _convert_tools(
+        self, tools: list[dict] | None
+    ) -> tuple[list[dict] | None, dict[str, str]]:
+        """
+        Convert OpenAI-style tool definitions to Anthropic format.
+
+        Returns:
+            Tuple containing:
+            1. List of Anthropic tool definitions
+            2. Dictionary mapping sanitized_names -> original_names
+        """
         if not tools:
-            return None
+            return None, {}
+
         anthropic_tools = []
+        name_mapping = {}
+
         for tool in tools:
             func = tool.get("function", tool)
+
+            original_name = func["name"]
+            # Anthropic enforces ^[a-zA-Z0-9_-]{1,128}$.
+            # Replace any character that is NOT alphanumeric/underscore/hyphen with an underscore.
+            sanitized_name = re.sub(r"[^a-zA-Z0-9_-]", "_", original_name)
+            # Ensure it doesn't exceed 64 chars (safe limit, though error allows 128)
+            sanitized_name = sanitized_name[:64]
+
+            # Store mapping to restore original name in response
+            name_mapping[sanitized_name] = original_name
+
             properties = {}
             required = []
             for param in func.get("parameters", {}).get("properties", {}):
@@ -39,16 +63,18 @@ class AnthropicProvider(LLMProvider):
             if "required" in func.get("parameters", {}):
                 required = func["parameters"]["required"]
 
-            anthropic_tools.append({
-                "name": func["name"],
-                "description": func.get("description", ""),
-                "input_schema": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
-                },
-            })
-        return anthropic_tools
+            anthropic_tools.append(
+                {
+                    "name": sanitized_name,
+                    "description": func.get("description", ""),
+                    "input_schema": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                    },
+                }
+            )
+        return anthropic_tools, name_mapping
 
     def _convert_messages(self, messages: list[dict]) -> tuple[str | None, list[dict]]:
         """Extract system message and convert to Anthropic format."""
@@ -59,30 +85,45 @@ class AnthropicProvider(LLMProvider):
                 system = msg["content"]
             elif msg["role"] == "tool_call":
                 # Convert to assistant message with tool_use block
-                converted.append({
-                    "role": "assistant",
-                    "content": [{
-                        "type": "tool_use",
-                        "id": msg.get("tool_use_id", "tool_" + msg.get("name", "unknown")),
-                        "name": msg.get("name", ""),
-                        "input": msg.get("arguments", {}),
-                    }],
-                })
+                # Ensure name is sanitized here as well if needed, though strictly
+                # we should match what the model effectively 'outputted' previously.
+                tool_name = msg.get("name", "")
+                sanitized_name = re.sub(r"[^a-zA-Z0-9_-]", "_", tool_name)[:64]
+
+                converted.append(
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": msg.get("tool_use_id", "tool_" + sanitized_name),
+                                "name": sanitized_name,
+                                "input": msg.get("arguments", {}),
+                            }
+                        ],
+                    }
+                )
             elif msg["role"] == "tool_result":
-                converted.append({
-                    "role": "user",
-                    "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": msg.get("tool_use_id", ""),
-                        "content": str(msg.get("content", "")),
-                    }],
-                })
+                converted.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.get("tool_use_id", ""),
+                                "content": str(msg.get("content", "")),
+                            }
+                        ],
+                    }
+                )
             else:
                 role = "assistant" if msg["role"] == "assistant" else "user"
-                converted.append({
-                    "role": role,
-                    "content": msg["content"],
-                })
+                converted.append(
+                    {
+                        "role": role,
+                        "content": msg["content"],
+                    }
+                )
         return system, converted
 
     async def chat(
@@ -95,7 +136,8 @@ class AnthropicProvider(LLMProvider):
     ) -> LLMResponse:
         """Send a chat completion to Anthropic."""
         system, converted_messages = self._convert_messages(messages)
-        anthropic_tools = self._convert_tools(tools)
+        # Get tools AND the name mapping
+        anthropic_tools, tool_name_mapping = self._convert_tools(tools)
 
         kwargs: dict = {
             "model": model,
@@ -117,7 +159,7 @@ class AnthropicProvider(LLMProvider):
                 last_error = e
                 logger.warning("anthropic_api_error", attempt=attempt, error=str(e))
                 if attempt < 2:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
         else:
             raise last_error  # type: ignore[misc]
 
@@ -128,10 +170,16 @@ class AnthropicProvider(LLMProvider):
             if block.type == "text":
                 content = block.text
             elif block.type == "tool_use":
-                tool_calls.append(ToolCall(
-                    tool_name=block.name,
-                    arguments=block.input,
-                ))
+                # Convert the sanitized name back to the original name
+                # so the router knows which function to execute
+                original_name = tool_name_mapping.get(block.name, block.name)
+
+                tool_calls.append(
+                    ToolCall(
+                        tool_name=original_name,
+                        arguments=block.input,
+                    )
+                )
 
         stop_reason = "end_turn"
         if response.stop_reason == "tool_use":
@@ -150,4 +198,6 @@ class AnthropicProvider(LLMProvider):
 
     async def embed(self, text: str, model: str = "") -> list[float]:
         """Anthropic does not natively support embeddings. Raise an error."""
-        raise NotImplementedError("Anthropic does not provide an embedding API. Use OpenAI or Google.")
+        raise NotImplementedError(
+            "Anthropic does not provide an embedding API. Use OpenAI or Google."
+        )
