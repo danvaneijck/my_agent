@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     # Admin portal
     admin_api_key: str = ""
 
+    # Injective
+    injective_private_key: str = ""
+    injective_network: str = "testnet"  # "mainnet" or "testnet"
+
     # Atlassian
     atlassian_url: str = ""
     atlassian_username: str = ""
