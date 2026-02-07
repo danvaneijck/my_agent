@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 
 import structlog
@@ -26,6 +27,33 @@ MODEL_CONTEXT_WINDOWS = {
 }
 
 DEFAULT_CONTEXT_WINDOW = 128000
+
+# ---------------------------------------------------------------------------
+# Heuristic: does the incoming message need full conversation history?
+# ---------------------------------------------------------------------------
+# Patterns that suggest the message refers to prior conversation context.
+_CONTEXTUAL_PATTERNS = re.compile(
+    r"""(?x)              # verbose mode
+    \b(?:
+        # pronouns / anaphora referencing a prior entity
+        it | that | this | those | them | its | their | these
+        # continuation / additive words
+        | also | again | another | too | more | instead | otherwise | as\s+well
+        # back-references
+        | same | previous | last\s+one | above | mentioned | earlier
+        # short affirmations / negations (responding to agent)
+        | yes | no | ok | okay | sure | nah | yep | nope | correct
+        # explicit conversation references
+        | you\s+said | you\s+mentioned | as\s+before | like\s+before
+        # cancel / modify previous action
+        | cancel | undo | revert | change\s+it | update\s+it
+    )\b
+    """,
+    re.IGNORECASE,
+)
+
+# Minimum word count below which a message is almost certainly a follow-up
+_SHORT_MESSAGE_THRESHOLD = 4
 
 
 class ContextBuilder:
@@ -85,8 +113,16 @@ class ContextBuilder:
                     "content": f"Summary of earlier conversation:\n{summary}",
                 })
 
-        # 4. Working memory (recent messages)
-        recent_messages = await self._get_recent_messages(session, conversation)
+        # 4. Working memory — load adaptively based on message content
+        needs_full = self._needs_full_context(incoming_message)
+        recent_messages = await self._get_recent_messages(
+            session, conversation, full=needs_full,
+        )
+        logger.info(
+            "context_depth",
+            full_context=needs_full,
+            messages_loaded=len(recent_messages),
+        )
         for msg in recent_messages:
             if msg.role == "tool_call":
                 try:
@@ -192,17 +228,50 @@ class ContextBuilder:
         self,
         session: AsyncSession,
         conversation: Conversation,
+        full: bool = True,
     ) -> list[Message]:
-        """Get the most recent messages from a conversation."""
+        """Get the most recent messages from a conversation.
+
+        When *full* is False only the last few messages are loaded
+        (``minimal_memory_messages``, default 4) — just enough to
+        maintain basic conversational flow for standalone queries.
+        """
+        limit = (
+            self.settings.working_memory_messages
+            if full
+            else getattr(self.settings, "minimal_memory_messages", 4)
+        )
         result = await session.execute(
             select(Message)
             .where(Message.conversation_id == conversation.id)
             .order_by(Message.created_at.desc())
-            .limit(self.settings.working_memory_messages)
+            .limit(limit)
         )
         messages = list(result.scalars().all())
         messages.reverse()  # Oldest first
         return messages
+
+    @staticmethod
+    def _needs_full_context(message: str) -> bool:
+        """Decide whether *message* requires full conversation history.
+
+        Returns True (load full history) when the message appears to
+        reference prior context — pronouns, back-references,
+        continuations, or very short follow-ups.
+
+        Returns False (standalone) for self-contained queries like
+        "get inj spot price" or "search for BTC markets".
+        """
+        # Very short messages are almost always follow-ups
+        if len(message.split()) < _SHORT_MESSAGE_THRESHOLD:
+            return True
+
+        # Check for contextual language
+        if _CONTEXTUAL_PATTERNS.search(message):
+            return True
+
+        # Otherwise treat as standalone
+        return False
 
     def _trim_to_budget(
         self,

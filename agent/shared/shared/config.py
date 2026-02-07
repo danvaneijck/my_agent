@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     max_agent_iterations: int = 10
     conversation_timeout_minutes: int = 30
     working_memory_messages: int = 20
+    # Reduced history for standalone messages (no prior-context references)
+    minimal_memory_messages: int = 4
 
     # Admin portal
     admin_api_key: str = ""
