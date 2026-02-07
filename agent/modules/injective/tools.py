@@ -60,13 +60,14 @@ class InjectiveTools:
 
             self.network = Network.custom(
                 lcd_endpoint=lcd or defaults.lcd_endpoint,
-                grpc_endpoint=chain_grpc or defaults.grpc_chain_endpoint,
+                grpc_endpoint=chain_grpc or defaults.grpc_endpoint,
                 grpc_exchange_endpoint=exchange_grpc or defaults.grpc_exchange_endpoint,
                 grpc_explorer_endpoint=defaults.grpc_explorer_endpoint,
                 chain_stream_endpoint=defaults.chain_stream_endpoint,
                 chain_id=chain_id,
                 env=defaults.env,
                 official_tokens_list_url=defaults.official_tokens_list_url,
+                tm_websocket_endpoint=defaults.tm_websocket_endpoint,
             )
             logger.info(
                 "injective_custom_network",
@@ -143,7 +144,7 @@ class InjectiveTools:
             composer=self.composer,
         )
 
-    def _subaccount_id(self, index: int = 0) -> str:
+    def _subaccount_id(self, index: int = 1) -> str:
         require_wallet(self.address)
         return self.address.get_subaccount_id(index=index)
 
@@ -204,8 +205,16 @@ class InjectiveTools:
         ob = await self.indexer_client.fetch_spot_orderbook_v2(
             market_id=market_id, depth=1
         )
-        raw_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
-        raw_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
+        raw_bid = (
+            ob["orderbook"].get("buys", [{}])[0].get("price", "")
+            if ob.get("orderbook", {}).get("buys")
+            else ""
+        )
+        raw_ask = (
+            ob["orderbook"].get("sells", [{}])[0].get("price", "")
+            if ob.get("orderbook", {}).get("sells")
+            else ""
+        )
 
         pagination = PaginationOption(skip=0, limit=1)
         trades = await self.indexer_client.fetch_spot_trades(
@@ -232,8 +241,16 @@ class InjectiveTools:
         ob = await self.indexer_client.fetch_derivative_orderbook_v2(
             market_id=market_id, depth=1
         )
-        raw_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
-        raw_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
+        raw_bid = (
+            ob["orderbook"].get("buys", [{}])[0].get("price", "")
+            if ob.get("orderbook", {}).get("buys")
+            else ""
+        )
+        raw_ask = (
+            ob["orderbook"].get("sells", [{}])[0].get("price", "")
+            if ob.get("orderbook", {}).get("sells")
+            else ""
+        )
 
         pagination = PaginationOption(skip=0, limit=1)
         trades = await self.indexer_client.fetch_derivative_trades(
@@ -268,14 +285,14 @@ class InjectiveTools:
                     "market_id": market_id,
                     "market_type": "spot",
                     "bids": format_orderbook_side(
-                        ob.get("buys", [])[:depth],
+                        ob["orderbook"].get("buys", [])[:depth],
                         self.token_registry,
                         base_denom,
                         quote_denom,
                         is_spot=True,
                     ),
                     "asks": format_orderbook_side(
-                        ob.get("sells", [])[:depth],
+                        ob["orderbook"].get("sells", [])[:depth],
                         self.token_registry,
                         base_denom,
                         quote_denom,
@@ -294,14 +311,14 @@ class InjectiveTools:
             "market_id": market_id,
             "market_type": "derivative",
             "bids": format_orderbook_side(
-                ob.get("buys", [])[:depth],
+                ob["orderbook"].get("buys", [])[:depth],
                 self.token_registry,
                 "",
                 quote_denom,
                 is_spot=False,
             ),
             "asks": format_orderbook_side(
-                ob.get("sells", [])[:depth],
+                ob["orderbook"].get("sells", [])[:depth],
                 self.token_registry,
                 "",
                 quote_denom,
@@ -311,7 +328,7 @@ class InjectiveTools:
 
     # ── Account & Subaccount ─────────────────────────────────────────────
 
-    async def get_balances(self, subaccount_index: int = 0) -> dict:
+    async def get_balances(self, subaccount_index: int = 1) -> dict:
         """Get balances for a subaccount."""
         require_wallet(self.address)
         subaccount_id = self._subaccount_id(subaccount_index)
@@ -345,6 +362,7 @@ class InjectiveTools:
         raw = await self.indexer_client.fetch_portfolio(
             account_address=self.acc_address,
         )
+        print(raw)
         portfolio = raw.get("portfolio", {})
 
         bank_balances = []
@@ -408,18 +426,21 @@ class InjectiveTools:
         if action == "deposit":
             msg = self.composer.msg_deposit(
                 sender=self.acc_address,
-                subaccount_id=self._subaccount_id(source_index),
+                subaccount_id=self._subaccount_id(dest_index),
                 amount=Decimal(chain_amount),
                 denom=denom,
             )
         elif action == "withdraw":
             msg = self.composer.msg_withdraw(
                 sender=self.acc_address,
-                subaccount_id=self._subaccount_id(source_index),
+                subaccount_id=self._subaccount_id(dest_index),
                 amount=Decimal(chain_amount),
                 denom=denom,
             )
         elif action == "transfer":
+            print(
+                f"Transferring {amount} {denom} from subaccount {source_index} to {dest_index}"
+            )
             msg = self.composer.msg_subaccount_transfer(
                 sender=self.acc_address,
                 source_subaccount_id=self._subaccount_id(source_index),
@@ -461,7 +482,7 @@ class InjectiveTools:
             msg = self.composer.msg_create_spot_market_order(
                 market_id=market_id,
                 sender=self.acc_address,
-                subaccount_id=self._subaccount_id(0),
+                subaccount_id=self._subaccount_id(1),
                 fee_recipient=self.acc_address,
                 price=dec_price,
                 quantity=dec_quantity,
@@ -472,7 +493,7 @@ class InjectiveTools:
             msg = self.composer.msg_create_spot_limit_order(
                 market_id=market_id,
                 sender=self.acc_address,
-                subaccount_id=self._subaccount_id(0),
+                subaccount_id=self._subaccount_id(1),
                 fee_recipient=self.acc_address,
                 price=dec_price,
                 quantity=dec_quantity,
@@ -498,7 +519,7 @@ class InjectiveTools:
         msg = self.composer.msg_cancel_spot_order(
             market_id=market_id,
             sender=self.acc_address,
-            subaccount_id=self._subaccount_id(0),
+            subaccount_id=self._subaccount_id(1),
             order_hash=order_hash,
         )
         result = await self.broadcaster.broadcast([msg])
@@ -512,7 +533,7 @@ class InjectiveTools:
     async def get_spot_orders(
         self,
         market_id: str | None = None,
-        subaccount_index: int = 0,
+        subaccount_index: int = 1,
     ) -> dict:
         """List open spot orders."""
         require_wallet(self.address)
@@ -520,7 +541,7 @@ class InjectiveTools:
 
         kwargs: dict = {"subaccount_id": subaccount_id}
         if market_id:
-            kwargs["market_id"] = market_id
+            kwargs["market_ids"] = [market_id]
 
         raw = await self.indexer_client.fetch_spot_orders(**kwargs)
         orders = []
@@ -575,7 +596,7 @@ class InjectiveTools:
             msg = self.composer.msg_create_derivative_market_order(
                 market_id=market_id,
                 sender=self.acc_address,
-                subaccount_id=self._subaccount_id(0),
+                subaccount_id=self._subaccount_id(1),
                 fee_recipient=self.acc_address,
                 price=dec_price,
                 quantity=dec_quantity,
@@ -587,7 +608,7 @@ class InjectiveTools:
             msg = self.composer.msg_create_derivative_limit_order(
                 market_id=market_id,
                 sender=self.acc_address,
-                subaccount_id=self._subaccount_id(0),
+                subaccount_id=self._subaccount_id(1),
                 fee_recipient=self.acc_address,
                 price=dec_price,
                 quantity=dec_quantity,
@@ -617,7 +638,7 @@ class InjectiveTools:
         msg = self.composer.msg_cancel_derivative_order(
             market_id=market_id,
             sender=self.acc_address,
-            subaccount_id=self._subaccount_id(0),
+            subaccount_id=self._subaccount_id(1),
             order_hash=order_hash,
         )
         result = await self.broadcaster.broadcast([msg])
@@ -631,7 +652,7 @@ class InjectiveTools:
     async def get_derivative_orders(
         self,
         market_id: str | None = None,
-        subaccount_index: int = 0,
+        subaccount_index: int = 1,
     ) -> dict:
         """List open derivative orders."""
         require_wallet(self.address)
@@ -639,9 +660,10 @@ class InjectiveTools:
 
         kwargs: dict = {"subaccount_id": subaccount_id}
         if market_id:
-            kwargs["market_id"] = market_id
+            kwargs["market_ids"] = [market_id]
 
         raw = await self.indexer_client.fetch_derivative_orders(**kwargs)
+        print(raw)
         orders = []
         for o in raw.get("orders", []):
             mid = o.get("marketId", "")
@@ -664,7 +686,7 @@ class InjectiveTools:
     async def get_positions(
         self,
         market_id: str | None = None,
-        subaccount_index: int = 0,
+        subaccount_index: int = 1,
     ) -> dict:
         """Get open perpetual positions."""
         require_wallet(self.address)
@@ -675,6 +697,7 @@ class InjectiveTools:
             kwargs["market_ids"] = [market_id]
 
         raw = await self.indexer_client.fetch_derivative_positions_v2(**kwargs)
+        print(raw)
         positions = []
         for p in raw.get("positions", []):
             mid = p.get("marketId", "")
@@ -707,7 +730,7 @@ class InjectiveTools:
     ) -> dict:
         """Close an open position with a reduce-only market order."""
         require_wallet(self.address)
-        subaccount_id = self._subaccount_id(0)
+        subaccount_id = self._subaccount_id(1)
 
         # Find the current position
         raw = await self.indexer_client.fetch_derivative_positions_v2(

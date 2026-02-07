@@ -52,6 +52,7 @@ async def main() -> None:
     env_file = os.environ.get("ENV_FILE", ".env")
     if os.path.exists(env_file):
         from dotenv import load_dotenv
+
         load_dotenv(env_file)
         print(f"Loaded env from {env_file}")
     else:
@@ -69,8 +70,10 @@ async def main() -> None:
     print(f"Initialized in {time.time() - t0:.1f}s")
     print(f"  Network:  {tools.settings.injective_network}")
     print(f"  Address:  {tools.acc_address or '(read-only, no wallet)'}")
-    print(f"  Markets cached: {len(tools.market_cache.spot_markets)} spot, "
-          f"{len(tools.market_cache.derivative_markets)} derivative")
+    print(
+        f"  Markets cached: {len(tools.market_cache.spot_markets)} spot, "
+        f"{len(tools.market_cache.derivative_markets)} derivative"
+    )
 
     # ── 1. search_markets (spot) ─────────────────────────────────────────
     print("\n\n>>> search_markets(query='INJ', market_type='spot')")
@@ -132,8 +135,8 @@ async def main() -> None:
         _pp("get_portfolio", result)
 
         # ── 8. get_balances ──────────────────────────────────────────────
-        print("\n\n>>> get_balances(subaccount_index=0)")
-        result = await tools.get_balances(subaccount_index=0)
+        print("\n\n>>> get_balances(subaccount_index=1)")
+        result = await tools.get_balances(subaccount_index=1)
         _pp("get_balances", result)
 
         # ── 9. get_subaccounts ───────────────────────────────────────────
@@ -160,9 +163,9 @@ async def main() -> None:
 
     # ── Write operations (off by default) ────────────────────────────────
     if not write_tests:
-        print("\n\n" + "="*60)
+        print("\n\n" + "=" * 60)
         print("  Write tests SKIPPED (set RUN_WRITE_TESTS=1 to enable)")
-        print("="*60)
+        print("=" * 60)
         print("\nAll read-only tests complete.")
         return
 
@@ -170,15 +173,17 @@ async def main() -> None:
         print("\n  Cannot run write tests without a wallet")
         return
 
-    print("\n\n" + "="*60)
+    print("\n\n" + "=" * 60)
     print("  WRITE TESTS — real transactions will be submitted!")
-    print("="*60)
+    print("=" * 60)
 
     # ── 13. subaccount_transfer (deposit) ────────────────────────────────
     print("\n\n>>> subaccount_transfer(amount=0.001, denom='inj', action='deposit')")
     try:
         result = await tools.subaccount_transfer(
-            amount=0.001, denom="inj", action="deposit",
+            amount=0.001,
+            denom="inj",
+            action="deposit",
         )
         _pp("subaccount_transfer — deposit", result)
     except Exception as e:
@@ -187,13 +192,15 @@ async def main() -> None:
     # ── 14. place_spot_order (limit, far from market) ────────────────────
     if spot_market_id:
         # Place a buy limit well below market so it won't fill
-        print(f"\n\n>>> place_spot_order(side='buy', price=0.01, quantity=1, order_type='limit')")
+        print(
+            f"\n\n>>> place_spot_order(side='buy', price=0.01, quantity=1, order_type='limit')"
+        )
         try:
             result = await tools.place_spot_order(
                 market_id=spot_market_id,
                 side="buy",
-                price=0.01,
-                quantity=1,
+                price=0.1,
+                quantity=10,
                 order_type="limit",
             )
             _pp("place_spot_order", result)
@@ -208,7 +215,8 @@ async def main() -> None:
                     oh = orders["orders"][0]["order_hash"]
                     print(f"\n>>> cancel_spot_order(order_hash='{oh[:16]}...')")
                     cancel_result = await tools.cancel_spot_order(
-                        market_id=spot_market_id, order_hash=oh,
+                        market_id=spot_market_id,
+                        order_hash=oh,
                     )
                     _pp("cancel_spot_order", cancel_result)
         except Exception as e:
@@ -216,13 +224,15 @@ async def main() -> None:
 
     # ── 16. place_derivative_order (limit, far from market) ──────────────
     if deriv_market_id:
-        print(f"\n\n>>> place_derivative_order(side='buy', price=1.0, quantity=0.001, leverage=1)")
+        print(
+            f"\n\n>>> place_derivative_order(side='buy', price=1.0, quantity=0.001, leverage=1)"
+        )
         try:
             result = await tools.place_derivative_order(
                 market_id=deriv_market_id,
                 side="buy",
                 price=1.0,
-                quantity=0.001,
+                quantity=1.0,
                 leverage=1,
                 order_type="limit",
             )
@@ -237,7 +247,8 @@ async def main() -> None:
                     oh = orders["orders"][0]["order_hash"]
                     print(f"\n>>> cancel_derivative_order(order_hash='{oh[:16]}...')")
                     cancel_result = await tools.cancel_derivative_order(
-                        market_id=deriv_market_id, order_hash=oh,
+                        market_id=deriv_market_id,
+                        order_hash=oh,
                     )
                     _pp("cancel_derivative_order", cancel_result)
         except Exception as e:
