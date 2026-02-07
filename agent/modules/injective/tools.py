@@ -63,8 +63,10 @@ class InjectiveTools:
                 grpc_endpoint=chain_grpc or defaults.grpc_chain_endpoint,
                 grpc_exchange_endpoint=exchange_grpc or defaults.grpc_exchange_endpoint,
                 grpc_explorer_endpoint=defaults.grpc_explorer_endpoint,
-                chain_stream_endpoint=getattr(defaults, "chain_stream_endpoint", ""),
+                chain_stream_endpoint=defaults.chain_stream_endpoint,
                 chain_id=chain_id,
+                env=defaults.env,
+                official_tokens_list_url=defaults.official_tokens_list_url,
             )
             logger.info(
                 "injective_custom_network",
