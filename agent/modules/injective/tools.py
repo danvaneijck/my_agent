@@ -8,6 +8,7 @@ from uuid import uuid4
 import structlog
 
 from modules.injective.helpers import MarketCache, format_orderbook_side, require_wallet
+from modules.injective.token_registry import TokenRegistry
 from shared.config import get_settings
 
 logger = structlog.get_logger()
@@ -17,12 +18,14 @@ class InjectiveTools:
     """Live Injective DEX trading tools.
 
     Uses IndexerClient for read-only queries and AsyncClient + MsgBroadcasterWithPk
-    for transaction signing/broadcasting.
+    for transaction signing/broadcasting. All prices and quantities are converted
+    to human-readable form using token decimals from the official injective-lists.
     """
 
     def __init__(self) -> None:
         self.settings = get_settings()
         self.market_cache = MarketCache()
+        self.token_registry = TokenRegistry()
 
         # These are set during async init
         self.network = None
@@ -40,7 +43,37 @@ class InjectiveTools:
         from pyinjective.indexer_client import IndexerClient
 
         net_name = self.settings.injective_network.lower()
-        if net_name == "mainnet":
+
+        # Use custom endpoints if provided, otherwise SDK defaults
+        exchange_grpc = self.settings.injective_exchange_grpc.strip()
+        chain_grpc = self.settings.injective_chain_grpc.strip()
+        lcd = self.settings.injective_lcd.strip()
+
+        if exchange_grpc or chain_grpc or lcd:
+            # At least one custom endpoint — build a custom network
+            if net_name == "mainnet":
+                defaults = Network.mainnet()
+                chain_id = "injective-1"
+            else:
+                defaults = Network.testnet()
+                chain_id = "injective-888"
+
+            self.network = Network.custom(
+                lcd_endpoint=lcd or defaults.lcd_endpoint,
+                grpc_chain_endpoint=chain_grpc or defaults.grpc_chain_endpoint,
+                grpc_exchange_endpoint=exchange_grpc or defaults.grpc_exchange_endpoint,
+                grpc_explorer_endpoint=defaults.grpc_explorer_endpoint,
+                chain_stream_endpoint=getattr(defaults, "chain_stream_endpoint", ""),
+                chain_id=chain_id,
+            )
+            logger.info(
+                "injective_custom_network",
+                network=net_name,
+                exchange_grpc=exchange_grpc or "(default)",
+                chain_grpc=chain_grpc or "(default)",
+                lcd=lcd or "(default)",
+            )
+        elif net_name == "mainnet":
             self.network = Network.mainnet()
         else:
             self.network = Network.testnet()
@@ -49,6 +82,10 @@ class InjectiveTools:
 
         # IndexerClient is always available (read-only, no wallet needed)
         self.indexer_client = IndexerClient(self.network)
+
+        # Load token registry (decimals, symbols)
+        custom_tokens = self.settings.injective_custom_tokens.strip() or None
+        await self.token_registry.load(network=net_name, custom_file=custom_tokens)
 
         # Wallet + broadcaster: accept either hex private key or mnemonic
         pk_hex = self.settings.injective_private_key.strip()
@@ -72,7 +109,6 @@ class InjectiveTools:
         from pyinjective.wallet import PrivateKey
 
         priv_key = PrivateKey.from_mnemonic(mnemonic)
-        # PrivateKey stores raw bytes; convert to hex string
         return priv_key.to_hex()
 
     async def _init_wallet(self, pk_hex: str) -> None:
@@ -106,6 +142,28 @@ class InjectiveTools:
         require_wallet(self.address)
         return self.address.get_subaccount_id(index=index)
 
+    def _market_denoms(self, market_id: str) -> tuple[str, str, bool]:
+        """Look up base_denom, quote_denom, and is_spot for a market."""
+        for m in self.market_cache.spot_markets:
+            if m["market_id"] == market_id:
+                return m.get("base_denom", ""), m.get("quote_denom", ""), True
+        for m in self.market_cache.derivative_markets:
+            if m["market_id"] == market_id:
+                return "", m.get("quote_denom", ""), False
+        return "", "", True
+
+    def _convert_spot_price(self, raw_price: str, market_id: str) -> str:
+        base_denom, quote_denom, _ = self._market_denoms(market_id)
+        return self.token_registry.chain_price_to_human_spot(raw_price, base_denom, quote_denom)
+
+    def _convert_deriv_price(self, raw_price: str, market_id: str) -> str:
+        _, quote_denom, _ = self._market_denoms(market_id)
+        return self.token_registry.chain_price_to_human_deriv(raw_price, quote_denom)
+
+    def _convert_spot_quantity(self, raw_qty: str, market_id: str) -> str:
+        base_denom, _, _ = self._market_denoms(market_id)
+        return self.token_registry.chain_quantity_to_human_spot(raw_qty, base_denom)
+
     # ── Market Data ──────────────────────────────────────────────────────
 
     async def search_markets(self, query: str, market_type: str) -> dict:
@@ -126,68 +184,66 @@ class InjectiveTools:
         is_spot = self.market_cache.is_spot_market(market_id)
 
         if is_spot is True or is_spot is None:
-            # Try spot first
             try:
                 return await self._get_spot_price(market_id)
             except Exception:
                 if is_spot is True:
                     raise
-        # Try derivative
         return await self._get_derivative_price(market_id)
 
     async def _get_spot_price(self, market_id: str) -> dict:
         from pyinjective.client.model.pagination import PaginationOption
 
         ob = await self.indexer_client.fetch_spot_orderbook_v2(market_id=market_id, depth=1)
-        best_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
-        best_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
+        raw_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
+        raw_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
 
         pagination = PaginationOption(skip=0, limit=1)
         trades = await self.indexer_client.fetch_spot_trades(
             market_ids=[market_id], pagination=pagination,
         )
-        last_price = ""
+        raw_last = ""
         trade_list = trades.get("trades", [])
         if trade_list:
             t = trade_list[0].get("price", {})
-            last_price = t if isinstance(t, str) else t.get("price", "")
+            raw_last = t if isinstance(t, str) else t.get("price", "")
 
         return {
             "market_id": market_id,
             "market_type": "spot",
-            "best_bid": best_bid,
-            "best_ask": best_ask,
-            "last_price": last_price,
+            "best_bid": self._convert_spot_price(raw_bid, market_id),
+            "best_ask": self._convert_spot_price(raw_ask, market_id),
+            "last_price": self._convert_spot_price(raw_last, market_id),
         }
 
     async def _get_derivative_price(self, market_id: str) -> dict:
         from pyinjective.client.model.pagination import PaginationOption
 
         ob = await self.indexer_client.fetch_derivative_orderbook_v2(market_id=market_id, depth=1)
-        best_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
-        best_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
+        raw_bid = ob.get("buys", [{}])[0].get("price", "") if ob.get("buys") else ""
+        raw_ask = ob.get("sells", [{}])[0].get("price", "") if ob.get("sells") else ""
 
         pagination = PaginationOption(skip=0, limit=1)
         trades = await self.indexer_client.fetch_derivative_trades(
             market_ids=[market_id], pagination=pagination,
         )
-        last_price = ""
+        raw_last = ""
         trade_list = trades.get("trades", [])
         if trade_list:
-            pos_price = trade_list[0].get("positionDelta", {}).get("executionPrice", "")
-            last_price = pos_price
+            raw_last = trade_list[0].get("positionDelta", {}).get("executionPrice", "")
 
         return {
             "market_id": market_id,
             "market_type": "derivative",
-            "best_bid": best_bid,
-            "best_ask": best_ask,
-            "last_price": last_price,
+            "best_bid": self._convert_deriv_price(raw_bid, market_id),
+            "best_ask": self._convert_deriv_price(raw_ask, market_id),
+            "last_price": self._convert_deriv_price(raw_last, market_id),
         }
 
     async def get_orderbook(self, market_id: str, depth: int = 10) -> dict:
         """Get orderbook for a market."""
         is_spot = self.market_cache.is_spot_market(market_id)
+        base_denom, quote_denom, _ = self._market_denoms(market_id)
 
         if is_spot is True or is_spot is None:
             try:
@@ -197,8 +253,14 @@ class InjectiveTools:
                 return {
                     "market_id": market_id,
                     "market_type": "spot",
-                    "bids": format_orderbook_side(ob.get("buys", []))[:depth],
-                    "asks": format_orderbook_side(ob.get("sells", []))[:depth],
+                    "bids": format_orderbook_side(
+                        ob.get("buys", [])[:depth],
+                        self.token_registry, base_denom, quote_denom, is_spot=True,
+                    ),
+                    "asks": format_orderbook_side(
+                        ob.get("sells", [])[:depth],
+                        self.token_registry, base_denom, quote_denom, is_spot=True,
+                    ),
                 }
             except Exception:
                 if is_spot is True:
@@ -210,8 +272,14 @@ class InjectiveTools:
         return {
             "market_id": market_id,
             "market_type": "derivative",
-            "bids": format_orderbook_side(ob.get("buys", []))[:depth],
-            "asks": format_orderbook_side(ob.get("sells", []))[:depth],
+            "bids": format_orderbook_side(
+                ob.get("buys", [])[:depth],
+                self.token_registry, "", quote_denom, is_spot=False,
+            ),
+            "asks": format_orderbook_side(
+                ob.get("sells", [])[:depth],
+                self.token_registry, "", quote_denom, is_spot=False,
+            ),
         }
 
     # ── Account & Subaccount ─────────────────────────────────────────────
@@ -227,8 +295,10 @@ class InjectiveTools:
         balances = []
         for b in raw.get("balances", []):
             deposit = b.get("deposit", {})
+            denom = b.get("denom", "")
             balances.append({
-                "denom": b.get("denom", ""),
+                "denom": denom,
+                "symbol": self.token_registry.get_symbol(denom),
                 "available": deposit.get("availableBalance", "0"),
                 "total": deposit.get("totalBalance", "0"),
             })
@@ -250,17 +320,21 @@ class InjectiveTools:
 
         bank_balances = []
         for b in portfolio.get("bankBalances", []):
+            denom = b.get("denom", "")
             bank_balances.append({
-                "denom": b.get("denom", ""),
+                "denom": denom,
+                "symbol": self.token_registry.get_symbol(denom),
                 "amount": b.get("amount", "0"),
             })
 
         subaccounts = []
         for sa in portfolio.get("subaccounts", []):
             deposit = sa.get("deposit", {})
+            denom = sa.get("denom", "")
             subaccounts.append({
                 "subaccount_id": sa.get("subaccountId", ""),
-                "denom": sa.get("denom", ""),
+                "denom": denom,
+                "symbol": self.token_registry.get_symbol(denom),
                 "available": deposit.get("availableBalance", "0"),
                 "total": deposit.get("totalBalance", "0"),
             })
@@ -295,19 +369,21 @@ class InjectiveTools:
         require_wallet(self.address)
 
         dec_amount = Decimal(str(amount))
+        # Convert human amount to chain base units for deposits/withdrawals
+        chain_amount = self.token_registry.human_to_chain_amount(dec_amount, denom)
 
         if action == "deposit":
             msg = self.composer.msg_deposit(
                 sender=self.acc_address,
                 subaccount_id=self._subaccount_id(source_index),
-                amount=dec_amount,
+                amount=Decimal(chain_amount),
                 denom=denom,
             )
         elif action == "withdraw":
             msg = self.composer.msg_withdraw(
                 sender=self.acc_address,
                 subaccount_id=self._subaccount_id(source_index),
-                amount=dec_amount,
+                amount=Decimal(chain_amount),
                 denom=denom,
             )
         elif action == "transfer":
@@ -315,7 +391,7 @@ class InjectiveTools:
                 sender=self.acc_address,
                 source_subaccount_id=self._subaccount_id(source_index),
                 destination_subaccount_id=self._subaccount_id(dest_index),
-                amount=int(dec_amount),
+                amount=chain_amount,
                 denom=denom,
             )
         else:
@@ -326,6 +402,7 @@ class InjectiveTools:
             "action": action,
             "amount": str(amount),
             "denom": denom,
+            "symbol": self.token_registry.get_symbol(denom),
             "tx_hash": getattr(result, "txhash", str(result)),
         }
 
@@ -415,14 +492,15 @@ class InjectiveTools:
         raw = await self.indexer_client.fetch_spot_orders(**kwargs)
         orders = []
         for o in raw.get("orders", []):
+            mid = o.get("marketId", "")
             orders.append({
                 "order_hash": o.get("orderHash", ""),
-                "market_id": o.get("marketId", ""),
+                "market_id": mid,
                 "order_type": o.get("orderType", ""),
                 "order_side": o.get("orderSide", ""),
-                "price": o.get("price", ""),
-                "quantity": o.get("quantity", ""),
-                "unfilled_quantity": o.get("unfilledQuantity", ""),
+                "price": self._convert_spot_price(o.get("price", ""), mid),
+                "quantity": self._convert_spot_quantity(o.get("quantity", ""), mid),
+                "unfilled_quantity": self._convert_spot_quantity(o.get("unfilledQuantity", ""), mid),
                 "state": o.get("state", ""),
                 "created_at": o.get("createdAt", ""),
             })
@@ -529,14 +607,15 @@ class InjectiveTools:
         raw = await self.indexer_client.fetch_derivative_orders(**kwargs)
         orders = []
         for o in raw.get("orders", []):
+            mid = o.get("marketId", "")
             orders.append({
                 "order_hash": o.get("orderHash", ""),
-                "market_id": o.get("marketId", ""),
+                "market_id": mid,
                 "order_type": o.get("orderType", ""),
                 "order_side": o.get("orderSide", ""),
-                "price": o.get("price", ""),
+                "price": self._convert_deriv_price(o.get("price", ""), mid),
                 "quantity": o.get("quantity", ""),
-                "margin": o.get("margin", ""),
+                "margin": self._convert_deriv_price(o.get("margin", ""), mid),
                 "unfilled_quantity": o.get("unfilledQuantity", ""),
                 "state": o.get("state", ""),
                 "created_at": o.get("createdAt", ""),
@@ -559,14 +638,15 @@ class InjectiveTools:
         raw = await self.indexer_client.fetch_derivative_positions_v2(**kwargs)
         positions = []
         for p in raw.get("positions", []):
+            mid = p.get("marketId", "")
             positions.append({
-                "market_id": p.get("marketId", ""),
+                "market_id": mid,
                 "ticker": p.get("ticker", ""),
                 "direction": p.get("direction", ""),
                 "quantity": p.get("quantity", ""),
-                "entry_price": p.get("entryPrice", ""),
-                "mark_price": p.get("markPrice", ""),
-                "margin": p.get("margin", ""),
+                "entry_price": self._convert_deriv_price(p.get("entryPrice", ""), mid),
+                "mark_price": self._convert_deriv_price(p.get("markPrice", ""), mid),
+                "margin": self._convert_deriv_price(p.get("margin", ""), mid),
                 "aggregate_reduce_only_quantity": p.get("aggregateReduceOnlyQuantity", ""),
                 "updated_at": p.get("updatedAt", ""),
             })
@@ -611,14 +691,12 @@ class InjectiveTools:
                 market_id=market_id, depth=1,
             )
             if close_side == "SELL":
-                # Selling to close long — use best bid with 5% slippage down
                 bids = ob.get("buys", [])
                 if not bids:
                     raise ValueError("No bids in orderbook — cannot determine close price")
                 best_bid = Decimal(bids[0].get("price", "0"))
                 dec_price = best_bid * Decimal("0.95")
             else:
-                # Buying to close short — use best ask with 5% slippage up
                 asks = ob.get("sells", [])
                 if not asks:
                     raise ValueError("No asks in orderbook — cannot determine close price")
@@ -653,7 +731,7 @@ class InjectiveTools:
             "position_direction": pos_direction,
             "close_side": close_side.lower(),
             "quantity": str(dec_quantity),
-            "price": str(dec_price),
+            "price": self._convert_deriv_price(str(dec_price), market_id),
             "market_id": market_id,
             "cid": cid,
             "tx_hash": getattr(result, "txhash", str(result)),

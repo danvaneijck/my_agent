@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     injective_private_key: str = ""
     injective_mnemonic: str = ""
     injective_network: str = "testnet"  # "mainnet" or "testnet"
+    # Custom gRPC/LCD endpoints (leave empty to use SDK defaults)
+    injective_exchange_grpc: str = ""   # e.g. "sentry.exchange.grpc.injective.network:443"
+    injective_chain_grpc: str = ""      # e.g. "sentry.chain.grpc.injective.network:443"
+    injective_lcd: str = ""             # e.g. "https://sentry.lcd.injective.network:443"
+    # Path to custom tokens JSON file (same format as injective-lists)
+    injective_custom_tokens: str = ""
 
     # Atlassian
     atlassian_url: str = ""
