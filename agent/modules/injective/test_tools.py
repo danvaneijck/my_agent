@@ -27,6 +27,16 @@ import os
 import sys
 import time
 
+# Ensure `shared` and `modules` packages are importable when running outside Docker.
+# Expects to be run from the agent/ directory.
+_agent_dir = os.path.dirname(os.path.abspath(__file__))  # modules/injective/
+_agent_dir = os.path.abspath(os.path.join(_agent_dir, "..", ".."))  # agent/
+if _agent_dir not in sys.path:
+    sys.path.insert(0, _agent_dir)
+_shared_dir = os.path.join(_agent_dir, "shared")
+if _shared_dir not in sys.path:
+    sys.path.insert(0, _shared_dir)
+
 
 def _pp(label: str, data: dict) -> None:
     """Pretty-print a result dict."""
