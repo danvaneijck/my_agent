@@ -42,18 +42,29 @@ summarizer: ConversationSummarizer | None = None
 _summarizer_task: asyncio.Task | None = None
 
 
-async def _delayed_discovery(registry: ToolRegistry):
-    """Retry module discovery after a delay (modules may not be ready at startup)."""
-    for delay in (5, 10, 20):
+async def _delayed_discovery(registry: ToolRegistry, expected_modules: set[str]):
+    """Retry module discovery until all configured modules are found."""
+    for delay in (5, 10, 20, 30):
+        missing = expected_modules - set(registry.manifests.keys())
+        if not missing:
+            logger.info("all_modules_discovered", modules=list(registry.manifests.keys()))
+            return
+        logger.info("waiting_for_modules", missing=list(missing), delay=delay)
         await asyncio.sleep(delay)
         try:
             await registry.discover_all()
-            if registry.manifests:
-                logger.info("delayed_discovery_succeeded", modules=list(registry.manifests.keys()))
-                return
         except Exception as e:
             logger.warning("delayed_discovery_attempt_failed", error=str(e))
-    logger.warning("delayed_discovery_exhausted", msg="Use POST /refresh-tools to retry manually")
+
+    missing = expected_modules - set(registry.manifests.keys())
+    if missing:
+        logger.warning(
+            "delayed_discovery_exhausted",
+            missing=list(missing),
+            msg="Use POST /refresh-tools to retry manually",
+        )
+    else:
+        logger.info("all_modules_discovered", modules=list(registry.manifests.keys()))
 
 
 async def _summarization_loop():
@@ -91,9 +102,16 @@ async def startup():
     except Exception as e:
         logger.warning("initial_discovery_failed", error=str(e))
 
-    # If no modules were discovered, schedule a background retry
-    if not tool_registry.manifests:
-        asyncio.create_task(_delayed_discovery(tool_registry))
+    # If any configured modules are missing, schedule background retry
+    expected_modules = set(settings.module_services.keys())
+    discovered = set(tool_registry.manifests.keys())
+    if discovered < expected_modules:
+        logger.info(
+            "scheduling_module_discovery_retry",
+            discovered=list(discovered),
+            missing=list(expected_modules - discovered),
+        )
+        asyncio.create_task(_delayed_discovery(tool_registry, expected_modules))
 
     # Ensure a default persona exists
     session_factory = get_session_factory()
