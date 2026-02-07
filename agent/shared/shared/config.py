@@ -63,8 +63,9 @@ class Settings(BaseSettings):
     # Admin portal
     admin_api_key: str = ""
 
-    # Injective
+    # Injective — provide EITHER private key (hex) OR mnemonic, not both
     injective_private_key: str = ""
+    injective_mnemonic: str = ""
     injective_network: str = "testnet"  # "mainnet" or "testnet"
 
     # Atlassian

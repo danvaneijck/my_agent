@@ -50,16 +50,30 @@ class InjectiveTools:
         # IndexerClient is always available (read-only, no wallet needed)
         self.indexer_client = IndexerClient(self.network)
 
-        # Wallet + broadcaster only if private key is configured
+        # Wallet + broadcaster: accept either hex private key or mnemonic
         pk_hex = self.settings.injective_private_key.strip()
+        mnemonic = self.settings.injective_mnemonic.strip()
+
         if pk_hex:
             await self._init_wallet(pk_hex)
+        elif mnemonic:
+            pk_hex = self._mnemonic_to_hex(mnemonic)
+            await self._init_wallet(pk_hex)
         else:
-            logger.warning("injective_no_private_key", msg="Read-only mode — trading tools disabled")
+            logger.warning("injective_no_credentials", msg="Read-only mode — set INJECTIVE_PRIVATE_KEY or INJECTIVE_MNEMONIC")
 
         # Pre-load market cache
         await self.market_cache.refresh(self.indexer_client)
         self._initialized = True
+
+    @staticmethod
+    def _mnemonic_to_hex(mnemonic: str) -> str:
+        """Derive a hex private key from a BIP-39 mnemonic phrase."""
+        from pyinjective.wallet import PrivateKey
+
+        priv_key = PrivateKey.from_mnemonic(mnemonic)
+        # PrivateKey stores raw bytes; convert to hex string
+        return priv_key.to_hex()
 
     async def _init_wallet(self, pk_hex: str) -> None:
         """Set up wallet, async client, composer, and broadcaster."""
