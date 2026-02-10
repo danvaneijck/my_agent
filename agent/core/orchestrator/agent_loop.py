@@ -136,6 +136,7 @@ class AgentLoop:
             persona=persona,
             incoming_message=message_content,
             model=model,
+            tool_count=len(tools),
         )
 
         # Save the incoming user message
@@ -256,17 +257,21 @@ class AgentLoop:
                 )
                 session.add(tr_msg)
 
-                # Append to context for the LLM
+                # Append to context for the LLM (truncate large results)
                 context.append({
                     "role": "tool_call",
                     "name": tool_call.tool_name,
                     "arguments": tool_call.arguments,
                     "tool_use_id": tool_use_id,
                 })
+                result_text = str(result.result) if result.success else f"Error: {result.error}"
+                max_chars = self.settings.tool_result_max_chars
+                if len(result_text) > max_chars:
+                    result_text = result_text[:max_chars] + "\n... [truncated — result too large]"
                 context.append({
                     "role": "tool_result",
                     "name": tool_call.tool_name,
-                    "content": str(result.result) if result.success else f"Error: {result.error}",
+                    "content": result_text,
                     "tool_use_id": tool_use_id,
                 })
 

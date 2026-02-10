@@ -78,6 +78,7 @@ class ContextBuilder:
         persona: Persona | None,
         incoming_message: str,
         model: str | None = None,
+        tool_count: int = 0,
     ) -> list[dict]:
         """Build the context messages list for an LLM call.
 
@@ -89,7 +90,9 @@ class ContextBuilder:
         5. New user message
         """
         target_model = model or self.settings.default_model
-        budget = self._get_context_budget(target_model)
+        # Reserve budget for tool definitions which are sent alongside messages
+        tool_overhead = getattr(self.settings, "tool_schema_token_budget", 4000) if tool_count > 0 else 0
+        budget = self._get_context_budget(target_model) - tool_overhead
         messages: list[dict] = []
 
         # 1. System prompt
@@ -123,6 +126,7 @@ class ContextBuilder:
             full_context=needs_full,
             messages_loaded=len(recent_messages),
         )
+        history_max = getattr(self.settings, "history_tool_result_max_chars", 1500)
         for msg in recent_messages:
             if msg.role == "tool_call":
                 try:
@@ -138,10 +142,18 @@ class ContextBuilder:
             elif msg.role == "tool_result":
                 try:
                     data = json.loads(msg.content)
+                    result_content = data.get("result", "")
+                    # Truncate large historical tool results to save tokens
+                    if isinstance(result_content, str) and len(result_content) > history_max:
+                        result_content = result_content[:history_max] + "\n... [truncated]"
+                    elif isinstance(result_content, (dict, list)):
+                        result_str = json.dumps(result_content)
+                        if len(result_str) > history_max:
+                            result_content = result_str[:history_max] + "\n... [truncated]"
                     messages.append({
                         "role": "tool_result",
                         "name": data.get("name", ""),
-                        "content": data.get("result", ""),
+                        "content": result_content,
                         "tool_use_id": data.get("tool_use_id", ""),
                     })
                 except json.JSONDecodeError:
@@ -185,7 +197,11 @@ class ContextBuilder:
         query: str,
         max_results: int = 3,
     ) -> list[MemorySummary]:
-        """Retrieve semantically relevant memories via vector search."""
+        """Retrieve semantically relevant memories via vector search.
+
+        Only returns memories whose cosine distance is below the configured
+        relevance threshold, avoiding injection of irrelevant context.
+        """
         if not self.llm_router:
             return []
 
@@ -195,16 +211,26 @@ class ContextBuilder:
             logger.warning("embedding_failed", error=str(e))
             return []
 
-        # Vector similarity search using pgvector
+        threshold = getattr(self.settings, "memory_relevance_threshold", 0.75)
+
+        # Vector similarity search using pgvector with relevance filter
         try:
+            distance_expr = MemorySummary.embedding.cosine_distance(query_embedding)
             result = await session.execute(
                 select(MemorySummary)
                 .where(MemorySummary.user_id == user.id)
                 .where(MemorySummary.embedding.isnot(None))
-                .order_by(MemorySummary.embedding.cosine_distance(query_embedding))
+                .where(distance_expr < threshold)
+                .order_by(distance_expr)
                 .limit(max_results)
             )
-            return list(result.scalars().all())
+            memories = list(result.scalars().all())
+            logger.info(
+                "semantic_memories",
+                found=len(memories),
+                threshold=threshold,
+            )
+            return memories
         except Exception as e:
             logger.warning("semantic_search_failed", error=str(e))
             return []

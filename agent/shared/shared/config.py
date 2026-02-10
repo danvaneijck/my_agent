@@ -58,9 +58,20 @@ class Settings(BaseSettings):
     orchestrator_url: str = "http://core:8000"
     max_agent_iterations: int = 10
     conversation_timeout_minutes: int = 30
-    working_memory_messages: int = 20
+    working_memory_messages: int = 12
     # Reduced history for standalone messages (no prior-context references)
-    minimal_memory_messages: int = 4
+    minimal_memory_messages: int = 2
+
+    # Token efficiency
+    # Max characters for a single tool result before truncation (in context)
+    tool_result_max_chars: int = 3000
+    # Max characters for tool_result messages loaded from DB history
+    history_tool_result_max_chars: int = 1500
+    # Cosine distance threshold for semantic memories (0.0 = identical, 2.0 = opposite)
+    # Memories with distance above this are too irrelevant to include
+    memory_relevance_threshold: float = 0.75
+    # Estimated tokens consumed by tool definitions (subtracted from context budget)
+    tool_schema_token_budget: int = 4000
 
     # Admin portal
     admin_api_key: str = ""
