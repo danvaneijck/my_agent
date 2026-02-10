@@ -149,6 +149,7 @@ class ClaudeCodeTools:
 
         cmd = self._build_docker_cmd(task, container_name)
         logger.info("task_starting", task_id=task.id, container=container_name)
+        logger.debug("task_docker_cmd", task_id=task.id, cmd=" ".join(cmd))
 
         heartbeat_handle: asyncio.Task | None = None
         try:
@@ -185,6 +186,13 @@ class ClaudeCodeTools:
                     "stdout": stdout[:5000],
                     "stderr": stderr[:5000],
                 }
+                logger.error(
+                    "task_container_failed",
+                    task_id=task.id,
+                    exit_code=proc.returncode,
+                    stderr=stderr[:2000],
+                    stdout=stdout[:2000],
+                )
 
         except Exception as e:
             logger.error("task_execution_error", task_id=task.id, error=str(e))
