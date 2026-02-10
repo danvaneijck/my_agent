@@ -50,6 +50,8 @@ async def execute(call: ToolCall) -> ToolResult:
             result = await tools.run_task(**args)
         elif tool_name == "task_status":
             result = await tools.task_status(**args)
+        elif tool_name == "task_logs":
+            result = await tools.task_logs(**args)
         elif tool_name == "list_tasks":
             result = await tools.list_tasks(**args)
         else:

@@ -30,6 +30,7 @@ CLAUDE_CODE_GIT_AUTHOR_EMAIL = os.environ.get("CLAUDE_CODE_GIT_AUTHOR_EMAIL", "c
 TASK_BASE_DIR = "/tmp/claude_tasks"
 
 MAX_OUTPUT = 50_000  # chars kept from stdout/stderr
+LOG_TAIL_DEFAULT = 100  # lines returned by task_logs when no limit given
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +52,10 @@ class Task:
     error: str | None = None
     _asyncio_task: asyncio.Task | None = field(default=None, repr=False)
 
+    @property
+    def log_file(self) -> str:
+        return os.path.join(self.workspace, "task.log")
+
     def to_dict(self) -> dict:
         return {
             "task_id": self.id,
@@ -58,6 +63,7 @@ class Task:
             "repo_url": self.repo_url,
             "branch": self.branch,
             "workspace": self.workspace,
+            "log_file": self.log_file,
             "status": self.status,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
@@ -113,9 +119,11 @@ class ClaudeCodeTools:
             "task_id": task_id,
             "status": "queued",
             "workspace": workspace,
+            "log_file": task.log_file,
             "message": (
-                f"Task submitted. Use claude_code.task_status with "
-                f"task_id='{task_id}' to check progress. "
+                f"Task submitted. Use claude_code.task_logs with "
+                f"task_id='{task_id}' to stream live output. "
+                f"Use claude_code.task_status to check completion. "
                 f"When the task completes, use deployer.deploy with "
                 f"project_path='{workspace}' to deploy it."
             ),
@@ -127,6 +135,47 @@ class ClaudeCodeTools:
         if not task:
             raise ValueError(f"Task not found: {task_id}")
         return task.to_dict()
+
+    async def task_logs(
+        self,
+        task_id: str,
+        tail: int = LOG_TAIL_DEFAULT,
+        offset: int = 0,
+        user_id: str | None = None,
+    ) -> dict:
+        """Return recent lines from a task's live log file."""
+        task = self.tasks.get(task_id)
+        if not task:
+            raise ValueError(f"Task not found: {task_id}")
+
+        log_path = task.log_file
+        if not os.path.exists(log_path):
+            return {
+                "task_id": task_id,
+                "status": task.status,
+                "lines": [],
+                "total_lines": 0,
+                "message": "No log output yet.",
+            }
+
+        with open(log_path) as f:
+            all_lines = f.readlines()
+
+        total = len(all_lines)
+        if offset:
+            selected = all_lines[offset : offset + tail]
+        else:
+            # Default: return the last `tail` lines
+            selected = all_lines[-tail:] if tail < total else all_lines
+
+        return {
+            "task_id": task_id,
+            "status": task.status,
+            "log_file": log_path,
+            "total_lines": total,
+            "showing_from": max(0, total - tail) if not offset else offset,
+            "lines": [l.rstrip("\n") for l in selected],
+        }
 
     async def list_tasks(
         self, status_filter: str | None = None, user_id: str | None = None
@@ -156,6 +205,9 @@ class ClaudeCodeTools:
         logger.debug("task_docker_cmd", task_id=task.id, cmd=" ".join(cmd))
 
         heartbeat_handle: asyncio.Task | None = None
+        stdout_buf: list[str] = []
+        stderr_buf: list[str] = []
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -164,10 +216,37 @@ class ClaudeCodeTools:
             )
 
             heartbeat_handle = asyncio.create_task(self._heartbeat_loop(task))
+            log_lock = asyncio.Lock()
+
+            async def _stream_to_log(
+                stream: asyncio.StreamReader,
+                buf: list[str],
+                prefix: str,
+            ) -> None:
+                """Read lines from a stream and append to log file in real time."""
+                while True:
+                    line_bytes = await stream.readline()
+                    if not line_bytes:
+                        break
+                    line = line_bytes.decode("utf-8", errors="replace")
+                    buf.append(line)
+                    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                    log_line = f"[{ts}] [{prefix}] {line}"
+                    try:
+                        async with log_lock:
+                            with open(task.log_file, "a") as f:
+                                f.write(log_line)
+                    except OSError:
+                        pass
 
             try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    proc.communicate(), timeout=timeout
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        _stream_to_log(proc.stdout, stdout_buf, "stdout"),
+                        _stream_to_log(proc.stderr, stderr_buf, "stderr"),
+                        proc.wait(),
+                    ),
+                    timeout=timeout,
                 )
             except asyncio.TimeoutError:
                 logger.warning("task_timeout", task_id=task.id, timeout=timeout)
@@ -176,8 +255,8 @@ class ClaudeCodeTools:
                 task.error = f"Task timed out after {timeout}s"
                 return
 
-            stdout = stdout_bytes.decode("utf-8", errors="replace")[:MAX_OUTPUT]
-            stderr = stderr_bytes.decode("utf-8", errors="replace")[:MAX_OUTPUT]
+            stdout = "".join(stdout_buf)[:MAX_OUTPUT]
+            stderr = "".join(stderr_buf)[:MAX_OUTPUT]
 
             if proc.returncode == 0:
                 task.status = "completed"

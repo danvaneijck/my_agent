@@ -61,6 +61,35 @@ MANIFEST = ModuleManifest(
             required_permission="admin",
         ),
         ToolDefinition(
+            name="claude_code.task_logs",
+            description=(
+                "Read live log output from a running (or finished) Claude Code task. "
+                "Returns the most recent lines by default. Use tail to control how many "
+                "lines, or offset to paginate from a specific line number."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID returned by run_task.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="tail",
+                    type="integer",
+                    description="Number of lines to return (default 100). Returns the last N lines unless offset is set.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="offset",
+                    type="integer",
+                    description="Start reading from this line number (0-indexed). When set, returns `tail` lines starting from offset.",
+                    required=False,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
             name="claude_code.list_tasks",
             description="List all Claude Code tasks with their current statuses.",
             parameters=[
