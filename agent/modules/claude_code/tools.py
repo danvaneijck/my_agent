@@ -31,6 +31,7 @@ TASK_BASE_DIR = "/tmp/claude_tasks"
 
 MAX_OUTPUT = 50_000  # chars kept from stdout/stderr
 LOG_TAIL_DEFAULT = 100  # lines returned by task_logs when no limit given
+TASK_META_FILE = "task_meta.json"  # persisted in each task workspace
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +44,7 @@ class Task:
     repo_url: str | None = None
     branch: str | None = None
     workspace: str = ""
-    status: str = "queued"  # queued | running | completed | failed
+    status: str = "queued"  # queued | running | completed | failed | cancelled
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -55,6 +56,10 @@ class Task:
     @property
     def log_file(self) -> str:
         return os.path.join(self.workspace, "task.log")
+
+    @property
+    def meta_file(self) -> str:
+        return os.path.join(self.workspace, TASK_META_FILE)
 
     def to_dict(self) -> dict:
         return {
@@ -74,6 +79,36 @@ class Task:
             "error": self.error,
         }
 
+    def save(self) -> None:
+        """Persist task metadata to disk so it survives restarts."""
+        try:
+            with open(self.meta_file, "w") as f:
+                json.dump(self.to_dict(), f, indent=2)
+        except OSError:
+            pass
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Task:
+        """Reconstruct a Task from a persisted metadata dict."""
+        def _parse_dt(val: str | None) -> datetime | None:
+            if not val:
+                return None
+            return datetime.fromisoformat(val)
+
+        return cls(
+            id=data["task_id"],
+            prompt=data.get("prompt", ""),
+            repo_url=data.get("repo_url"),
+            branch=data.get("branch"),
+            workspace=data.get("workspace", ""),
+            status=data.get("status", "unknown"),
+            created_at=_parse_dt(data.get("created_at")) or datetime.now(timezone.utc),
+            started_at=_parse_dt(data.get("started_at")),
+            completed_at=_parse_dt(data.get("completed_at")),
+            result=data.get("result"),
+            error=data.get("error"),
+        )
+
     def _elapsed(self) -> float | None:
         if not self.started_at:
             return None
@@ -90,11 +125,42 @@ class ClaudeCodeTools:
     def __init__(self) -> None:
         self.tasks: dict[str, Task] = {}
         os.makedirs(TASK_BASE_DIR, exist_ok=True)
+        self._load_persisted_tasks()
         if not TASK_VOLUME:
             logger.warning(
                 "CLAUDE_TASK_VOLUME not set — worker containers need the "
                 "absolute host path to the task directory for bind mounts"
             )
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def _load_persisted_tasks(self) -> None:
+        """Reload task metadata from disk on startup."""
+        loaded = 0
+        for entry in os.scandir(TASK_BASE_DIR):
+            if not entry.is_dir():
+                continue
+            meta_path = os.path.join(entry.path, TASK_META_FILE)
+            if not os.path.isfile(meta_path):
+                continue
+            try:
+                with open(meta_path) as f:
+                    data = json.load(f)
+                task = Task.from_dict(data)
+                # Tasks that were running when we crashed are now dead
+                if task.status in ("queued", "running"):
+                    task.status = "failed"
+                    task.error = task.error or "Interrupted by module restart"
+                    task.completed_at = task.completed_at or datetime.now(timezone.utc)
+                    task.save()
+                self.tasks[task.id] = task
+                loaded += 1
+            except Exception as exc:
+                logger.warning("skip_persisted_task", path=meta_path, error=str(exc))
+        if loaded:
+            logger.info("loaded_persisted_tasks", count=loaded)
 
     # ------------------------------------------------------------------
     # Public tools (called by orchestrator)
@@ -115,6 +181,7 @@ class ClaudeCodeTools:
 
         task = Task(id=task_id, prompt=prompt, repo_url=repo_url, branch=branch, workspace=workspace)
         self.tasks[task_id] = task
+        task.save()
 
         # Fire-and-forget background execution
         task._asyncio_task = asyncio.create_task(self._execute_task(task, timeout))
@@ -207,6 +274,7 @@ class ClaudeCodeTools:
         task.status = "failed"
         task.error = "Cancelled by user"
         task.completed_at = datetime.now(timezone.utc)
+        task.save()
 
         logger.info("task_cancelled", task_id=task_id)
         return {
@@ -237,6 +305,7 @@ class ClaudeCodeTools:
         task.status = "running"
         task.started_at = datetime.now(timezone.utc)
         task.heartbeat = task.started_at
+        task.save()
 
         cmd = self._build_docker_cmd(task, container_name)
         logger.info("task_starting", task_id=task.id, container=container_name)
@@ -321,6 +390,7 @@ class ClaudeCodeTools:
             task.error = str(e)
         finally:
             task.completed_at = datetime.now(timezone.utc)
+            task.save()
             if heartbeat_handle:
                 heartbeat_handle.cancel()
             await self._remove_container(container_name)

@@ -21,6 +21,13 @@ logger = structlog.get_logger()
 # How often the main loop wakes up to check for due jobs
 LOOP_INTERVAL_SECONDS = 10
 
+# Error patterns that indicate the target will never be found — no point retrying
+_PERMANENT_ERROR_PATTERNS = ("not found", "does not exist", "unknown tool")
+
+
+class _PermanentCheckError(Exception):
+    """Raised when a check fails with an error that will never resolve on retry."""
+
 
 async def scheduler_loop(
     session_factory: async_sessionmaker[AsyncSession],
@@ -122,6 +129,16 @@ async def _evaluate_job(
             job.status = "failed"
             job.completed_at = now
             return
+    except _PermanentCheckError as e:
+        # Permanent error — target will never become available, fail immediately
+        logger.warning(
+            "job_check_permanent_error",
+            job_id=str(job.id),
+            attempt=job.attempts,
+            error=str(e),
+        )
+        await _mark_failed(job, now, redis)
+        return
     except Exception as e:
         # Transient error — don't fail the job, just schedule the next attempt
         logger.warning(
@@ -209,7 +226,11 @@ async def _check_poll_module(
     tool_result = ToolResult(**resp.json())
 
     if not tool_result.success:
-        raise RuntimeError(f"Module returned error: {tool_result.error}")
+        error_msg = tool_result.error or ""
+        error_lower = error_msg.lower()
+        if any(pat in error_lower for pat in _PERMANENT_ERROR_PATTERNS):
+            raise _PermanentCheckError(f"Module returned error: {error_msg}")
+        raise RuntimeError(f"Module returned error: {error_msg}")
 
     result_data = tool_result.result
     if not isinstance(result_data, dict):
