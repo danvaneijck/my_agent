@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -309,30 +310,30 @@ class DeployerTools:
     async def _build_image(
         self, project_path: str, image_name: str, dockerfile: str
     ) -> None:
-        """Build a Docker image by piping a tar context to ``docker build``."""
-        tar_proc = await asyncio.create_subprocess_exec(
-            "tar", "-C", project_path, "-c", ".",
+        """Build a Docker image by piping a tar context to ``docker build``.
+
+        Uses a shell pipe so the OS connects the file descriptors natively.
+        asyncio.StreamReader objects (from create_subprocess_exec) don't
+        expose fileno(), so passing one process's stdout as another's stdin
+        fails with "'StreamReader' object has no attribute 'fileno'".
+        """
+        cmd = (
+            f"tar -C {shlex.quote(project_path)} -c . "
+            f"| docker build -f {shlex.quote(dockerfile)} "
+            f"-t {shlex.quote(image_name)} -"
+        )
+
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-
-        build_proc = await asyncio.create_subprocess_exec(
-            "docker", "build", "-f", dockerfile, "-t", image_name, "-",
-            stdin=tar_proc.stdout,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        # Let tar receive SIGPIPE if build exits early
-        if tar_proc.stdout:
-            tar_proc.stdout.close()
 
         stdout, stderr = await asyncio.wait_for(
-            build_proc.communicate(), timeout=BUILD_TIMEOUT
+            proc.communicate(), timeout=BUILD_TIMEOUT
         )
-        await tar_proc.wait()
 
-        if build_proc.returncode != 0:
+        if proc.returncode != 0:
             err = stderr.decode("utf-8", errors="replace")[:3000]
             raise RuntimeError(f"Docker build failed:\n{err}")
 
