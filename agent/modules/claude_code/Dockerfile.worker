@@ -40,6 +40,5 @@ RUN mkdir -p /home/claude/.ssh && \
 WORKDIR /workspace
 RUN chown claude:claude /workspace
 
-USER claude
-
+# Entrypoint runs as root to copy credentials, then drops to claude user
 CMD ["claude"]
