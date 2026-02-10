@@ -7,6 +7,7 @@ import io
 import re
 from comms.slack_bot.block_builder import BlockBuilder
 import httpx
+import redis.asyncio as aioredis
 import structlog
 from slackify_markdown import slackify_markdown
 from minio import Minio
@@ -17,6 +18,7 @@ from comms.slack_bot.normalizer import SlackNormalizer
 from shared.config import Settings
 from shared.file_utils import upload_attachment
 from shared.schemas.messages import AgentResponse
+from shared.schemas.notifications import Notification
 
 logger = structlog.get_logger()
 
@@ -362,12 +364,43 @@ class AgentSlackBot:
                 logger.warning("presence_heartbeat_failed", error=str(e))
             await asyncio.sleep(30)
 
+    async def _notification_listener(self):
+        """Subscribe to Redis notifications and send proactive messages."""
+        try:
+            r = aioredis.from_url(self.settings.redis_url)
+            pubsub = r.pubsub()
+            await pubsub.subscribe("notifications:slack")
+            logger.info("slack_notification_listener_started")
+
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    notification = Notification.model_validate_json(message["data"])
+                    await self.app.client.chat_postMessage(
+                        channel=notification.platform_channel_id,
+                        text=notification.content,
+                        thread_ts=notification.platform_thread_id,
+                    )
+                    logger.info(
+                        "notification_sent",
+                        channel_id=notification.platform_channel_id,
+                        job_id=notification.job_id,
+                    )
+                except Exception as e:
+                    logger.error("notification_send_failed", error=str(e))
+        except Exception as e:
+            logger.error("notification_listener_failed", error=str(e))
+
     async def run(self):
         """Start the bot with Socket Mode."""
         logger.info("starting_slack_bot")
 
         # Start a background heartbeat to keep the green dot active
         asyncio.create_task(self._presence_heartbeat())
+
+        # Start notification listener for proactive messages
+        asyncio.create_task(self._notification_listener())
 
         handler = AsyncSocketModeHandler(self.app, self.settings.slack_app_token)
         await handler.start_async()

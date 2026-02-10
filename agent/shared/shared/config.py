@@ -120,6 +120,7 @@ class Settings(BaseSettings):
         "garmin": "http://garmin:8000",
         "claude_code": "http://claude-code:8000",
         "deployer": "http://deployer:8000",
+        "scheduler": "http://scheduler:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
