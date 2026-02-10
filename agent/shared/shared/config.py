@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     renpho_email: str = ""
     renpho_password: str = ""
 
+    # Garmin
+    garmin_email: str = ""
+    garmin_password: str = ""
+
     # Atlassian
     atlassian_url: str = ""
     atlassian_username: str = ""
@@ -102,6 +106,7 @@ class Settings(BaseSettings):
         "knowledge": "http://knowledge:8000",
         "atlassian": "http://atlassian:8000",
         "renpho_biometrics": "http://renpho-biometrics:8000",
+        "garmin": "http://garmin:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
