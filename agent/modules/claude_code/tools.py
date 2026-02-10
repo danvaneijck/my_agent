@@ -23,6 +23,7 @@ SSH_KEY_PATH = os.environ.get("SSH_KEY_PATH", "")
 GH_CONFIG_PATH = os.environ.get("GH_CONFIG_PATH", "")
 GIT_CONFIG_PATH = os.environ.get("GIT_CONFIG_PATH", "")
 TASK_VOLUME = os.environ.get("CLAUDE_TASK_VOLUME", "claude-tasks")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Bot git identity — overrides any mounted .gitconfig for commits
 CLAUDE_CODE_GIT_AUTHOR_NAME = os.environ.get("CLAUDE_CODE_GIT_AUTHOR_NAME", "claude-agent[bot]")
@@ -115,7 +116,9 @@ class ClaudeCodeTools:
             "workspace": workspace,
             "message": (
                 f"Task submitted. Use claude_code.task_status with "
-                f"task_id='{task_id}' to check progress."
+                f"task_id='{task_id}' to check progress. "
+                f"When the task completes, use deployer.deploy with "
+                f"project_path='{workspace}' to deploy it."
             ),
         }
 
@@ -231,9 +234,9 @@ class ClaudeCodeTools:
         if task.branch:
             cmd.extend(["-e", f"BRANCH={task.branch}"])
 
-        # Mount credentials read-only
+        # Mount credentials read-only at staging paths (entrypoint copies them)
         if CLAUDE_AUTH_PATH:
-            cmd.extend(["-v", f"{CLAUDE_AUTH_PATH}:/root/.claude:ro"])
+            cmd.extend(["-v", f"{CLAUDE_AUTH_PATH}:/tmp/.claude-ro:ro"])
         if SSH_KEY_PATH:
             cmd.extend(["-v", f"{SSH_KEY_PATH}:/root/.ssh:ro"])
         if GH_CONFIG_PATH:
@@ -249,6 +252,10 @@ class ClaudeCodeTools:
             "-e", f"GIT_COMMITTER_EMAIL={CLAUDE_CODE_GIT_AUTHOR_EMAIL}",
         ])
 
+        # Pass API key so CLI can authenticate without writable .claude dir
+        if ANTHROPIC_API_KEY:
+            cmd.extend(["-e", f"ANTHROPIC_API_KEY={ANTHROPIC_API_KEY}"])
+
         cmd.extend([
             CLAUDE_CODE_IMAGE,
             "sh", "-c", self._entrypoint_script(),
@@ -260,6 +267,11 @@ class ClaudeCodeTools:
         """Shell script executed inside the worker container."""
         return (
             'set -e\n'
+            '# Copy read-only auth to writable location\n'
+            'if [ -d /tmp/.claude-ro ]; then\n'
+            '    cp -r /tmp/.claude-ro /root/.claude\n'
+            '    chmod -R 600 /root/.claude 2>/dev/null || true\n'
+            'fi\n'
             'if [ -n "$REPO_URL" ]; then\n'
             '    git clone "$REPO_URL" . 2>&1\n'
             '    if [ -n "$BRANCH" ]; then\n'
