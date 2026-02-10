@@ -195,6 +195,44 @@ services:
       - agent-net
     restart: unless-stopped
 
+  claude-code:
+    build:
+      context: .
+      dockerfile: modules/claude_code/Dockerfile
+    env_file: .env
+    depends_on:
+      - core
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - claude-tasks:/tmp/claude_tasks
+    networks:
+      - agent-net
+    restart: unless-stopped
+
+  # Build-only: produces the my-claude-code-image used by claude-code module.
+  # Not started by `docker compose up`. Build with: docker compose build claude-code-worker
+  claude-code-worker:
+    build:
+      context: .
+      dockerfile: modules/claude_code/Dockerfile.worker
+    image: my-claude-code-image
+    profiles:
+      - worker
+
+  deployer:
+    build:
+      context: .
+      dockerfile: modules/deployer/Dockerfile
+    env_file: .env
+    depends_on:
+      - core
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - claude-tasks:/tmp/claude_tasks
+    networks:
+      - agent-net
+    restart: unless-stopped
+
   # --- Admin Dashboard ---
   dashboard:
     build:
@@ -216,3 +254,4 @@ volumes:
   pgdata:
   redisdata:
   miniodata:
+  claude-tasks:
