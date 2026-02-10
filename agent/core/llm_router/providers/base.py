@@ -18,6 +18,9 @@ class LLMResponse(BaseModel):
     output_tokens: int = 0
     model: str = ""
     stop_reason: str = ""  # end_turn, tool_use, max_tokens
+    # Anthropic prompt caching metrics (0 for other providers)
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
 
 
 class LLMProvider(ABC):
