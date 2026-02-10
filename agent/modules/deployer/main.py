@@ -27,6 +27,7 @@ tools: DeployerTools | None = None
 async def startup() -> None:
     global tools
     tools = DeployerTools()
+    await tools.init()
     logger.info("deployer_module_ready")
 
 

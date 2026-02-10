@@ -28,6 +28,29 @@ HEALTH_CHECK_RETRIES = 5
 HEALTH_CHECK_DELAY = 2.0
 
 
+async def _resolve_network_name(hint: str = DEPLOY_NETWORK) -> str:
+    """Find the real Docker network name matching *hint*.
+
+    Docker Compose prefixes network names with the project name, so a
+    compose-defined ``agent-net`` becomes e.g. ``agent_agent-net`` on the
+    host.  We ask ``docker network ls`` and pick the first network whose
+    name ends with the hint.  Falls back to the hint unchanged.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "network", "ls", "--format", "{{.Name}}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await proc.communicate()
+        for name in stdout.decode().splitlines():
+            if name == hint or name.endswith(f"_{hint}"):
+                return name
+    except Exception:
+        pass
+    return hint
+
+
 # ---------------------------------------------------------------------------
 # Deployment data model
 # ---------------------------------------------------------------------------
@@ -125,6 +148,12 @@ class DeployerTools:
     def __init__(self) -> None:
         self.deployments: dict[str, Deployment] = {}
         self._used_ports: set[int] = set()
+        self._network: str = DEPLOY_NETWORK
+
+    async def init(self) -> None:
+        """Resolve the real Docker network name (async, call once)."""
+        self._network = await _resolve_network_name(DEPLOY_NETWORK)
+        logger.info("resolved_docker_network", network=self._network)
 
     # ------------------------------------------------------------------
     # Port management
@@ -351,7 +380,7 @@ class DeployerTools:
             "docker", "run", "-d",
             "--name", container_name,
             "-p", f"{host_port}:{internal_port}",
-            f"--network={DEPLOY_NETWORK}",
+            f"--network={self._network}",
             # Traefik labels
             "-l", "traefik.enable=true",
             "-l", f"traefik.http.routers.{deploy_id}.rule=Host(`{deploy_id}.{DEPLOY_BASE_DOMAIN}`)",
