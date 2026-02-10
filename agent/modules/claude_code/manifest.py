@@ -10,8 +10,10 @@ MANIFEST = ModuleManifest(
             name="claude_code.run_task",
             description=(
                 "Submit a coding task for Claude Code to execute in an isolated Docker container. "
-                "Returns a task_id immediately — use claude_code.task_status to poll for results. "
-                "Claude Code can write code, run commands, create files, and interact with git repos."
+                "Returns a task_id and workspace path immediately — use claude_code.task_status to poll for results. "
+                "Claude Code can write code, run commands, create files, and interact with git repos. "
+                "The workspace path (e.g. /tmp/claude_tasks/<task_id>) can be passed directly to "
+                "deployer.deploy as the project_path to deploy the generated project."
             ),
             parameters=[
                 ToolParameter(
@@ -45,7 +47,8 @@ MANIFEST = ModuleManifest(
             name="claude_code.task_status",
             description=(
                 "Check the status of a previously submitted Claude Code task. Returns status "
-                "(queued/running/completed/failed), elapsed time, heartbeat, and result if finished."
+                "(queued/running/completed/failed), workspace path, elapsed time, heartbeat, and result if finished. "
+                "The workspace path can be passed to deployer.deploy as the project_path."
             ),
             parameters=[
                 ToolParameter(
