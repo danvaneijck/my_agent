@@ -266,6 +266,91 @@ async def _set_budget(platform, platform_id, tokens):
     await engine.dispose()
 
 
+@user.command("clear-history")
+@click.option("--platform", required=True, type=click.Choice(["discord", "telegram", "slack"]))
+@click.option("--platform-id", required=True, help="Platform user ID")
+@click.option("--keep-memories", is_flag=True, default=False, help="Keep memory summaries")
+def clear_history(platform, platform_id, keep_memories):
+    """Delete all conversations, messages, and token logs for a user."""
+    run_async(_clear_history(platform, platform_id, keep_memories))
+
+
+async def _clear_history(platform, platform_id, keep_memories):
+    from sqlalchemy import delete, select
+
+    from shared.database import get_engine, get_session_factory
+    from shared.models.conversation import Conversation, Message
+    from shared.models.memory import MemorySummary
+    from shared.models.token_usage import TokenLog
+    from shared.models.user import User, UserPlatformLink
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        # Resolve user
+        result = await session.execute(
+            select(UserPlatformLink).where(
+                UserPlatformLink.platform == platform,
+                UserPlatformLink.platform_user_id == platform_id,
+            )
+        )
+        link = result.scalar_one_or_none()
+        if not link:
+            click.echo(f"Error: No user found for {platform}:{platform_id}")
+            return
+
+        user_id = link.user_id
+
+        # Get conversation IDs for this user
+        result = await session.execute(
+            select(Conversation.id).where(Conversation.user_id == user_id)
+        )
+        conv_ids = [row[0] for row in result.all()]
+
+        if conv_ids:
+            # Delete token logs (FK to conversation, no cascade)
+            r = await session.execute(
+                delete(TokenLog).where(TokenLog.conversation_id.in_(conv_ids))
+            )
+            click.echo(f"  Deleted {r.rowcount} token logs")
+
+            # Delete memory summaries tied to conversations
+            if not keep_memories:
+                r = await session.execute(
+                    delete(MemorySummary).where(MemorySummary.user_id == user_id)
+                )
+                click.echo(f"  Deleted {r.rowcount} memory summaries")
+
+            # Delete messages (FK to conversation, has cascade but explicit is safer with bulk)
+            r = await session.execute(
+                delete(Message).where(Message.conversation_id.in_(conv_ids))
+            )
+            click.echo(f"  Deleted {r.rowcount} messages")
+
+            # Delete conversations
+            r = await session.execute(
+                delete(Conversation).where(Conversation.user_id == user_id)
+            )
+            click.echo(f"  Deleted {r.rowcount} conversations")
+        else:
+            # Still clear orphan memories if requested
+            if not keep_memories:
+                r = await session.execute(
+                    delete(MemorySummary).where(MemorySummary.user_id == user_id)
+                )
+                click.echo(f"  Deleted {r.rowcount} memory summaries")
+
+        # Reset token counter on user
+        result = await session.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one()
+        user.tokens_used_this_month = 0
+
+        await session.commit()
+        click.echo(f"History cleared for user {user_id}")
+
+    engine = get_engine()
+    await engine.dispose()
+
+
 @user.command("list")
 def list_users():
     """List all users with platform links and permission levels."""
