@@ -112,7 +112,7 @@ logs-bots: ## Tail logs from all communication bots
 # User management
 # ──────────────────────────────────────────────
 
-.PHONY: create-owner list-users
+.PHONY: create-owner list-users clear-history
 
 create-owner: ## Create owner user (usage: make create-owner DISCORD_ID=123 [TELEGRAM_ID=456] [SLACK_ID=789])
 	@CMD="$(CLI) user create-owner"; \
@@ -123,6 +123,19 @@ create-owner: ## Create owner user (usage: make create-owner DISCORD_ID=123 [TEL
 
 list-users: ## List all users
 	$(CLI) user list
+
+clear-history: ## Clear conversations for a user (usage: make clear-history PLATFORM=discord PLATFORM_ID=123 [KEEP_MEMORIES=1])
+ifndef PLATFORM
+	@echo "Usage: make clear-history PLATFORM=discord PLATFORM_ID=123 [KEEP_MEMORIES=1]"
+	@exit 1
+endif
+ifndef PLATFORM_ID
+	@echo "Usage: make clear-history PLATFORM=discord PLATFORM_ID=123 [KEEP_MEMORIES=1]"
+	@exit 1
+endif
+	@CMD="$(CLI) user clear-history --platform $(PLATFORM) --platform-id $(PLATFORM_ID)"; \
+	if [ -n "$(KEEP_MEMORIES)" ]; then CMD="$$CMD --keep-memories"; fi; \
+	eval $$CMD
 
 # ──────────────────────────────────────────────
 # Persona management
