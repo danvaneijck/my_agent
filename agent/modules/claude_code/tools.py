@@ -264,7 +264,7 @@ class ClaudeCodeTools:
             '        git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH"\n'
             '    fi\n'
             'fi\n'
-            'claude -p "$PROMPT" --json --no-input\n'
+            'claude -p "$PROMPT" --output-format json\n'
         )
 
     @staticmethod
