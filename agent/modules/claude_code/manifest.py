@@ -90,6 +90,23 @@ MANIFEST = ModuleManifest(
             required_permission="admin",
         ),
         ToolDefinition(
+            name="claude_code.cancel_task",
+            description=(
+                "Cancel a running or queued Claude Code task. Kills the Docker container "
+                "and marks the task as failed. Use this when a task is taking too long, "
+                "is stuck, or is no longer needed."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID returned by run_task.",
+                    required=True,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
             name="claude_code.list_tasks",
             description="List all Claude Code tasks with their current statuses.",
             parameters=[

@@ -182,6 +182,39 @@ class ClaudeCodeTools:
             "lines": [l.rstrip("\n") for l in selected],
         }
 
+    async def cancel_task(self, task_id: str, user_id: str | None = None) -> dict:
+        """Cancel a running or queued task by killing its Docker container."""
+        task = self.tasks.get(task_id)
+        if not task:
+            raise ValueError(f"Task not found: {task_id}")
+
+        if task.status in ("completed", "failed"):
+            return {
+                "task_id": task_id,
+                "status": task.status,
+                "message": f"Task already {task.status}, nothing to cancel.",
+            }
+
+        container_name = f"claude-task-{task.id}"
+
+        # Cancel the asyncio task (stops streaming, triggers finally block)
+        if task._asyncio_task and not task._asyncio_task.done():
+            task._asyncio_task.cancel()
+
+        # Kill the Docker container
+        await self._kill_container(container_name)
+
+        task.status = "failed"
+        task.error = "Cancelled by user"
+        task.completed_at = datetime.now(timezone.utc)
+
+        logger.info("task_cancelled", task_id=task_id)
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "message": "Task has been cancelled.",
+        }
+
     async def list_tasks(
         self, status_filter: str | None = None, user_id: str | None = None
     ) -> dict:
