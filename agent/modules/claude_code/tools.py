@@ -23,6 +23,10 @@ SSH_KEY_PATH = os.environ.get("SSH_KEY_PATH", "")
 GH_CONFIG_PATH = os.environ.get("GH_CONFIG_PATH", "")
 GIT_CONFIG_PATH = os.environ.get("GIT_CONFIG_PATH", "")
 TASK_VOLUME = os.environ.get("CLAUDE_TASK_VOLUME", "claude-tasks")
+
+# Bot git identity — overrides any mounted .gitconfig for commits
+CLAUDE_CODE_GIT_AUTHOR_NAME = os.environ.get("CLAUDE_CODE_GIT_AUTHOR_NAME", "claude-agent[bot]")
+CLAUDE_CODE_GIT_AUTHOR_EMAIL = os.environ.get("CLAUDE_CODE_GIT_AUTHOR_EMAIL", "claude-agent[bot]@noreply.github.com")
 TASK_BASE_DIR = "/tmp/claude_tasks"
 
 MAX_OUTPUT = 50_000  # chars kept from stdout/stderr
@@ -226,6 +230,14 @@ class ClaudeCodeTools:
             cmd.extend(["-v", f"{GH_CONFIG_PATH}:/root/.config/gh:ro"])
         if GIT_CONFIG_PATH:
             cmd.extend(["-v", f"{GIT_CONFIG_PATH}:/root/.gitconfig:ro"])
+
+        # Override git identity so commits are attributed to the bot
+        cmd.extend([
+            "-e", f"GIT_AUTHOR_NAME={CLAUDE_CODE_GIT_AUTHOR_NAME}",
+            "-e", f"GIT_AUTHOR_EMAIL={CLAUDE_CODE_GIT_AUTHOR_EMAIL}",
+            "-e", f"GIT_COMMITTER_NAME={CLAUDE_CODE_GIT_AUTHOR_NAME}",
+            "-e", f"GIT_COMMITTER_EMAIL={CLAUDE_CODE_GIT_AUTHOR_EMAIL}",
+        ])
 
         cmd.extend([
             CLAUDE_CODE_IMAGE,
