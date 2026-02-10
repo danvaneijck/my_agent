@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # Path to custom tokens JSON file (same format as injective-lists)
     injective_custom_tokens: str = ""
 
+    # Renpho
+    renpho_email: str = ""
+    renpho_password: str = ""
+
     # Atlassian
     atlassian_url: str = ""
     atlassian_username: str = ""
@@ -97,6 +101,7 @@ class Settings(BaseSettings):
         "code_executor": "http://code-executor:8000",
         "knowledge": "http://knowledge:8000",
         "atlassian": "http://atlassian:8000",
+        "renpho_biometrics": "http://renpho-biometrics:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
