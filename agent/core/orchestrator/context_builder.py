@@ -177,17 +177,25 @@ class ContextBuilder:
     def _build_system_prompt(self, persona: Persona | None) -> str:
         """Build the system prompt from persona configuration."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        scheduler_guidance = (
+            "\n\nWhen you submit a long-running task (like claude_code.run_task), "
+            "use scheduler.add_job to monitor it so the user is notified when it "
+            "completes. Do not ask the user to check back manually."
+        )
+
         if persona:
             return (
                 f"{persona.system_prompt}\n\n"
                 f"Current date and time: {now}\n"
                 f"You have access to tools. Use them when needed to accomplish tasks."
+                f"{scheduler_guidance}"
             )
         return (
             "You are a helpful AI assistant with access to various tools. "
             "Be concise, accurate, and helpful. If you're unsure about something, say so.\n\n"
             f"Current date and time: {now}\n"
             "You have access to tools. Use them when needed to accomplish tasks."
+            f"{scheduler_guidance}"
         )
 
     async def _get_semantic_memories(

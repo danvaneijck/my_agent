@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 
 import httpx
+import redis.asyncio as aioredis
 import structlog
 import discord
 from discord import Intents
@@ -13,6 +15,7 @@ from minio import Minio
 from comms.discord_bot.normalizer import DiscordNormalizer
 from shared.config import Settings
 from shared.file_utils import upload_attachment
+from shared.schemas.notifications import Notification
 
 logger = structlog.get_logger()
 
@@ -37,6 +40,35 @@ class AgentDiscordBot(discord.Client):
 
     async def on_ready(self):
         logger.info("discord_bot_ready", user=str(self.user))
+        asyncio.create_task(self._notification_listener())
+
+    async def _notification_listener(self):
+        """Subscribe to Redis notifications and send proactive messages."""
+        try:
+            r = aioredis.from_url(self.settings.redis_url)
+            pubsub = r.pubsub()
+            await pubsub.subscribe("notifications:discord")
+            logger.info("discord_notification_listener_started")
+
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    notification = Notification.model_validate_json(message["data"])
+                    channel = self.get_channel(int(notification.platform_channel_id))
+                    if channel is None:
+                        channel = await self.fetch_channel(int(notification.platform_channel_id))
+                    if channel:
+                        await channel.send(notification.content)
+                        logger.info(
+                            "notification_sent",
+                            channel_id=notification.platform_channel_id,
+                            job_id=notification.job_id,
+                        )
+                except Exception as e:
+                    logger.error("notification_send_failed", error=str(e))
+        except Exception as e:
+            logger.error("notification_listener_failed", error=str(e))
 
     async def on_message(self, message: discord.Message):
         # Ignore own messages

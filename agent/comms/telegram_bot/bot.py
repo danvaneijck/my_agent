@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 
 import httpx
+import redis.asyncio as aioredis
 import structlog
 from minio import Minio
 from telegram import Update
@@ -20,6 +22,7 @@ from comms.telegram_bot.normalizer import TelegramNormalizer
 from shared.config import Settings
 from shared.file_utils import upload_attachment
 from shared.schemas.messages import AgentResponse
+from shared.schemas.notifications import Notification
 
 logger = structlog.get_logger()
 
@@ -39,9 +42,41 @@ class AgentTelegramBot:
         self.app = (
             Application.builder()
             .token(settings.telegram_token)
+            .post_init(self._post_init)
             .build()
         )
         self._setup_handlers()
+
+    async def _post_init(self, application: Application) -> None:
+        """Called after the Application is initialized but before polling starts."""
+        asyncio.create_task(self._notification_listener(application))
+
+    async def _notification_listener(self, application: Application) -> None:
+        """Subscribe to Redis notifications and send proactive messages."""
+        try:
+            r = aioredis.from_url(self.settings.redis_url)
+            pubsub = r.pubsub()
+            await pubsub.subscribe("notifications:telegram")
+            logger.info("telegram_notification_listener_started")
+
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    notification = Notification.model_validate_json(message["data"])
+                    await application.bot.send_message(
+                        chat_id=notification.platform_channel_id,
+                        text=notification.content,
+                    )
+                    logger.info(
+                        "notification_sent",
+                        chat_id=notification.platform_channel_id,
+                        job_id=notification.job_id,
+                    )
+                except Exception as e:
+                    logger.error("notification_send_failed", error=str(e))
+        except Exception as e:
+            logger.error("notification_listener_failed", error=str(e))
 
     def _setup_handlers(self):
         """Register message handlers."""
