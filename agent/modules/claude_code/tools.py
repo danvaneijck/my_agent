@@ -321,11 +321,11 @@ class ClaudeCodeTools:
         if CLAUDE_AUTH_PATH:
             cmd.extend(["-v", f"{CLAUDE_AUTH_PATH}:/tmp/.claude-ro:ro"])
         if SSH_KEY_PATH:
-            cmd.extend(["-v", f"{SSH_KEY_PATH}:/root/.ssh:ro"])
+            cmd.extend(["-v", f"{SSH_KEY_PATH}:/tmp/.ssh-ro:ro"])
         if GH_CONFIG_PATH:
-            cmd.extend(["-v", f"{GH_CONFIG_PATH}:/root/.config/gh:ro"])
+            cmd.extend(["-v", f"{GH_CONFIG_PATH}:/tmp/.gh-ro:ro"])
         if GIT_CONFIG_PATH:
-            cmd.extend(["-v", f"{GIT_CONFIG_PATH}:/root/.gitconfig:ro"])
+            cmd.extend(["-v", f"{GIT_CONFIG_PATH}:/tmp/.gitconfig-ro:ro"])
 
         # Override git identity so commits are attributed to the bot
         cmd.extend([
@@ -346,10 +346,24 @@ class ClaudeCodeTools:
         """Shell script executed inside the worker container."""
         return (
             'set -e\n'
-            '# Copy read-only auth to writable location\n'
+            'HOME_DIR="$HOME"\n'
+            '# Copy read-only credentials to writable locations\n'
             'if [ -d /tmp/.claude-ro ]; then\n'
-            '    cp -r /tmp/.claude-ro /root/.claude\n'
-            '    chmod -R 600 /root/.claude 2>/dev/null || true\n'
+            '    cp -r /tmp/.claude-ro "$HOME_DIR/.claude"\n'
+            '    chmod -R u+rw "$HOME_DIR/.claude" 2>/dev/null || true\n'
+            'fi\n'
+            'if [ -d /tmp/.ssh-ro ]; then\n'
+            '    cp -r /tmp/.ssh-ro "$HOME_DIR/.ssh"\n'
+            '    chmod 700 "$HOME_DIR/.ssh"\n'
+            '    chmod 600 "$HOME_DIR/.ssh"/* 2>/dev/null || true\n'
+            'fi\n'
+            'if [ -d /tmp/.gh-ro ]; then\n'
+            '    mkdir -p "$HOME_DIR/.config"\n'
+            '    cp -r /tmp/.gh-ro "$HOME_DIR/.config/gh"\n'
+            '    chmod -R u+rw "$HOME_DIR/.config/gh" 2>/dev/null || true\n'
+            'fi\n'
+            'if [ -f /tmp/.gitconfig-ro ]; then\n'
+            '    cp /tmp/.gitconfig-ro "$HOME_DIR/.gitconfig"\n'
             'fi\n'
             'if [ -n "$REPO_URL" ]; then\n'
             '    git clone "$REPO_URL" . 2>&1\n'
