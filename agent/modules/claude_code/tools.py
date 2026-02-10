@@ -22,7 +22,7 @@ CLAUDE_AUTH_PATH = os.environ.get("CLAUDE_AUTH_PATH", "")
 SSH_KEY_PATH = os.environ.get("SSH_KEY_PATH", "")
 GH_CONFIG_PATH = os.environ.get("GH_CONFIG_PATH", "")
 GIT_CONFIG_PATH = os.environ.get("GIT_CONFIG_PATH", "")
-TASK_VOLUME = os.environ.get("CLAUDE_TASK_VOLUME", "claude-tasks")
+TASK_VOLUME = os.environ.get("CLAUDE_TASK_VOLUME", "")  # absolute host path to bind-mount
 
 # Bot git identity — overrides any mounted .gitconfig for commits
 CLAUDE_CODE_GIT_AUTHOR_NAME = os.environ.get("CLAUDE_CODE_GIT_AUTHOR_NAME", "claude-agent[bot]")
@@ -90,6 +90,11 @@ class ClaudeCodeTools:
     def __init__(self) -> None:
         self.tasks: dict[str, Task] = {}
         os.makedirs(TASK_BASE_DIR, exist_ok=True)
+        if not TASK_VOLUME:
+            logger.warning(
+                "CLAUDE_TASK_VOLUME not set — worker containers need the "
+                "absolute host path to the task directory for bind mounts"
+            )
 
     # ------------------------------------------------------------------
     # Public tools (called by orchestrator)

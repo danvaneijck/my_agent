@@ -204,7 +204,7 @@ services:
       - core
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - claude-tasks:/tmp/claude_tasks
+      - ./data/claude_tasks:/tmp/claude_tasks
     networks:
       - agent-net
     restart: unless-stopped
@@ -228,7 +228,7 @@ services:
       - core
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - claude-tasks:/tmp/claude_tasks
+      - ./data/claude_tasks:/tmp/claude_tasks
     networks:
       - agent-net
     restart: unless-stopped
@@ -254,4 +254,3 @@ volumes:
   pgdata:
   redisdata:
   miniodata:
-  claude-tasks:
