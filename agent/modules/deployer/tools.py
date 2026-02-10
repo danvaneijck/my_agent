@@ -243,7 +243,6 @@ class DeployerTools:
 
             # --- Step 4: resolve URL ---
             direct_url = f"http://localhost:{port}"
-            traefik_url = f"http://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
             deployment.url = direct_url
 
             # --- Step 5: health check ---
@@ -259,7 +258,6 @@ class DeployerTools:
                 "project_name": project_name,
                 "project_type": project_type,
                 "url": direct_url,
-                "traefik_url": traefik_url,
                 "port": port,
                 "container_id": cid,
                 "status": "running",
