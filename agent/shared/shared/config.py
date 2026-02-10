@@ -118,6 +118,8 @@ class Settings(BaseSettings):
         "atlassian": "http://atlassian:8000",
         "renpho_biometrics": "http://renpho-biometrics:8000",
         "garmin": "http://garmin:8000",
+        "claude_code": "http://claude-code:8000",
+        "deployer": "http://deployer:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
