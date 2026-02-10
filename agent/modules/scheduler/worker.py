@@ -176,6 +176,18 @@ async def _check_poll_module(
     success_field = config.get("success_field", "status")
     success_values = config.get("success_values", ["completed", "failed"])
 
+    # Normalize tool name to "module.method" format.
+    # LLMs sometimes write "claude_code_task_status" (underscores) instead of
+    # "claude_code.task_status" (dot).  The module's /execute endpoint splits
+    # on "." to extract the method name, so we must ensure the dot is present.
+    if "." not in tool and module:
+        # Strip the module prefix (with underscore) if present, then re-add with dot
+        prefix = module + "_"
+        if tool.startswith(prefix):
+            tool = f"{module}.{tool[len(prefix):]}"
+        else:
+            tool = f"{module}.{tool}"
+
     module_url = settings.module_services.get(module)
     if not module_url:
         raise ValueError(f"Unknown module: {module}")
