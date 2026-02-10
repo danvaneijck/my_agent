@@ -115,7 +115,9 @@ class ClaudeCodeTools:
             "workspace": workspace,
             "message": (
                 f"Task submitted. Use claude_code.task_status with "
-                f"task_id='{task_id}' to check progress."
+                f"task_id='{task_id}' to check progress. "
+                f"When the task completes, use deployer.deploy with "
+                f"project_path='{workspace}' to deploy it."
             ),
         }
 
