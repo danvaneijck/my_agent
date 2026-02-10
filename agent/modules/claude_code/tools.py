@@ -41,6 +41,7 @@ class Task:
     prompt: str
     repo_url: str | None = None
     branch: str | None = None
+    workspace: str = ""
     status: str = "queued"  # queued | running | completed | failed
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: datetime | None = None
@@ -56,6 +57,7 @@ class Task:
             "prompt": self.prompt,
             "repo_url": self.repo_url,
             "branch": self.branch,
+            "workspace": self.workspace,
             "status": self.status,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
@@ -100,7 +102,7 @@ class ClaudeCodeTools:
         workspace = os.path.join(TASK_BASE_DIR, task_id)
         os.makedirs(workspace, exist_ok=True)
 
-        task = Task(id=task_id, prompt=prompt, repo_url=repo_url, branch=branch)
+        task = Task(id=task_id, prompt=prompt, repo_url=repo_url, branch=branch, workspace=workspace)
         self.tasks[task_id] = task
 
         # Fire-and-forget background execution
@@ -231,7 +233,7 @@ class ClaudeCodeTools:
 
         # Mount credentials read-only
         if CLAUDE_AUTH_PATH:
-            cmd.extend(["-v", f"{CLAUDE_AUTH_PATH}:/home/user/.claude:ro"])
+            cmd.extend(["-v", f"{CLAUDE_AUTH_PATH}:/root/.claude:ro"])
         if SSH_KEY_PATH:
             cmd.extend(["-v", f"{SSH_KEY_PATH}:/root/.ssh:ro"])
         if GH_CONFIG_PATH:
