@@ -82,10 +82,11 @@ class Deployment:
 # Dockerfile templates for each project type
 # ---------------------------------------------------------------------------
 DOCKERFILE_REACT = """\
-FROM node:20-alpine AS build
+FROM node:20-slim AS build
 WORKDIR /app
-COPY . .
+COPY package*.json ./
 RUN npm ci 2>/dev/null || npm install
+COPY . .
 RUN npm run build
 # Collect output from whichever directory the framework produces
 RUN mkdir -p /output && \\
@@ -99,10 +100,11 @@ EXPOSE 80
 """
 
 DOCKERFILE_NEXTJS = """\
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
-COPY . .
+COPY package*.json ./
 RUN npm ci 2>/dev/null || npm install
+COPY . .
 RUN npm run build
 EXPOSE 3000
 CMD ["npm", "start"]
@@ -115,10 +117,11 @@ EXPOSE 80
 """
 
 DOCKERFILE_NODE = """\
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
-COPY . .
+COPY package*.json ./
 RUN npm ci 2>/dev/null || npm install
+COPY . .
 EXPOSE 3000
 CMD ["npm", "start"]
 """
