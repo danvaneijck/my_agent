@@ -13,5 +13,6 @@ venv/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+data/claude_tasks/
 
 .env
