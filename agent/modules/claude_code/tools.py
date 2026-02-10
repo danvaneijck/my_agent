@@ -23,7 +23,6 @@ SSH_KEY_PATH = os.environ.get("SSH_KEY_PATH", "")
 GH_CONFIG_PATH = os.environ.get("GH_CONFIG_PATH", "")
 GIT_CONFIG_PATH = os.environ.get("GIT_CONFIG_PATH", "")
 TASK_VOLUME = os.environ.get("CLAUDE_TASK_VOLUME", "claude-tasks")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Bot git identity — overrides any mounted .gitconfig for commits
 CLAUDE_CODE_GIT_AUTHOR_NAME = os.environ.get("CLAUDE_CODE_GIT_AUTHOR_NAME", "claude-agent[bot]")
@@ -251,10 +250,6 @@ class ClaudeCodeTools:
             "-e", f"GIT_COMMITTER_NAME={CLAUDE_CODE_GIT_AUTHOR_NAME}",
             "-e", f"GIT_COMMITTER_EMAIL={CLAUDE_CODE_GIT_AUTHOR_EMAIL}",
         ])
-
-        # Pass API key so CLI can authenticate without writable .claude dir
-        if ANTHROPIC_API_KEY:
-            cmd.extend(["-e", f"ANTHROPIC_API_KEY={ANTHROPIC_API_KEY}"])
 
         cmd.extend([
             CLAUDE_CODE_IMAGE,
