@@ -41,6 +41,9 @@ class LocationTools:
         radius_m: int = 150,
         place_lat: float | None = None,
         place_lng: float | None = None,
+        platform: str | None = None,
+        platform_channel_id: str | None = None,
+        platform_thread_id: str | None = None,
         user_id: str | None = None,
     ) -> dict:
         """Create a location-based reminder."""
@@ -104,6 +107,9 @@ class LocationTools:
                 place_lat=lat,
                 place_lng=lng,
                 radius_m=radius_m,
+                platform=platform,
+                platform_channel_id=platform_channel_id,
+                platform_thread_id=platform_thread_id,
                 owntracks_rid=rid,
                 status="active",
             )

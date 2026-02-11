@@ -229,9 +229,9 @@ class AgentLoop:
                 # Inject user context so modules can associate resources
                 tool_call.user_id = str(user.id)
 
-                # Inject conversation context for scheduler so it knows
-                # where to send proactive notifications
-                if tool_call.tool_name.startswith("scheduler."):
+                # Inject conversation context for modules that send
+                # proactive notifications (scheduler, location reminders)
+                if tool_call.tool_name.startswith(("scheduler.", "location.")):
                     tool_call.arguments["platform"] = conversation.platform
                     tool_call.arguments["platform_channel_id"] = conversation.platform_channel_id
                     tool_call.arguments["platform_thread_id"] = conversation.platform_thread_id
