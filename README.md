@@ -29,9 +29,12 @@ A modular, self-hosted AI agent that connects to Discord, Telegram, and Slack. T
        ▼                                         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      Module Layer                           │
-│  Research  │ Code Executor │ Knowledge │ File Mgr │ (yours) │
-│  (search,    (Python/shell   (remember/   (MinIO     ...    │
-│   scrape)     + data sci)     recall)      CRUD)            │
+│  Research │ Code Exec │ Knowledge │ File Mgr │ Atlassian │  ...  │
+│  (search,   (Python/    (remember/   (MinIO    (Jira/          │
+│   scrape)    shell)      recall)      CRUD)    Confluence)     │
+│  Claude Code │ Deployer │ Scheduler │ Garmin │ Renpho │ Loc.  │
+│  (coding in    (live URL   (background  (health  (body    (geo- │
+│   Docker)       deploy)     jobs)       data)    comp)   fence)│
 └─────────────────────────────────────────────────────────────┘
        │
 ┌──────┴──────────────────────────────────────────────────────┐
@@ -104,6 +107,13 @@ make psql            # Open a PostgreSQL shell
 | `code_executor` | `run_python`, `run_shell` | Execute Python code (with numpy, pandas, matplotlib, scipy, sympy, requests) and shell commands in sandboxed subprocesses |
 | `knowledge` | `remember`, `recall`, `list_memories`, `forget` | Persistent per-user knowledge base with semantic search via pgvector |
 | `file_manager` | `create_document`, `list_files`, `get_file_link`, `delete_file`, `read_document` | Create, read, and manage documents in MinIO storage |
+| `atlassian` | `jira_search`, `jira_get_issue`, `jira_create_issue`, `jira_update_issue`, `confluence_search`, `confluence_get_page`, `confluence_create_page`, `confluence_update_page`, `create_meeting_notes`, `create_feature_doc` | Jira and Confluence integration — search, create, update issues and pages; structured meeting notes and feature docs with optional Jira ticket creation |
+| `claude_code` | `run_task`, `continue_task`, `task_status`, `task_logs`, `cancel_task`, `list_tasks` | Execute coding tasks using Claude Code CLI in disposable Docker containers; iterate on existing workspaces |
+| `deployer` | `deploy`, `list_deployments`, `teardown`, `teardown_all`, `get_logs` | Deploy projects (React, Next.js, static, Node, Docker) to live URLs with environment variable injection |
+| `scheduler` | `add_job`, `list_jobs`, `cancel_job` | Background job scheduler for monitoring long-running tasks and sending proactive notifications |
+| `garmin` | `get_daily_summary`, `get_heart_rate`, `get_sleep`, `get_body_composition`, `get_activities`, `get_stress`, `get_steps` | Fetch health, fitness, and activity data from Garmin Connect |
+| `renpho_biometrics` | `get_measurements`, `get_latest`, `get_trend` | Fetch body composition and biometric data from Renpho smart scales |
+| `location` | `create_reminder`, `list_reminders`, `cancel_reminder`, `get_location`, `set_named_place`, `generate_pairing_credentials` | Location-based reminders via OwnTracks geofences, named places, and GPS tracking |
 | `injective` | `get_portfolio`, `get_market_price`, `place_order`, `cancel_order`, `get_positions` | Blockchain trading (scaffold, owner-only) |
 
 ### Adding New Modules
@@ -198,6 +208,13 @@ agent/
 │   ├── code_executor/
 │   ├── knowledge/
 │   ├── file_manager/
+│   ├── atlassian/
+│   ├── claude_code/
+│   ├── deployer/
+│   ├── scheduler/
+│   ├── garmin/
+│   ├── renpho_biometrics/
+│   ├── location/
 │   └── injective/
 ├── dashboard/       # Admin analytics dashboard
 ├── alembic/         # Database migrations
