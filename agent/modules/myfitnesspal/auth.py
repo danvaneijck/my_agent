@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import time
 
 import requests
@@ -188,14 +189,58 @@ def _seleniumbase_login(username: str, password: str) -> list[dict]:
             # Dismiss privacy/consent overlay
             _dismiss_consent_overlay(sb)
 
-            # Fill login form
+            # Human-like behavior: scroll around, pause, build reCAPTCHA v3 score
+            driver = sb.driver
+            driver.execute_script("window.scrollTo(0, 300);")
+            time.sleep(random.uniform(1.0, 2.0))
+            driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(random.uniform(0.5, 1.5))
+
+            # Fill login form with human-like typing delays
             sb.wait_for_element('input[name="email"]', timeout=15)
-            sb.type('input[name="email"]', username)
-            sb.type('input[name="password"]', password)
+            sb.click('input[name="email"]')
+            time.sleep(random.uniform(0.3, 0.7))
+            for char in username:
+                sb.add_text('input[name="email"]', char)
+                time.sleep(random.uniform(0.03, 0.12))
+
+            time.sleep(random.uniform(0.5, 1.0))
+            sb.click('input[name="password"]')
+            time.sleep(random.uniform(0.3, 0.7))
+            for char in password:
+                sb.add_text('input[name="password"]', char)
+                time.sleep(random.uniform(0.03, 0.12))
+
             logger.info("mfp_uc_credentials_entered")
 
-            # Submit the form
-            sb.click('button[type="submit"]')
+            # Pause to let reCAPTCHA v3 accumulate a behavior score
+            time.sleep(random.uniform(2.0, 4.0))
+
+            # Check for and handle reCAPTCHA on the login form
+            # (separate from the Cloudflare Turnstile we already handled)
+            has_recaptcha = driver.execute_script("""
+                return !!(
+                    document.querySelector('iframe[src*="recaptcha"]') ||
+                    document.querySelector('iframe[title*="recaptcha"]') ||
+                    document.querySelector('.g-recaptcha') ||
+                    document.querySelector('[data-sitekey]')
+                );
+            """)
+            logger.info("mfp_form_recaptcha_check", has_recaptcha=has_recaptcha)
+
+            if has_recaptcha:
+                try:
+                    sb.uc_gui_click_captcha()
+                    logger.info("mfp_form_recaptcha_handled")
+                    time.sleep(2)
+                except Exception as e:
+                    logger.debug("mfp_form_recaptcha_click_failed", error=str(e))
+
+            # Submit the form using UC click (keeps driver disconnected)
+            try:
+                sb.uc_click('button[type="submit"]')
+            except Exception:
+                sb.click('button[type="submit"]')
             logger.info("mfp_uc_login_submitted")
 
             # Wait for the page to respond
