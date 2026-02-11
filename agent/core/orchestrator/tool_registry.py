@@ -7,7 +7,7 @@ import json
 import httpx
 import structlog
 
-from shared.config import Settings
+from shared.config import Settings, parse_list
 from shared.redis import get_redis
 from shared.schemas.tools import ModuleManifest, ToolCall, ToolDefinition, ToolResult
 
@@ -134,7 +134,9 @@ class ToolRegistry:
             )
 
         url = self.settings.module_services[module_name]
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        slow_modules = parse_list(self.settings.slow_modules)
+        timeout = float(self.settings.tool_execution_timeout) if module_name in slow_modules else 30.0
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 payload = {
                     "tool_name": tool_call.tool_name,
@@ -155,7 +157,7 @@ class ToolRegistry:
                 return ToolResult(
                     tool_name=tool_call.tool_name,
                     success=False,
-                    error="Tool execution timed out (30s).",
+                    error=f"Tool execution timed out ({timeout:.0f}s).",
                 )
             except Exception as e:
                 return ToolResult(
