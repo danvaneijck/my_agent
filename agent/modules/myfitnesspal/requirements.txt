@@ -6,6 +6,7 @@ pydantic>=2.5
 pydantic-settings>=2.1
 
 # Module-specific
-myfitnesspal>=2.0
+# NOTE: myfitnesspal is installed --no-deps in Dockerfile to avoid
+# rich version conflict with seleniumbase (rich<13 vs rich>=14).
 seleniumbase>=4.32
 requests>=2.31
