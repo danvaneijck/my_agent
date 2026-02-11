@@ -497,7 +497,7 @@ class ClaudeCodeTools:
             "docker", "run", "--rm",
             "--name", container_name,
             "-v", f"{TASK_VOLUME}:{TASK_BASE_DIR}",
-            "-w", f"{TASK_BASE_DIR}/{task.id}",
+            "-w", task.workspace,
             "-e", f"PROMPT={task.prompt}",
         ]
 
