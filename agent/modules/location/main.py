@@ -138,11 +138,9 @@ async def execute(call: ToolCall):
             result = await tools.create_reminder(**args)
         elif tool_name == "list_reminders":
             result = await tools.list_reminders(**args)
-        elif tool_name == "cancel_reminder":
-            result = await tools.cancel_reminder(**args)
         elif tool_name == "delete_reminder":
             result = await tools.delete_reminder(**args)
-        elif tool_name == "disable_reminder":
+        elif tool_name in ("disable_reminder", "cancel_reminder"):
             result = await tools.disable_reminder(**args)
         elif tool_name == "enable_reminder":
             result = await tools.enable_reminder(**args)

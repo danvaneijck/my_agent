@@ -226,14 +226,6 @@ class LocationTools:
                 "count": len(reminders),
             }
 
-    async def cancel_reminder(
-        self,
-        reminder_id: str,
-        user_id: str | None = None,
-    ) -> dict:
-        """Cancel/delete an active or paused reminder."""
-        return await self.delete_reminder(reminder_id=reminder_id, user_id=user_id)
-
     async def delete_reminder(
         self,
         reminder_id: str,
@@ -257,17 +249,21 @@ class LocationTools:
             if reminder is None:
                 return {"success": False, "error": "Reminder not found"}
 
-            reminder.status = "cancelled"
+            reminder_id_str = str(reminder.id)
+            reminder_msg = reminder.message
+            reminder_place = reminder.place_name
+
+            await session.delete(reminder)
             await session.commit()
 
             # Clean up Redis state
-            await self.redis_client.delete(f"geofence_inside:{reminder.id}")
+            await self.redis_client.delete(f"geofence_inside:{reminder_id_str}")
             await mark_waypoints_dirty(self.redis_client, user_id)
 
             return {
                 "success": True,
-                "reminder_id": str(reminder.id),
-                "message": f"Deleted: {reminder.message} (at {reminder.place_name})",
+                "reminder_id": reminder_id_str,
+                "message": f"Deleted: {reminder_msg} (at {reminder_place})",
             }
 
     async def disable_reminder(
