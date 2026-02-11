@@ -55,11 +55,11 @@ class Task:
 
     @property
     def log_file(self) -> str:
-        return os.path.join(self.workspace, "task.log")
+        return os.path.join(self.workspace, f"task_{self.id}.log")
 
     @property
     def meta_file(self) -> str:
-        return os.path.join(self.workspace, TASK_META_FILE)
+        return os.path.join(self.workspace, f"task_meta_{self.id}.json")
 
     def to_dict(self) -> dict:
         return {
@@ -137,28 +137,48 @@ class ClaudeCodeTools:
     # ------------------------------------------------------------------
 
     def _load_persisted_tasks(self) -> None:
-        """Reload task metadata from disk on startup."""
+        """Reload task metadata from disk on startup.
+
+        Scans for ``task_meta_<id>.json`` files (current format) and the
+        legacy ``task_meta.json`` (old format) within each workspace
+        directory.
+        """
         loaded = 0
         for entry in os.scandir(TASK_BASE_DIR):
             if not entry.is_dir():
                 continue
-            meta_path = os.path.join(entry.path, TASK_META_FILE)
-            if not os.path.isfile(meta_path):
-                continue
+
+            # Collect all meta files: new per-task format + legacy single file
+            meta_files: list[str] = []
             try:
-                with open(meta_path) as f:
-                    data = json.load(f)
-                task = Task.from_dict(data)
-                # Tasks that were running when we crashed are now dead
-                if task.status in ("queued", "running"):
-                    task.status = "failed"
-                    task.error = task.error or "Interrupted by module restart"
-                    task.completed_at = task.completed_at or datetime.now(timezone.utc)
-                    task.save()
-                self.tasks[task.id] = task
-                loaded += 1
-            except Exception as exc:
-                logger.warning("skip_persisted_task", path=meta_path, error=str(exc))
+                for f in os.scandir(entry.path):
+                    if f.is_file() and f.name.startswith("task_meta") and f.name.endswith(".json"):
+                        meta_files.append(f.path)
+            except OSError:
+                continue
+
+            # Fallback: legacy task_meta.json
+            legacy = os.path.join(entry.path, TASK_META_FILE)
+            if not meta_files and os.path.isfile(legacy):
+                meta_files.append(legacy)
+
+            for meta_path in meta_files:
+                try:
+                    with open(meta_path) as fh:
+                        data = json.load(fh)
+                    task = Task.from_dict(data)
+                    if task.id in self.tasks:
+                        continue
+                    # Tasks that were running when we crashed are now dead
+                    if task.status in ("queued", "running"):
+                        task.status = "failed"
+                        task.error = task.error or "Interrupted by module restart"
+                        task.completed_at = task.completed_at or datetime.now(timezone.utc)
+                        task.save()
+                    self.tasks[task.id] = task
+                    loaded += 1
+                except Exception as exc:
+                    logger.warning("skip_persisted_task", path=meta_path, error=str(exc))
         if loaded:
             logger.info("loaded_persisted_tasks", count=loaded)
 
@@ -198,6 +218,72 @@ class ClaudeCodeTools:
                 f"Use claude_code.task_status to check completion. "
                 f"When the task completes, use deployer.deploy with "
                 f"project_path='{workspace}' to deploy it."
+            ),
+        }
+
+    async def continue_task(
+        self,
+        task_id: str,
+        prompt: str,
+        timeout: int = DEFAULT_TIMEOUT,
+        user_id: str | None = None,
+    ) -> dict:
+        """Run a follow-up prompt against an existing task's workspace.
+
+        This lets you make edits to a project that was created by a previous
+        ``run_task`` call.  The original workspace is reused so all existing
+        files are visible to Claude Code.
+        """
+        original = self.tasks.get(task_id)
+        if not original:
+            raise ValueError(f"Task not found: {task_id}")
+        if original.status in ("queued", "running"):
+            raise ValueError(
+                f"Task {task_id} is still {original.status} — wait for it "
+                f"to finish before continuing."
+            )
+        if not os.path.isdir(original.workspace):
+            raise ValueError(
+                f"Workspace no longer exists: {original.workspace}"
+            )
+
+        # Create a new task that shares the original workspace
+        new_id = uuid.uuid4().hex[:12]
+        new_workspace = original.workspace  # reuse existing project dir
+
+        task = Task(
+            id=new_id,
+            prompt=prompt,
+            workspace=new_workspace,
+        )
+        self.tasks[new_id] = task
+
+        # Persist metadata under the shared workspace with a task-specific name
+        # so it doesn't clobber the original task_meta.json
+        task.save()
+
+        # Fire-and-forget background execution (no repo clone — workspace
+        # already has the project files)
+        task._asyncio_task = asyncio.create_task(self._execute_task(task, timeout))
+
+        logger.info(
+            "continue_task_submitted",
+            new_task_id=new_id,
+            original_task_id=task_id,
+            workspace=new_workspace,
+        )
+        return {
+            "task_id": new_id,
+            "original_task_id": task_id,
+            "status": "queued",
+            "workspace": new_workspace,
+            "log_file": task.log_file,
+            "message": (
+                f"Continuation task submitted against workspace from task "
+                f"'{task_id}'. Use claude_code.task_status with "
+                f"task_id='{new_id}' to check progress. "
+                f"When done, use deployer.deploy with "
+                f"project_path='{new_workspace}' to deploy (or redeploy)."
             ),
         }
 

@@ -44,6 +44,37 @@ MANIFEST = ModuleManifest(
             required_permission="admin",
         ),
         ToolDefinition(
+            name="claude_code.continue_task",
+            description=(
+                "Run a follow-up prompt against an existing task's workspace to make edits "
+                "to a previously generated project. The original files are preserved and "
+                "Claude Code can read, modify, or add to them. Returns a new task_id for "
+                "tracking progress. Use this instead of run_task when you want to iterate "
+                "on an existing project rather than start from scratch."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID of the original task whose workspace to edit.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="prompt",
+                    type="string",
+                    description="Description of the changes to make to the existing project.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="timeout",
+                    type="integer",
+                    description="Max execution time in seconds (default 600).",
+                    required=False,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
             name="claude_code.task_status",
             description=(
                 "Check the status of a previously submitted Claude Code task. Returns status "
