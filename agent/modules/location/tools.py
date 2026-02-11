@@ -36,8 +36,8 @@ class LocationTools:
 
     async def create_reminder(
         self,
-        place: str,
         message: str,
+        place: str | None = None,
         mode: str = "once",
         trigger_on: str = "enter",
         cooldown_minutes: int | None = None,
@@ -66,8 +66,10 @@ class LocationTools:
         async with self.session_factory() as session:
             # If explicit coordinates provided, skip geocoding
             if place_lat is not None and place_lng is not None:
-                place_name = place
+                place_name = place or await reverse_geocode(place_lat, place_lng) or "Unknown location"
                 lat, lng = place_lat, place_lng
+            elif place is None:
+                return {"error": "Either 'place' or both 'place_lat'/'place_lng' are required"}
             else:
                 # Get user's last known location for bias
                 loc_result = await session.execute(
