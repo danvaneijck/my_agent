@@ -85,23 +85,34 @@ class MyFitnessPalTools:
 
         import myfitnesspal
 
-        # Primary: Selenium-based auth (username + password)
-        if self.username and self.password:
-            jar = get_cookiejar(self.username, self.password)
-            self._client = myfitnesspal.Client(cookiejar=jar)
-            logger.info("myfitnesspal_client_ready", auth="selenium", username=self.username)
-            return self._client
-
-        # Fallback: manual cookie string
+        # Primary: cookie string (fast, no Selenium/Cloudflare issues)
         if self.cookie_string:
             jar = _build_cookiejar(self.cookie_string)
             self._client = myfitnesspal.Client(cookiejar=jar)
             logger.info("myfitnesspal_client_ready", auth="cookie_string")
             return self._client
 
+        # Fallback: Selenium-based auth (may be blocked by Cloudflare)
+        if self.username and self.password:
+            try:
+                jar = get_cookiejar(self.username, self.password)
+                self._client = myfitnesspal.Client(cookiejar=jar)
+                logger.info("myfitnesspal_client_ready", auth="selenium", username=self.username)
+                return self._client
+            except Exception as exc:
+                logger.error("mfp_selenium_auth_failed", error=str(exc))
+                raise RuntimeError(
+                    f"Selenium login failed (likely Cloudflare): {exc}. "
+                    "Set MFP_COOKIE_STRING in .env instead — "
+                    "copy the Cookie header from your browser's DevTools "
+                    "on any myfitnesspal.com page."
+                ) from exc
+
         raise RuntimeError(
             "MyFitnessPal credentials not configured. "
-            "Set MFP_USERNAME + MFP_PASSWORD (recommended) or MFP_COOKIE_STRING in .env."
+            "Set MFP_COOKIE_STRING in .env (recommended) — copy the Cookie header "
+            "from your browser's DevTools on any myfitnesspal.com page. "
+            "Alternatively set MFP_USERNAME + MFP_PASSWORD (may be blocked by Cloudflare)."
         )
 
     def _reset_client(self) -> None:
