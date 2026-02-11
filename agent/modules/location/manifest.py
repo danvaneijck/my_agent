@@ -9,7 +9,7 @@ MANIFEST = ModuleManifest(
         ToolDefinition(
             name="location.create_reminder",
             description=(
-                "Create a reminder that triggers when the user arrives at a location. "
+                "Create a reminder that triggers when the user enters or leaves a location. "
                 "Resolves place names to coordinates via geocoding. If multiple candidates "
                 "are found, returns them so you can ask the user to pick one, then call "
                 "again with explicit lat/lng."
@@ -24,6 +24,13 @@ MANIFEST = ModuleManifest(
                     name="message",
                     type="string",
                     description='What to remind the user about, e.g. "buy toilet paper"',
+                ),
+                ToolParameter(
+                    name="trigger_on",
+                    type="string",
+                    description='When to trigger: "enter" (arriving), "leave" (departing), or "both" (default "enter")',
+                    required=False,
+                    enum=["enter", "leave", "both"],
                 ),
                 ToolParameter(
                     name="radius_m",

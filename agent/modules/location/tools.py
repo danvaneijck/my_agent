@@ -38,6 +38,7 @@ class LocationTools:
         self,
         place: str,
         message: str,
+        trigger_on: str = "enter",
         radius_m: int = 30,
         place_lat: float | None = None,
         place_lng: float | None = None,
@@ -49,6 +50,9 @@ class LocationTools:
         """Create a location-based reminder."""
         if not user_id:
             return {"error": "user_id is required"}
+
+        if trigger_on not in ("enter", "leave", "both"):
+            return {"error": "trigger_on must be 'enter', 'leave', or 'both'"}
 
         uid = uuid.UUID(user_id)
 
@@ -109,6 +113,7 @@ class LocationTools:
                 place_lat=lat,
                 place_lng=lng,
                 radius_m=radius_m,
+                trigger_on=trigger_on,
                 platform=platform,
                 platform_channel_id=platform_channel_id,
                 platform_thread_id=platform_thread_id,
@@ -129,6 +134,7 @@ class LocationTools:
                 "lat": lat,
                 "lng": lng,
                 "radius_m": radius_m,
+                "trigger_on": trigger_on,
                 "message": message,
                 "status": "active",
                 "note": "The geofence will be synced to the user's phone on the next OwnTracks check-in.",
@@ -163,6 +169,7 @@ class LocationTools:
                         "lat": r.place_lat,
                         "lng": r.place_lng,
                         "radius_m": r.radius_m,
+                        "trigger_on": r.trigger_on,
                         "status": r.status,
                         "synced_to_device": r.synced_to_device,
                         "triggered_at": (
