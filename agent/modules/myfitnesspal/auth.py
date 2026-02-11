@@ -62,6 +62,84 @@ def _load_cookies(path: str = COOKIE_FILE) -> list[dict] | None:
         return None
 
 
+def _dismiss_consent_overlay(driver) -> None:
+    """Attempt to dismiss the SP Consent / privacy overlay.
+
+    Tries multiple strategies:
+    1. Switch into the iframe and click accept/OK buttons
+    2. If that fails, remove the overlay elements via JavaScript
+    """
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    # Strategy 1: find the consent iframe and click accept inside it
+    try:
+        iframe = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "iframe[id^='sp_message_iframe']")
+            )
+        )
+        logger.info("mfp_consent_iframe_found", iframe_id=iframe.get_attribute("id"))
+        driver.switch_to.frame(iframe)
+
+        # Try multiple button selectors — MFP uses different labels
+        accept_selectors = [
+            "button[title='ACCEPT']",
+            "button[title='Accept']",
+            "button[title='Accept All']",
+            "button[title='ACCEPT ALL']",
+            "button[title='OK']",
+            "button.pm-btn-accept",
+            # Fallback: any prominent button in the consent dialog
+            "button[aria-label*='accept' i]",
+            "button[aria-label*='Accept' i]",
+        ]
+        clicked = False
+        for selector in accept_selectors:
+            try:
+                btn = WebDriverWait(driver, 3).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                )
+                btn.click()
+                clicked = True
+                logger.info("mfp_consent_accepted", selector=selector)
+                break
+            except Exception:
+                continue
+
+        driver.switch_to.default_content()
+
+        if clicked:
+            time.sleep(1)
+            return
+
+        logger.warning("mfp_consent_no_button_matched")
+    except Exception as e:
+        driver.switch_to.default_content()
+        logger.debug("mfp_consent_iframe_strategy_failed", error=str(e))
+
+    # Strategy 2: nuke the overlay via JavaScript
+    removed = driver.execute_script("""
+        let removed = 0;
+        // Remove SP consent iframes
+        document.querySelectorAll('iframe[id^="sp_message_iframe"]').forEach(el => {
+            el.remove(); removed++;
+        });
+        // Remove SP message containers / overlays
+        document.querySelectorAll('[class*="sp_message"], [id*="sp_message"]').forEach(el => {
+            el.remove(); removed++;
+        });
+        // Remove any full-screen overlay divs that block clicks
+        document.querySelectorAll('.message-overlay, .overlay').forEach(el => {
+            el.remove(); removed++;
+        });
+        return removed;
+    """)
+    logger.info("mfp_consent_js_removed", elements_removed=removed)
+    time.sleep(0.5)
+
+
 def _selenium_login(username: str, password: str) -> list[dict]:
     """Perform headless Chrome login to MyFitnessPal and return cookies.
 
@@ -94,26 +172,8 @@ def _selenium_login(username: str, password: str) -> list[dict]:
 
         wait = WebDriverWait(driver, 30)
 
-        # Handle cookie consent iframe if present
-        try:
-            iframe = WebDriverWait(driver, 8).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, "//iframe[@title='SP Consent Message']")
-                )
-            )
-            driver.switch_to.frame(iframe)
-            accept_btn = wait.until(
-                EC.element_to_be_clickable(
-                    (By.XPATH, "//button[@title='ACCEPT']")
-                )
-            )
-            accept_btn.click()
-            driver.switch_to.default_content()
-            logger.info("mfp_selenium_cookie_consent_accepted")
-        except Exception:
-            # Cookie consent may not appear — continue
-            driver.switch_to.default_content()
-            logger.debug("mfp_selenium_no_cookie_consent")
+        # Dismiss consent / privacy overlay
+        _dismiss_consent_overlay(driver)
 
         # Fill login form
         email_input = wait.until(
@@ -126,8 +186,18 @@ def _selenium_login(username: str, password: str) -> list[dict]:
         password_input.clear()
         password_input.send_keys(password)
 
+        logger.info("mfp_selenium_credentials_entered")
+
+        # Click submit — try normal click first, JS click as fallback
         submit = driver.find_element(By.XPATH, "//button[@type='submit']")
-        submit.click()
+        try:
+            submit.click()
+        except Exception:
+            # Overlay may have reappeared — remove it and use JS click
+            logger.warning("mfp_selenium_submit_intercepted_retrying")
+            _dismiss_consent_overlay(driver)
+            driver.execute_script("arguments[0].click();", submit)
+
         logger.info("mfp_selenium_login_submitted")
 
         # Wait for redirect away from login page (indicates success)
