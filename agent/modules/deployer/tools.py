@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shlex
 import uuid
@@ -154,9 +155,157 @@ class DeployerTools:
         self._network: str = DEPLOY_NETWORK
 
     async def init(self) -> None:
-        """Resolve the real Docker network name (async, call once)."""
+        """Resolve the real Docker network name and rediscover existing deployments."""
         self._network = await _resolve_network_name(DEPLOY_NETWORK)
         logger.info("resolved_docker_network", network=self._network)
+        await self._rediscover_deployments()
+
+    # ------------------------------------------------------------------
+    # Rediscovery on startup
+    # ------------------------------------------------------------------
+
+    async def _rediscover_deployments(self) -> None:
+        """Find existing deploy-* containers and restore them into memory.
+
+        This lets the deployer survive restarts — Docker containers keep
+        running even when the deployer module is restarted, so we query
+        ``docker ps -a`` for containers whose names start with ``deploy-``
+        and reconstruct ``Deployment`` objects from the inspect output.
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "ps", "-a",
+                "--filter", "name=^deploy-",
+                "--format", "{{.Names}}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await proc.communicate()
+            container_names = [
+                n.strip() for n in stdout.decode().splitlines() if n.strip()
+            ]
+        except Exception as exc:
+            logger.warning("rediscover_docker_ps_failed", error=str(exc))
+            return
+
+        if not container_names:
+            return
+
+        recovered = 0
+        for name in container_names:
+            # Container name is "deploy-{deploy_id}"
+            if not name.startswith("deploy-"):
+                continue
+            deploy_id = name[len("deploy-"):]
+            if deploy_id in self.deployments:
+                continue  # already tracked
+
+            try:
+                info = await self._inspect_container(name)
+                if info is None:
+                    continue
+
+                state = info.get("State", {})
+                config = info.get("Config", {})
+                host_config = info.get("HostConfig", {})
+
+                # Determine container status
+                running = state.get("Running", False)
+                status = "running" if running else "stopped"
+
+                # Extract host port from PortBindings
+                port = self._extract_host_port(host_config)
+                if port is None:
+                    logger.warning(
+                        "rediscover_no_port", container=name, deploy_id=deploy_id
+                    )
+                    continue
+
+                # Extract image name to guess project_type
+                image = config.get("Image", "")
+                # Labels may carry Traefik metadata with internal port
+                labels = config.get("Labels", {})
+
+                created_str = info.get("Created", "")
+                try:
+                    created_at = datetime.fromisoformat(
+                        created_str.replace("Z", "+00:00")
+                    )
+                except (ValueError, TypeError):
+                    created_at = datetime.now(timezone.utc)
+
+                container_id = info.get("Id", "")[:12]
+
+                deployment = Deployment(
+                    id=deploy_id,
+                    project_name=labels.get("com.docker.compose.service", deploy_id),
+                    project_type=self._guess_project_type(labels, image),
+                    port=port,
+                    container_id=container_id,
+                    url=f"http://localhost:{port}",
+                    status=status,
+                    created_at=created_at,
+                )
+                self.deployments[deploy_id] = deployment
+                self._used_ports.add(port)
+                recovered += 1
+
+            except Exception as exc:
+                logger.warning(
+                    "rediscover_container_failed",
+                    container=name,
+                    error=str(exc),
+                )
+
+        if recovered:
+            logger.info("rediscovered_deployments", count=recovered)
+
+    async def _inspect_container(self, name: str) -> dict | None:
+        """Run ``docker inspect`` and return the parsed JSON for a container."""
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "inspect", name,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await proc.communicate()
+        if proc.returncode != 0:
+            return None
+        data = json.loads(stdout.decode())
+        if isinstance(data, list) and data:
+            return data[0]
+        return None
+
+    @staticmethod
+    def _extract_host_port(host_config: dict) -> int | None:
+        """Extract the first mapped host port from HostConfig.PortBindings."""
+        bindings = host_config.get("PortBindings") or {}
+        for _container_port, mappings in bindings.items():
+            if mappings:
+                try:
+                    return int(mappings[0].get("HostPort", 0))
+                except (ValueError, IndexError):
+                    continue
+        return None
+
+    @staticmethod
+    def _guess_project_type(labels: dict, image: str) -> str:
+        """Best-effort guess of project_type from container metadata."""
+        # Traefik labels carry the internal port which hints at the type
+        for key, val in labels.items():
+            if "loadbalancer.server.port" in key:
+                try:
+                    internal = int(val)
+                except ValueError:
+                    continue
+                if internal == 80:
+                    return "static"
+                if internal == 3000:
+                    return "node"
+        if "nginx" in image:
+            return "static"
+        if "node" in image:
+            return "node"
+        return "docker"
 
     # ------------------------------------------------------------------
     # Port management
