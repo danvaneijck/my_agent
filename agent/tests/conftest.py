@@ -40,6 +40,10 @@ def mock_db_session():
     default_result.scalar_one_or_none.return_value = None
     default_result.scalars.return_value.all.return_value = []
     session.execute = AsyncMock(return_value=default_result)
+    # session.add() and session.flush() are synchronous — use MagicMock
+    # to avoid "coroutine never awaited" RuntimeWarnings.
+    session.add = MagicMock()
+    session.flush = MagicMock()
     return session
 
 
