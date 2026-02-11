@@ -77,7 +77,13 @@ async def execute(call: ToolCall):
         if tool_name == "add_job":
             result = await tools.add_job(**args)
         elif tool_name == "list_jobs":
-            result = await tools.list_jobs(**args)
+            # Only pass args that list_jobs accepts (LLM sometimes sends
+            # platform/channel args that only add_job uses).
+            list_args = {
+                k: v for k, v in args.items()
+                if k in ("status_filter", "user_id")
+            }
+            result = await tools.list_jobs(**list_args)
         elif tool_name == "cancel_job":
             result = await tools.cancel_job(**args)
         else:
