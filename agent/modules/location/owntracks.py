@@ -279,6 +279,23 @@ async def handle_owntracks_publish(
     elif msg_type == "transition":
         event = payload.get("event")
         rid = payload.get("rid")
+        tst = payload.get("tst")
+
+        # Reject stale transitions (e.g. phone syncing old events after
+        # being offline). Allow up to 10 minutes of delay.
+        max_age_seconds = 600
+        if tst:
+            event_age = int(datetime.now(timezone.utc).timestamp()) - tst
+            if event_age > max_age_seconds:
+                logger.info(
+                    "stale_transition_ignored",
+                    rid=rid,
+                    event=event,
+                    event_age_seconds=event_age,
+                    user_id=user_id,
+                )
+                return response_cmds
+
         if event in ("enter", "leave") and rid:
             notifications = await trigger_reminder_by_rid(
                 session, redis_client, user_id, rid, event
