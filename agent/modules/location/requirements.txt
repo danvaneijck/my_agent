@@ -1,0 +1,19 @@
+# Base (required by all modules)
+fastapi>=0.109
+uvicorn[standard]>=0.27
+structlog>=24.1
+pydantic>=2.5
+pydantic-settings>=2.1
+
+# Database
+sqlalchemy>=2.0
+asyncpg>=0.29
+
+# Redis
+redis>=5.0
+
+# HTTP client (for geocoding)
+httpx>=0.26
+
+# Password hashing (for OwnTracks credentials)
+bcrypt>=4.0

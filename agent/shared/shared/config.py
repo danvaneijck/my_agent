@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     atlassian_cloud: bool = True
     confluence_default_space: str = ""
 
+    # OwnTracks
+    owntracks_endpoint_url: str = "https://your-agent.com/pub"
+
     # Defaults for new users
     default_guest_token_budget: int = 5000
     # Stored as str to avoid pydantic-settings JSON parse issues with env vars.
@@ -121,6 +124,7 @@ class Settings(BaseSettings):
         "claude_code": "http://claude-code:8000",
         "deployer": "http://deployer:8000",
         "scheduler": "http://scheduler:8000",
+        "location": "http://location:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
