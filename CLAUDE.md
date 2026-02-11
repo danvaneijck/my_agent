@@ -32,11 +32,18 @@ Makefile:       Makefile (top-level, wraps docker compose)
          │  POST /execute (ToolCall → ToolResult)
          ▼
     Module Layer (independent FastAPI microservices)
-    ├── research        — web search, scraping, news
-    ├── file_manager    — file CRUD on MinIO + DB records
-    ├── code_executor   — sandboxed Python/shell execution
-    ├── knowledge       — persistent per-user memory with embeddings
-    └── injective       — blockchain trading (scaffold)
+    ├── research          — web search, scraping, news
+    ├── file_manager      — file CRUD on MinIO + DB records
+    ├── code_executor     — sandboxed Python/shell execution
+    ├── knowledge         — persistent per-user memory with embeddings
+    ├── atlassian         — Jira + Confluence integration
+    ├── claude_code       — coding tasks via Claude Code CLI in Docker
+    ├── deployer          — deploy projects to live URLs
+    ├── scheduler         — background job monitoring + notifications
+    ├── garmin            — Garmin Connect health/fitness data
+    ├── renpho_biometrics — Renpho smart scale body composition
+    ├── location          — OwnTracks geofence reminders + tracking
+    └── injective         — blockchain trading (scaffold)
 
  Infrastructure: PostgreSQL+pgvector │ Redis │ MinIO (S3)
 ```
@@ -139,6 +146,77 @@ file_records
   mime_type             str | null
   size_bytes            int | null
   public_url            str
+  created_at            datetime(tz)
+
+scheduled_jobs
+  id                    UUID PK
+  user_id               UUID FK → users.id
+  conversation_id       UUID FK → conversations.id (nullable)
+  platform              str
+  platform_channel_id   str
+  platform_thread_id    str | null
+  job_type              str        — "poll_module" | "delay" | "poll_url"
+  check_config          JSON
+  interval_seconds      int        — default 30
+  max_attempts          int        — default 120
+  attempts              int        — default 0
+  on_success_message    text
+  on_failure_message    text | null
+  status                str        — "active" | "completed" | "failed" | "cancelled"
+  next_run_at           datetime(tz)
+  created_at            datetime(tz)
+  completed_at          datetime(tz) | null
+
+user_locations
+  id                    UUID PK
+  user_id               UUID FK → users.id (unique)
+  latitude              float
+  longitude             float
+  accuracy_m            float | null
+  speed_mps             float | null
+  heading               float | null
+  source                str        — default "owntracks"
+  updated_at            datetime(tz)
+  created_at            datetime(tz)
+
+location_reminders
+  id                    UUID PK
+  user_id               UUID FK → users.id
+  conversation_id       UUID FK → conversations.id (nullable)
+  message               str
+  place_name            str
+  place_lat             float
+  place_lng             float
+  radius_m              int        — default 150
+  platform              str | null
+  platform_channel_id   str | null
+  platform_thread_id    str | null
+  owntracks_rid         str        — OwnTracks region ID
+  synced_to_device      bool       — default false
+  status                str        — "active" | "triggered" | "cancelled" | "expired"
+  triggered_at          datetime(tz) | null
+  expires_at            datetime(tz) | null
+  cooldown_until        datetime(tz) | null
+  created_at            datetime(tz)
+
+user_named_places
+  id                    UUID PK
+  user_id               UUID FK → users.id
+  name                  str
+  latitude              float
+  longitude             float
+  address               str | null
+  created_at            datetime(tz)
+  UNIQUE(user_id, name)
+
+owntracks_credentials
+  id                    UUID PK
+  user_id               UUID FK → users.id
+  username              str (unique)
+  password_hash         str
+  device_name           str | null
+  is_active             bool       — default true
+  last_seen_at          datetime(tz) | null
   created_at            datetime(tz)
 ```
 
@@ -528,4 +606,11 @@ Use `session.commit()` (not `session.flush()`) when another container needs to s
 | `file_manager` | `create_document`, `upload_file`, `read_document`, `list_files`, `get_file_link`, `delete_file` | PostgreSQL, MinIO | guest |
 | `code_executor` | `run_python`, `run_shell`, `load_file` | PostgreSQL, MinIO | guest/user |
 | `knowledge` | `remember`, `recall`, `list_memories`, `forget` | PostgreSQL (pgvector) | guest |
+| `atlassian` | `jira_search`, `jira_get_issue`, `jira_create_issue`, `jira_update_issue`, `confluence_search`, `confluence_get_page`, `confluence_create_page`, `confluence_update_page`, `create_meeting_notes`, `create_feature_doc` | None (external API) | user |
+| `claude_code` | `run_task`, `continue_task`, `task_status`, `task_logs`, `cancel_task`, `list_tasks` | Docker socket | admin |
+| `deployer` | `deploy`, `list_deployments`, `teardown`, `teardown_all`, `get_logs` | Docker socket | user/admin |
+| `scheduler` | `add_job`, `list_jobs`, `cancel_job` | PostgreSQL, Redis | admin |
+| `garmin` | `get_daily_summary`, `get_heart_rate`, `get_sleep`, `get_body_composition`, `get_activities`, `get_stress`, `get_steps` | None (external API) | user |
+| `renpho_biometrics` | `get_measurements`, `get_latest`, `get_trend` | None (external API) | user |
+| `location` | `create_reminder`, `list_reminders`, `cancel_reminder`, `get_location`, `set_named_place`, `generate_pairing_credentials` | PostgreSQL, Redis | user |
 | `injective` | `get_portfolio`, `get_market_price`, `place_order`, `cancel_order`, `get_positions` | None (scaffold) | owner |
