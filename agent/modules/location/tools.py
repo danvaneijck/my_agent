@@ -113,7 +113,7 @@ class LocationTools:
                         "message": "Multiple locations found. Ask the user which one they mean, then call again with place_lat and place_lng.",
                     }
 
-            # Check for existing active reminder at the same location
+            # Check for existing active reminder at the same location + trigger
             existing_result = await session.execute(
                 select(LocationReminder).where(
                     LocationReminder.user_id == uid,
@@ -122,7 +122,12 @@ class LocationTools:
             )
             for existing in existing_result.scalars().all():
                 dist = haversine_m(existing.place_lat, existing.place_lng, lat, lng)
-                if dist < 50:
+                triggers_overlap = (
+                    existing.trigger_on == trigger_on
+                    or existing.trigger_on == "both"
+                    or trigger_on == "both"
+                )
+                if dist < 50 and triggers_overlap:
                     return {
                         "success": False,
                         "duplicate": True,
@@ -135,9 +140,9 @@ class LocationTools:
                             "trigger_on": existing.trigger_on,
                         },
                         "message": (
-                            f"There is already a reminder at this location: "
+                            f"There is already a '{existing.trigger_on}' reminder at this location: "
                             f"'{existing.message}' ({existing.place_name}). "
-                            f"Cancel or delete the existing one first, or use a different location."
+                            f"Disable or delete the existing one first, or use a different location."
                         ),
                     }
 
