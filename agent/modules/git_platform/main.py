@@ -6,6 +6,7 @@ import structlog
 from fastapi import FastAPI
 
 from modules.git_platform.manifest import MANIFEST
+from modules.git_platform.providers.bitbucket import BitbucketProvider
 from modules.git_platform.providers.github import GitHubProvider
 from modules.git_platform.tools import GitPlatformTools
 from shared.config import get_settings
@@ -59,6 +60,19 @@ async def startup():
 
     if provider_type == "github":
         provider = GitHubProvider(token=token, base_url=settings.git_platform_base_url)
+    elif provider_type == "bitbucket":
+        username = settings.git_platform_username
+        if not username:
+            logger.error(
+                "bitbucket_missing_username",
+                msg="GIT_PLATFORM_USERNAME is required for Bitbucket (the app password owner)",
+            )
+            return
+        base_url = settings.git_platform_base_url
+        if base_url == "https://api.github.com":
+            # User hasn't changed the default — use Bitbucket's default
+            base_url = "https://api.bitbucket.org/2.0"
+        provider = BitbucketProvider(username=username, app_password=token, base_url=base_url)
     else:
         logger.error("git_platform_unknown_provider", provider=provider_type)
         return
