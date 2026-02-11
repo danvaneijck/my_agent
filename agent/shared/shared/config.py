@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     # Reduced history for standalone messages (no prior-context references)
     minimal_memory_messages: int = 2
 
+    # Tool execution timeout (seconds) for module HTTP calls
+    tool_execution_timeout: int = 120
+    # Modules that need extra time (Selenium, long-running tasks)
+    # uses tool_execution_timeout; all others use 30s default
+    slow_modules: str = "myfitnesspal,garmin,renpho_biometrics,claude_code,deployer"
+
     # Token efficiency
     # Max characters for a single tool result before truncation (in context)
     tool_result_max_chars: int = 3000

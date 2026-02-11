@@ -83,22 +83,18 @@ def _dismiss_consent_overlay(driver) -> None:
         logger.info("mfp_consent_iframe_found", iframe_id=iframe.get_attribute("id"))
         driver.switch_to.frame(iframe)
 
-        # Try multiple button selectors — MFP uses different labels
+        # Try multiple button selectors — OK confirmed working on MFP
         accept_selectors = [
+            "button[title='OK']",
             "button[title='ACCEPT']",
-            "button[title='Accept']",
             "button[title='Accept All']",
             "button[title='ACCEPT ALL']",
-            "button[title='OK']",
             "button.pm-btn-accept",
-            # Fallback: any prominent button in the consent dialog
-            "button[aria-label*='accept' i]",
-            "button[aria-label*='Accept' i]",
         ]
         clicked = False
         for selector in accept_selectors:
             try:
-                btn = WebDriverWait(driver, 3).until(
+                btn = WebDriverWait(driver, 2).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
                 )
                 btn.click()
@@ -157,6 +153,9 @@ def _selenium_login(username: str, password: str) -> list[dict]:
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--disable-background-networking")
     options.add_argument("--window-size=1920,1080")
     options.binary_location = "/usr/bin/chromium"
 
@@ -200,9 +199,15 @@ def _selenium_login(username: str, password: str) -> list[dict]:
 
         logger.info("mfp_selenium_login_submitted")
 
+        # Brief pause to let the page start navigating before polling URL
+        time.sleep(3)
+
         # Wait for redirect away from login page (indicates success)
         def login_complete(drv):
-            return "/account/login" not in drv.current_url
+            try:
+                return "/account/login" not in drv.current_url
+            except Exception:
+                return False
 
         WebDriverWait(driver, 30).until(login_complete)
 
@@ -221,7 +226,20 @@ def _selenium_login(username: str, password: str) -> list[dict]:
         return cookies
 
     except Exception as exc:
-        logger.error("mfp_selenium_login_failed", error=str(exc))
+        # Capture diagnostic info before quitting the driver
+        current_url = None
+        page_title = None
+        try:
+            current_url = driver.current_url if driver else None
+            page_title = driver.title if driver else None
+        except Exception:
+            pass
+        logger.error(
+            "mfp_selenium_login_failed",
+            error=str(exc),
+            current_url=current_url,
+            page_title=page_title,
+        )
         raise RuntimeError(f"MyFitnessPal Selenium login failed: {exc}") from exc
     finally:
         if driver:
