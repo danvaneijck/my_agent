@@ -1,0 +1,9 @@
+# Base (required by all modules)
+fastapi>=0.109
+uvicorn[standard]>=0.27
+structlog>=24.1
+pydantic>=2.5
+pydantic-settings>=2.1
+
+# Module-specific
+myfitnesspal>=2.0

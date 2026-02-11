@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     garmin_email: str = ""
     garmin_password: str = ""
 
+    # MyFitnessPal
+    mfp_username: str = ""
+    mfp_cookie_string: str = ""
+
     # Atlassian
     atlassian_url: str = ""
     atlassian_username: str = ""
@@ -127,6 +131,7 @@ class Settings(BaseSettings):
         "atlassian": "http://atlassian:8000",
         "renpho_biometrics": "http://renpho-biometrics:8000",
         "garmin": "http://garmin:8000",
+        "myfitnesspal": "http://myfitnesspal:8000",
         "claude_code": "http://claude-code:8000",
         "deployer": "http://deployer:8000",
         "scheduler": "http://scheduler:8000",
