@@ -8,6 +8,11 @@ from datetime import date, timedelta
 
 import structlog
 
+from modules.myfitnesspal.auth import (
+    clear_cached_cookies,
+    get_cookiejar,
+)
+
 logger = structlog.get_logger()
 
 
@@ -28,8 +33,8 @@ def _parse_date(s: str) -> date:
 def _build_cookiejar(cookie_string: str) -> http.cookiejar.CookieJar:
     """Build a CookieJar from a raw cookie header string.
 
-    The cookie_string should be in the format sent by browsers:
-    'name1=value1; name2=value2; ...'
+    Fallback for when Selenium auth is not used. The cookie_string
+    should be in the format: 'name1=value1; name2=value2; ...'
     """
     jar = http.cookiejar.CookieJar()
     for pair in cookie_string.split(";"):
@@ -60,50 +65,71 @@ def _build_cookiejar(cookie_string: str) -> http.cookiejar.CookieJar:
 
 
 class MyFitnessPalTools:
-    """Tool implementations for fetching MyFitnessPal data."""
+    """Tool implementations for fetching MyFitnessPal data.
 
-    def __init__(self, username: str, cookie_string: str):
+    Auth priority:
+    1. MFP_USERNAME + MFP_PASSWORD → Selenium headless login, cookies cached to disk
+    2. MFP_COOKIE_STRING → manual browser cookie string (fallback)
+    """
+
+    def __init__(self, username: str, password: str, cookie_string: str):
         self.username = username
+        self.password = password
         self.cookie_string = cookie_string
         self._client = None
 
     def _ensure_client(self):
-        """Get an authenticated MyFitnessPal client."""
+        """Get an authenticated MyFitnessPal client (synchronous)."""
         if self._client is not None:
             return self._client
 
         import myfitnesspal
 
-        if not self.cookie_string:
-            raise RuntimeError(
-                "MyFitnessPal credentials not configured. "
-                "Set MFP_USERNAME and MFP_COOKIE_STRING in .env. "
-                "Extract cookies from your browser while logged into myfitnesspal.com."
-            )
+        # Primary: Selenium-based auth (username + password)
+        if self.username and self.password:
+            jar = get_cookiejar(self.username, self.password)
+            self._client = myfitnesspal.Client(cookiejar=jar)
+            logger.info("myfitnesspal_client_ready", auth="selenium", username=self.username)
+            return self._client
 
-        jar = _build_cookiejar(self.cookie_string)
-        self._client = myfitnesspal.Client(cookiejar=jar)
-        logger.info("myfitnesspal_client_ready", username=self.username)
-        return self._client
+        # Fallback: manual cookie string
+        if self.cookie_string:
+            jar = _build_cookiejar(self.cookie_string)
+            self._client = myfitnesspal.Client(cookiejar=jar)
+            logger.info("myfitnesspal_client_ready", auth="cookie_string")
+            return self._client
+
+        raise RuntimeError(
+            "MyFitnessPal credentials not configured. "
+            "Set MFP_USERNAME + MFP_PASSWORD (recommended) or MFP_COOKIE_STRING in .env."
+        )
 
     def _reset_client(self) -> None:
-        """Clear cached client so next call re-authenticates."""
+        """Clear cached client and cookies so next call re-authenticates."""
         self._client = None
+        # If using Selenium auth, also clear cached cookies to force fresh login
+        if self.username and self.password:
+            clear_cached_cookies()
+
+    async def _call_with_retry(self, fn, *args, **kwargs):
+        """Call a sync function via to_thread, retrying once on auth failure."""
+        try:
+            client = await asyncio.to_thread(self._ensure_client)
+            return await asyncio.to_thread(fn, client, *args, **kwargs)
+        except Exception as exc:
+            err = str(exc).lower()
+            if "cookie" in err or "auth" in err or "401" in err or "403" in err:
+                logger.warning("mfp_auth_retry", error=str(exc))
+                self._reset_client()
+                client = await asyncio.to_thread(self._ensure_client)
+                return await asyncio.to_thread(fn, client, *args, **kwargs)
+            raise
 
     async def get_day(self, date: str | None = None) -> dict:
         """Fetch the food diary for a specific date."""
         target = _parse_date(date) if date else _today()
 
-        try:
-            client = await asyncio.to_thread(self._ensure_client)
-            day = await asyncio.to_thread(client.get_date, target)
-        except Exception as exc:
-            if "cookie" in str(exc).lower() or "auth" in str(exc).lower():
-                self._reset_client()
-                client = await asyncio.to_thread(self._ensure_client)
-                day = await asyncio.to_thread(client.get_date, target)
-            else:
-                raise
+        day = await self._call_with_retry(lambda c, d: c.get_date(d), target)
 
         meals = []
         totals: dict[str, float] = {}
@@ -131,11 +157,9 @@ class MyFitnessPalTools:
                 "totals": meal_totals,
             })
 
-        # Day-level totals
         if hasattr(day, "totals"):
             totals = {k: v for k, v in day.totals.items()}
 
-        # Day-level goals
         goals = {}
         if hasattr(day, "goals"):
             goals = {k: v for k, v in day.goals.items()}
@@ -148,7 +172,6 @@ class MyFitnessPalTools:
             "complete": getattr(day, "complete", None),
         }
 
-        # Water intake
         try:
             water = getattr(day, "water", None)
             if water is not None:
@@ -168,20 +191,10 @@ class MyFitnessPalTools:
         lower = _parse_date(start_date) if start_date else _days_ago(30)
         upper = _parse_date(end_date) if end_date else _today()
 
-        try:
-            client = await asyncio.to_thread(self._ensure_client)
-            data = await asyncio.to_thread(
-                client.get_measurements, measurement, lower, upper
-            )
-        except Exception as exc:
-            if "cookie" in str(exc).lower() or "auth" in str(exc).lower():
-                self._reset_client()
-                client = await asyncio.to_thread(self._ensure_client)
-                data = await asyncio.to_thread(
-                    client.get_measurements, measurement, lower, upper
-                )
-            else:
-                raise
+        data = await self._call_with_retry(
+            lambda c, m, lo, hi: c.get_measurements(m, lo, hi),
+            measurement, lower, upper,
+        )
 
         if not data:
             return {
@@ -220,20 +233,10 @@ class MyFitnessPalTools:
         lower = _parse_date(start_date) if start_date else _days_ago(7)
         upper = _parse_date(end_date) if end_date else _today()
 
-        try:
-            client = await asyncio.to_thread(self._ensure_client)
-            data = await asyncio.to_thread(
-                client.get_report, report_name, report_category, lower, upper
-            )
-        except Exception as exc:
-            if "cookie" in str(exc).lower() or "auth" in str(exc).lower():
-                self._reset_client()
-                client = await asyncio.to_thread(self._ensure_client)
-                data = await asyncio.to_thread(
-                    client.get_report, report_name, report_category, lower, upper
-                )
-            else:
-                raise
+        data = await self._call_with_retry(
+            lambda c, rn, rc, lo, hi: c.get_report(rn, rc, lo, hi),
+            report_name, report_category, lower, upper,
+        )
 
         if not data:
             return {
@@ -265,18 +268,9 @@ class MyFitnessPalTools:
 
     async def search_food(self, query: str) -> dict:
         """Search the MyFitnessPal food database."""
-        try:
-            client = await asyncio.to_thread(self._ensure_client)
-            results = await asyncio.to_thread(client.get_food_search_results, query)
-        except Exception as exc:
-            if "cookie" in str(exc).lower() or "auth" in str(exc).lower():
-                self._reset_client()
-                client = await asyncio.to_thread(self._ensure_client)
-                results = await asyncio.to_thread(
-                    client.get_food_search_results, query
-                )
-            else:
-                raise
+        results = await self._call_with_retry(
+            lambda c, q: c.get_food_search_results(q), query
+        )
 
         if not results:
             return {"query": query, "count": 0, "results": []}
