@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid as _uuid
 from datetime import datetime, timedelta, timezone
 
 import structlog
@@ -70,13 +71,13 @@ async def _check_all_reminders(
             return
 
         # Group by user_id
-        by_user: dict[str, list[LocationReminder]] = {}
+        by_user: dict[_uuid.UUID, list[LocationReminder]] = {}
         for r in reminders:
-            uid = str(r.user_id)
-            by_user.setdefault(uid, []).append(r)
+            by_user.setdefault(r.user_id, []).append(r)
 
         # Check each user
         for user_id, user_reminders in by_user.items():
+            user_id_str = str(user_id)
             loc_result = await session.execute(
                 select(UserLocation).where(UserLocation.user_id == user_id)
             )
@@ -98,7 +99,7 @@ async def _check_all_reminders(
                 if reminder.expires_at and now > reminder.expires_at:
                     reminder.status = "expired"
                     await session.commit()
-                    await mark_waypoints_dirty(redis_client, user_id)
+                    await mark_waypoints_dirty(redis_client, user_id_str)
                     await redis_client.delete(f"geofence_inside:{reminder.id}")
                     continue
 
@@ -147,7 +148,7 @@ async def _check_all_reminders(
                         reminder.triggered_at = now
                         reminder.trigger_count = (reminder.trigger_count or 0) + 1
                         await session.commit()
-                        await mark_waypoints_dirty(redis_client, user_id)
+                        await mark_waypoints_dirty(redis_client, user_id_str)
 
                     if reminder.platform and reminder.platform_channel_id:
                         if event_type == "leave":
@@ -160,7 +161,7 @@ async def _check_all_reminders(
                             platform_channel_id=reminder.platform_channel_id,
                             platform_thread_id=reminder.platform_thread_id,
                             content=f"{prefix}\n\nReminder: {reminder.message}",
-                            user_id=user_id,
+                            user_id=user_id_str,
                         )
                         channel = f"notifications:{notification.platform}"
                         await redis_client.publish(
@@ -169,7 +170,7 @@ async def _check_all_reminders(
                         logger.info(
                             "geofence_worker_triggered",
                             reminder_id=str(reminder.id),
-                            user_id=user_id,
+                            user_id=user_id_str,
                             event=event_type,
                             mode=reminder.mode,
                             distance_m=round(dist, 1),
