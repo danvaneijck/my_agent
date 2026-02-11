@@ -174,6 +174,22 @@ redis-cli: ## Open a Redis CLI
 	$(COMPOSE) exec redis redis-cli
 
 # ──────────────────────────────────────────────
+# Tests
+# ──────────────────────────────────────────────
+
+.PHONY: test test-cov test-install
+
+test-install: ## Install test dependencies
+	pip install -r agent/tests/requirements.txt
+	pip install -e agent/shared/
+
+test: ## Run the test suite
+	cd agent && python -m pytest tests/ -v
+
+test-cov: ## Run tests with coverage report
+	cd agent && python -m pytest tests/ -v --cov=modules --cov=core --cov-report=term-missing
+
+# ──────────────────────────────────────────────
 # Cleanup
 # ──────────────────────────────────────────────
 
