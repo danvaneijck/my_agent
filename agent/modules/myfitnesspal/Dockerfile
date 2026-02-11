@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir --no-deps myfitnesspal>=2.0 \
     && pip install --no-cache-dir \
        blessed lxml measurement python-dateutil \
-       browser_cookie3 typing-extensions
+       browser_cookie3 typing-extensions cloudscraper
 
 # SeleniumBase needs to know where Chromium lives
 ENV CHROME_BIN="/usr/bin/chromium"
