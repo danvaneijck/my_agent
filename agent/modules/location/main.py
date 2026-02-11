@@ -22,6 +22,7 @@ from shared.schemas.tools import ModuleManifest, ToolCall, ToolResult
 structlog.configure(
     processors=[
         structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.format_exc_info,
         structlog.processors.JSONRenderer(),
     ],
 )

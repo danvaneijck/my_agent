@@ -111,6 +111,34 @@ class LocationTools:
                         "message": "Multiple locations found. Ask the user which one they mean, then call again with place_lat and place_lng.",
                     }
 
+            # Check for existing active reminder at the same location
+            existing_result = await session.execute(
+                select(LocationReminder).where(
+                    LocationReminder.user_id == uid,
+                    LocationReminder.status.in_(("active", "paused")),
+                )
+            )
+            for existing in existing_result.scalars().all():
+                dist = haversine_m(existing.place_lat, existing.place_lng, lat, lng)
+                if dist < 50:
+                    return {
+                        "success": False,
+                        "duplicate": True,
+                        "existing_reminder": {
+                            "id": str(existing.id),
+                            "message": existing.message,
+                            "place_name": existing.place_name,
+                            "status": existing.status,
+                            "mode": existing.mode,
+                            "trigger_on": existing.trigger_on,
+                        },
+                        "message": (
+                            f"There is already a reminder at this location: "
+                            f"'{existing.message}' ({existing.place_name}). "
+                            f"Cancel or delete the existing one first, or use a different location."
+                        ),
+                    }
+
             # Create the reminder
             rid = str(uuid.uuid4())[:8]
             reminder = LocationReminder(
