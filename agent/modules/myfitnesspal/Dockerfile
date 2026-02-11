@@ -2,6 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Install Chromium and chromedriver for Selenium-based MFP authentication
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install shared package
 COPY shared/ /shared/
 RUN pip install --no-cache-dir /shared/

@@ -29,13 +29,16 @@ async def startup():
     global tools
     settings = get_settings()
     username = settings.mfp_username
+    password = settings.mfp_password
     cookie_string = settings.mfp_cookie_string
-    if not cookie_string:
+    if not password and not cookie_string:
         logger.warning(
             "mfp_credentials_missing",
-            msg="Set MFP_USERNAME and MFP_COOKIE_STRING in .env",
+            msg="Set MFP_USERNAME + MFP_PASSWORD (recommended) or MFP_COOKIE_STRING in .env",
         )
-    tools = MyFitnessPalTools(username=username, cookie_string=cookie_string)
+    tools = MyFitnessPalTools(
+        username=username, password=password, cookie_string=cookie_string
+    )
     logger.info("myfitnesspal_module_ready")
 
 

@@ -97,6 +97,7 @@ class Settings(BaseSettings):
 
     # MyFitnessPal
     mfp_username: str = ""
+    mfp_password: str = ""
     mfp_cookie_string: str = ""
 
     # Atlassian
