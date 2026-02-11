@@ -37,10 +37,15 @@ class AgentDiscordBot(discord.Client):
             secret_key=settings.minio_secret_key,
             secure=False,
         )
+        self._notification_task: asyncio.Task | None = None
 
     async def on_ready(self):
         logger.info("discord_bot_ready", user=str(self.user))
-        asyncio.create_task(self._notification_listener())
+        # on_ready fires again on reconnect — avoid duplicate listeners
+        if self._notification_task is None or self._notification_task.done():
+            self._notification_task = asyncio.create_task(
+                self._notification_listener()
+            )
 
     async def _notification_listener(self):
         """Subscribe to Redis notifications and send proactive messages."""

@@ -45,11 +45,14 @@ class AgentTelegramBot:
             .post_init(self._post_init)
             .build()
         )
+        self._notification_task: asyncio.Task | None = None
         self._setup_handlers()
 
     async def _post_init(self, application: Application) -> None:
         """Called after the Application is initialized but before polling starts."""
-        asyncio.create_task(self._notification_listener(application))
+        self._notification_task = asyncio.create_task(
+            self._notification_listener(application)
+        )
 
     async def _notification_listener(self, application: Application) -> None:
         """Subscribe to Redis notifications and send proactive messages."""

@@ -397,10 +397,10 @@ class AgentSlackBot:
         logger.info("starting_slack_bot")
 
         # Start a background heartbeat to keep the green dot active
-        asyncio.create_task(self._presence_heartbeat())
+        self._heartbeat_task = asyncio.create_task(self._presence_heartbeat())
 
         # Start notification listener for proactive messages
-        asyncio.create_task(self._notification_listener())
+        self._notification_task = asyncio.create_task(self._notification_listener())
 
         handler = AsyncSocketModeHandler(self.app, self.settings.slack_app_token)
         await handler.start_async()
