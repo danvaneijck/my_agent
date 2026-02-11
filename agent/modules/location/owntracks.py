@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timezone
 
@@ -88,63 +87,55 @@ async def upsert_user_location(
     await session.commit()
 
 
-async def get_pending_waypoints(redis_client, user_id: str) -> list[dict]:
-    """Retrieve pending waypoint commands from Redis for a user."""
-    key = f"owntracks_pending_waypoints:{user_id}"
-    raw = await redis_client.get(key)
-    if raw:
-        return json.loads(raw)
-    return []
+async def mark_waypoints_dirty(redis_client, user_id: str) -> None:
+    """Flag that this user's waypoints need re-syncing on the next OwnTracks check-in.
+
+    Instead of queuing individual waypoint dicts, we set a dirty flag.
+    At sync time we query ALL active reminders from the DB and send the
+    complete list via setWaypoints (which is a replace-all operation).
+    """
+    key = f"owntracks_waypoints_dirty:{user_id}"
+    await redis_client.set(key, "1")
 
 
-async def clear_pending_waypoints(redis_client, user_id: str) -> None:
-    """Clear pending waypoints after they've been delivered."""
-    key = f"owntracks_pending_waypoints:{user_id}"
+async def _is_waypoints_dirty(redis_client, user_id: str) -> bool:
+    """Check whether this user has pending waypoint changes."""
+    key = f"owntracks_waypoints_dirty:{user_id}"
+    return await redis_client.exists(key)
+
+
+async def _clear_waypoints_dirty(redis_client, user_id: str) -> None:
+    """Clear the dirty flag after syncing."""
+    key = f"owntracks_waypoints_dirty:{user_id}"
     await redis_client.delete(key)
 
 
-async def queue_waypoint(
-    redis_client,
+async def _build_waypoint_list(
+    session: AsyncSession,
     user_id: str,
-    reminder: LocationReminder,
-) -> None:
-    """Queue a setWaypoints command for the next OwnTracks check-in."""
-    key = f"owntracks_pending_waypoints:{user_id}"
-    waypoint = {
-        "_type": "waypoint",
-        "desc": reminder.place_name,
-        "lat": reminder.place_lat,
-        "lon": reminder.place_lng,
-        "rad": reminder.radius_m,
-        "tst": int(reminder.created_at.timestamp()),
-        "rid": reminder.owntracks_rid,
-    }
+) -> list[dict]:
+    """Build the full waypoint list from all active reminders for a user."""
+    uid = uuid.UUID(user_id)
+    result = await session.execute(
+        select(LocationReminder).where(
+            LocationReminder.user_id == uid,
+            LocationReminder.status == "active",
+        )
+    )
+    reminders = result.scalars().all()
 
-    existing = await get_pending_waypoints(redis_client, user_id)
-    existing.append(waypoint)
-    await redis_client.set(key, json.dumps(existing))
-
-
-async def queue_waypoint_deletion(
-    redis_client,
-    user_id: str,
-    reminder: LocationReminder,
-) -> None:
-    """Queue a waypoint deletion by setting invalid coordinates."""
-    key = f"owntracks_pending_waypoints:{user_id}"
-    waypoint = {
-        "_type": "waypoint",
-        "desc": reminder.place_name,
-        "lat": -1000000,
-        "lon": -1000000,
-        "rad": 0,
-        "tst": int(reminder.created_at.timestamp()),
-        "rid": reminder.owntracks_rid,
-    }
-
-    existing = await get_pending_waypoints(redis_client, user_id)
-    existing.append(waypoint)
-    await redis_client.set(key, json.dumps(existing))
+    waypoints = []
+    for r in reminders:
+        waypoints.append({
+            "_type": "waypoint",
+            "desc": r.place_name,
+            "lat": r.place_lat,
+            "lon": r.place_lng,
+            "rad": r.radius_m,
+            "tst": int(r.created_at.timestamp()),
+            "rid": r.owntracks_rid,
+        })
+    return waypoints
 
 
 async def trigger_reminder_by_rid(
@@ -179,8 +170,9 @@ async def trigger_reminder_by_rid(
     reminder.triggered_at = now
     await session.commit()
 
-    # Queue waypoint deletion from device
-    await queue_waypoint_deletion(redis_client, user_id, reminder)
+    # Flag waypoints as needing sync (triggered reminder will be excluded
+    # from the active list on next check-in)
+    await mark_waypoints_dirty(redis_client, user_id)
 
     if not reminder.platform or not reminder.platform_channel_id:
         logger.warning("reminder_no_notification_target", reminder_id=str(reminder.id))
@@ -211,30 +203,31 @@ async def handle_owntracks_publish(
     if msg_type == "location":
         await upsert_user_location(session, user_id, payload)
 
-        # Check if we have new waypoints to push
-        pending = await get_pending_waypoints(redis_client, user_id)
-        if pending:
+        # If waypoints changed since last sync, rebuild the full list from DB
+        if await _is_waypoints_dirty(redis_client, user_id):
+            waypoints = await _build_waypoint_list(session, user_id)
             response_cmds.append(
                 {
                     "_type": "cmd",
                     "action": "setWaypoints",
                     "waypoints": {
                         "_type": "waypoints",
-                        "waypoints": pending,
+                        "waypoints": waypoints,
                     },
                 }
             )
-            await clear_pending_waypoints(redis_client, user_id)
+            await _clear_waypoints_dirty(redis_client, user_id)
 
-            # Mark reminders as synced
-            for wp in pending:
-                rid = wp.get("rid")
-                if rid and wp.get("lat", 0) > -999999:
-                    await session.execute(
-                        update(LocationReminder)
-                        .where(LocationReminder.owntracks_rid == rid)
-                        .values(synced_to_device=True)
-                    )
+            # Mark all active reminders as synced
+            uid = uuid.UUID(user_id)
+            await session.execute(
+                update(LocationReminder)
+                .where(
+                    LocationReminder.user_id == uid,
+                    LocationReminder.status == "active",
+                )
+                .values(synced_to_device=True)
+            )
             await session.commit()
 
     elif msg_type == "transition":
