@@ -113,41 +113,48 @@ class LocationTools:
                         "message": "Multiple locations found. Ask the user which one they mean, then call again with place_lat and place_lng.",
                     }
 
-            # Check for existing active reminder at the same location + trigger
+            # Check for existing active reminder at the same location + trigger.
+            # Also capture any nearby rid so we can share the OwnTracks waypoint.
             existing_result = await session.execute(
                 select(LocationReminder).where(
                     LocationReminder.user_id == uid,
                     LocationReminder.status.in_(("active", "paused")),
                 )
             )
+            nearby_rid: str | None = None
             for existing in existing_result.scalars().all():
                 dist = haversine_m(existing.place_lat, existing.place_lng, lat, lng)
-                triggers_overlap = (
-                    existing.trigger_on == trigger_on
-                    or existing.trigger_on == "both"
-                    or trigger_on == "both"
-                )
-                if dist < 50 and triggers_overlap:
-                    return {
-                        "success": False,
-                        "duplicate": True,
-                        "existing_reminder": {
-                            "id": str(existing.id),
-                            "message": existing.message,
-                            "place_name": existing.place_name,
-                            "status": existing.status,
-                            "mode": existing.mode,
-                            "trigger_on": existing.trigger_on,
-                        },
-                        "message": (
-                            f"There is already a '{existing.trigger_on}' reminder at this location: "
-                            f"'{existing.message}' ({existing.place_name}). "
-                            f"Disable or delete the existing one first, or use a different location."
-                        ),
-                    }
+                if dist < 50:
+                    # Reuse the same OwnTracks region ID for co-located reminders
+                    # so only one waypoint is pushed to the device.
+                    nearby_rid = existing.owntracks_rid
+                    triggers_overlap = (
+                        existing.trigger_on == trigger_on
+                        or existing.trigger_on == "both"
+                        or trigger_on == "both"
+                    )
+                    if triggers_overlap:
+                        return {
+                            "success": False,
+                            "duplicate": True,
+                            "existing_reminder": {
+                                "id": str(existing.id),
+                                "message": existing.message,
+                                "place_name": existing.place_name,
+                                "status": existing.status,
+                                "mode": existing.mode,
+                                "trigger_on": existing.trigger_on,
+                            },
+                            "message": (
+                                f"There is already a '{existing.trigger_on}' reminder at this location: "
+                                f"'{existing.message}' ({existing.place_name}). "
+                                f"Disable or delete the existing one first, or use a different location."
+                            ),
+                        }
 
-            # Create the reminder
-            rid = str(uuid.uuid4())[:8]
+            # Reuse nearby rid if one exists, otherwise generate a new one.
+            # Sharing rids means one OwnTracks waypoint per physical location.
+            rid = nearby_rid or str(uuid.uuid4())[:8]
             reminder = LocationReminder(
                 user_id=uid,
                 message=message,

@@ -124,18 +124,29 @@ async def _build_waypoint_list(
     )
     reminders = result.scalars().all()
 
-    waypoints = []
+    # Deduplicate by owntracks_rid — multiple reminders at the same
+    # location share a rid and should produce only one device waypoint.
+    # Use the largest radius and earliest timestamp among the group.
+    seen: dict[str, dict] = {}
     for r in reminders:
-        waypoints.append({
-            "_type": "waypoint",
-            "desc": r.place_name,
-            "lat": r.place_lat,
-            "lon": r.place_lng,
-            "rad": r.radius_m,
-            "tst": int(r.created_at.timestamp()),
-            "rid": r.owntracks_rid,
-        })
-    return waypoints
+        rid = r.owntracks_rid
+        if rid in seen:
+            if r.radius_m > seen[rid]["rad"]:
+                seen[rid]["rad"] = r.radius_m
+            tst = int(r.created_at.timestamp())
+            if tst < seen[rid]["tst"]:
+                seen[rid]["tst"] = tst
+        else:
+            seen[rid] = {
+                "_type": "waypoint",
+                "desc": r.place_name,
+                "lat": r.place_lat,
+                "lon": r.place_lng,
+                "rad": r.radius_m,
+                "tst": int(r.created_at.timestamp()),
+                "rid": rid,
+            }
+    return list(seen.values())
 
 
 async def trigger_reminder_by_rid(
@@ -144,8 +155,11 @@ async def trigger_reminder_by_rid(
     user_id: str,
     rid: str,
     event: str,
-) -> Notification | None:
-    """Trigger a reminder by OwnTracks region ID. Returns a Notification if triggered.
+) -> list[Notification]:
+    """Trigger reminders by OwnTracks region ID.
+
+    Multiple reminders can share the same rid (co-located enter/leave).
+    Returns a list of Notifications for all that matched.
 
     Args:
         event: The OwnTracks transition event type ("enter" or "leave").
@@ -160,61 +174,66 @@ async def trigger_reminder_by_rid(
             LocationReminder.status == "active",
         )
     )
-    reminder = result.scalar_one_or_none()
-    if reminder is None:
+    reminders = result.scalars().all()
+    if not reminders:
         logger.info("reminder_not_found_for_rid", rid=rid, user_id=user_id)
-        return None
+        return []
 
-    # Check whether this event type matches the reminder's trigger_on setting
-    trigger_on = reminder.trigger_on or "enter"
-    if trigger_on != "both" and trigger_on != event:
-        logger.info(
-            "reminder_event_mismatch",
-            rid=rid,
-            event=event,
-            trigger_on=trigger_on,
-        )
-        return None
+    notifications: list[Notification] = []
+    waypoints_changed = False
 
-    # Check cooldown
-    if reminder.cooldown_until and now < reminder.cooldown_until:
-        logger.info("reminder_in_cooldown", rid=rid)
-        return None
+    for reminder in reminders:
+        # Check whether this event type matches the reminder's trigger_on setting
+        trigger_on = reminder.trigger_on or "enter"
+        if trigger_on != "both" and trigger_on != event:
+            logger.info(
+                "reminder_event_mismatch",
+                rid=rid,
+                reminder_id=str(reminder.id),
+                event=event,
+                trigger_on=trigger_on,
+            )
+            continue
 
-    is_persistent = (reminder.mode or "once") == "persistent"
+        # Check cooldown
+        if reminder.cooldown_until and now < reminder.cooldown_until:
+            logger.info("reminder_in_cooldown", rid=rid, reminder_id=str(reminder.id))
+            continue
 
-    if is_persistent:
-        # Stay active, set cooldown, increment counter
-        reminder.triggered_at = now
-        reminder.trigger_count = (reminder.trigger_count or 0) + 1
-        reminder.cooldown_until = now + timedelta(seconds=reminder.cooldown_seconds or 3600)
-        await session.commit()
-    else:
-        # One-off: mark as triggered and remove from waypoints
-        reminder.status = "triggered"
-        reminder.triggered_at = now
-        reminder.trigger_count = (reminder.trigger_count or 0) + 1
-        await session.commit()
-        # Flag waypoints as needing sync (triggered reminder will be excluded
-        # from the active list on next check-in)
+        is_persistent = (reminder.mode or "once") == "persistent"
+
+        if is_persistent:
+            reminder.triggered_at = now
+            reminder.trigger_count = (reminder.trigger_count or 0) + 1
+            reminder.cooldown_until = now + timedelta(seconds=reminder.cooldown_seconds or 3600)
+        else:
+            reminder.status = "triggered"
+            reminder.triggered_at = now
+            reminder.trigger_count = (reminder.trigger_count or 0) + 1
+            waypoints_changed = True
+
+        if not reminder.platform or not reminder.platform_channel_id:
+            logger.warning("reminder_no_notification_target", reminder_id=str(reminder.id))
+            continue
+
+        if event == "leave":
+            prefix = f"You've left **{reminder.place_name}**!"
+        else:
+            prefix = f"You're near **{reminder.place_name}**!"
+
+        notifications.append(Notification(
+            platform=reminder.platform,
+            platform_channel_id=reminder.platform_channel_id,
+            platform_thread_id=reminder.platform_thread_id,
+            content=f"{prefix}\n\nReminder: {reminder.message}",
+            user_id=user_id,
+        ))
+
+    await session.commit()
+    if waypoints_changed:
         await mark_waypoints_dirty(redis_client, user_id)
 
-    if not reminder.platform or not reminder.platform_channel_id:
-        logger.warning("reminder_no_notification_target", reminder_id=str(reminder.id))
-        return None
-
-    if event == "leave":
-        prefix = f"You've left **{reminder.place_name}**!"
-    else:
-        prefix = f"You're near **{reminder.place_name}**!"
-
-    return Notification(
-        platform=reminder.platform,
-        platform_channel_id=reminder.platform_channel_id,
-        platform_thread_id=reminder.platform_thread_id,
-        content=f"{prefix}\n\nReminder: {reminder.message}",
-        user_id=user_id,
-    )
+    return notifications
 
 
 async def handle_owntracks_publish(
@@ -261,11 +280,10 @@ async def handle_owntracks_publish(
         event = payload.get("event")
         rid = payload.get("rid")
         if event in ("enter", "leave") and rid:
-            notification = await trigger_reminder_by_rid(
+            notifications = await trigger_reminder_by_rid(
                 session, redis_client, user_id, rid, event
             )
-            if notification:
-                # Publish to Redis pub/sub
+            for notification in notifications:
                 channel = f"notifications:{notification.platform}"
                 await redis_client.publish(
                     channel, notification.model_dump_json()
