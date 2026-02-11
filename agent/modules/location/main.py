@@ -127,6 +127,12 @@ async def execute(call: ToolCall):
         if call.user_id:
             args["user_id"] = call.user_id
 
+        # The orchestrator injects platform context for all location.* tools,
+        # but only create_reminder uses it. Strip for other tools.
+        if tool_name != "create_reminder":
+            for k in ("platform", "platform_channel_id", "platform_thread_id"):
+                args.pop(k, None)
+
         if tool_name == "create_reminder":
             result = await tools.create_reminder(**args)
         elif tool_name == "list_reminders":

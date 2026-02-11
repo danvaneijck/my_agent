@@ -1,3 +1,14 @@
 pytest>=8.0
 pytest-asyncio>=0.23
 pytest-cov>=5.0
+
+# Runtime deps needed by module imports during testing
+fastapi>=0.109
+pydantic>=2.5
+pydantic-settings>=2.1
+sqlalchemy>=2.0
+asyncpg>=0.29
+pgvector>=0.3
+redis>=5.0
+httpx>=0.26
+structlog>=24.1

@@ -20,6 +20,7 @@ import pytest
 from shared.models.location_reminder import LocationReminder
 from shared.models.user_location import UserLocation
 from shared.schemas.notifications import Notification
+from shared.schemas.tools import ToolCall
 from tests.conftest import make_execute_side_effect
 
 
@@ -529,3 +530,49 @@ class TestGeofenceWorker:
 
         assert reminder.status == "active"
         mock_redis.publish.assert_not_called()
+
+
+# ===================================================================
+# Execute endpoint — platform context arg stripping
+# ===================================================================
+
+
+class TestExecuteEndpointArgStripping:
+    """Tests that the execute endpoint strips injected platform context
+    from tools that don't accept it.
+
+    REGRESSION: the orchestrator injects platform/channel/thread into ALL
+    location.* tool calls, but only create_reminder accepts them.
+    Other tools (list_reminders, cancel_reminder, etc.) crashed with
+    'unexpected keyword argument'.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("tool_name,required_args", [
+        ("location.list_reminders", {}),
+        ("location.cancel_reminder", {"reminder_id": str(uuid.uuid4())}),
+        ("location.get_location", {}),
+        ("location.set_named_place", {"name": "home"}),
+    ])
+    async def test_tools_survive_injected_platform_args(
+        self, tool_name, required_args
+    ):
+        """Non-create_reminder tools must not crash when platform context is injected."""
+        from modules.location.main import execute
+
+        call = ToolCall(
+            tool_name=tool_name,
+            arguments={
+                **required_args,
+                "platform": "discord",
+                "platform_channel_id": "123456",
+                "platform_thread_id": None,
+            },
+            user_id=str(uuid.uuid4()),
+        )
+
+        result = await execute(call)
+
+        # The tool may fail for other reasons (no DB, etc.) but it should
+        # NOT fail with "unexpected keyword argument"
+        assert "unexpected keyword argument" not in (result.error or "")
