@@ -67,9 +67,8 @@ def _build_cookiejar(cookie_string: str) -> http.cookiejar.CookieJar:
 class MyFitnessPalTools:
     """Tool implementations for fetching MyFitnessPal data.
 
-    Auth priority:
-    1. MFP_USERNAME + MFP_PASSWORD → Selenium headless login, cookies cached to disk
-    2. MFP_COOKIE_STRING → manual browser cookie string (fallback)
+    Auth: MFP_COOKIE_STRING — copy the Cookie header from browser DevTools.
+    MFP uses Cloudflare Turnstile + reCAPTCHA v3 which blocks automated login.
     """
 
     def __init__(self, username: str, password: str, cookie_string: str):
@@ -85,34 +84,33 @@ class MyFitnessPalTools:
 
         import myfitnesspal
 
-        # Primary: cookie string (fast, no Selenium/Cloudflare issues)
+        # Primary: cookie string (MFP blocks automated login with reCAPTCHA v3)
         if self.cookie_string:
             jar = _build_cookiejar(self.cookie_string)
             self._client = myfitnesspal.Client(cookiejar=jar)
             logger.info("myfitnesspal_client_ready", auth="cookie_string")
             return self._client
 
-        # Fallback: Selenium-based auth (may be blocked by Cloudflare)
+        # Fallback: SeleniumBase UC Mode (may work if MFP relaxes reCAPTCHA)
         if self.username and self.password:
             try:
                 jar = get_cookiejar(self.username, self.password)
                 self._client = myfitnesspal.Client(cookiejar=jar)
-                logger.info("myfitnesspal_client_ready", auth="selenium", username=self.username)
+                logger.info("myfitnesspal_client_ready", auth="seleniumbase_uc")
                 return self._client
             except Exception as exc:
-                logger.error("mfp_selenium_auth_failed", error=str(exc))
+                logger.error("mfp_uc_auth_failed", error=str(exc))
                 raise RuntimeError(
-                    f"Selenium login failed (likely Cloudflare): {exc}. "
-                    "Set MFP_COOKIE_STRING in .env instead — "
-                    "copy the Cookie header from your browser's DevTools "
-                    "on any myfitnesspal.com page."
+                    "MFP login blocked by reCAPTCHA v3. "
+                    "Set MFP_COOKIE_STRING in .env: "
+                    "log in via browser → DevTools (F12) → Network → "
+                    "click any myfitnesspal.com request → copy the Cookie header value."
                 ) from exc
 
         raise RuntimeError(
-            "MyFitnessPal credentials not configured. "
-            "Set MFP_COOKIE_STRING in .env (recommended) — copy the Cookie header "
-            "from your browser's DevTools on any myfitnesspal.com page. "
-            "Alternatively set MFP_USERNAME + MFP_PASSWORD (may be blocked by Cloudflare)."
+            "MyFitnessPal not configured. Set MFP_COOKIE_STRING in .env: "
+            "log in via browser → DevTools (F12) → Network → "
+            "click any myfitnesspal.com request → copy the Cookie header value."
         )
 
     def _reset_client(self) -> None:
@@ -123,12 +121,18 @@ class MyFitnessPalTools:
             clear_cached_cookies()
 
     async def _call_with_retry(self, fn, *args, **kwargs):
-        """Call a sync function via to_thread, retrying once on auth failure."""
+        """Call a sync function via to_thread, retrying once on auth failure.
+
+        Only retries if using cookie_string auth (fast re-init).
+        Selenium/UC retries are skipped since reCAPTCHA v3 will fail again.
+        """
         try:
             client = await asyncio.to_thread(self._ensure_client)
             return await asyncio.to_thread(fn, client, *args, **kwargs)
         except Exception as exc:
             err = str(exc).lower()
+            if "recaptcha" in err or "reCAPTCHA" in str(exc):
+                raise  # Don't retry — reCAPTCHA will fail again
             if "cookie" in err or "auth" in err or "401" in err or "403" in err:
                 logger.warning("mfp_auth_retry", error=str(exc))
                 self._reset_client()
