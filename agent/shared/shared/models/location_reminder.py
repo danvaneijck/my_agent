@@ -23,11 +23,12 @@ class LocationReminder(Base):
     # What to remind
     message: Mapped[str] = mapped_column(String, nullable=False)
 
-    # Where to trigger
+    # Where and when to trigger
     place_name: Mapped[str] = mapped_column(String, nullable=False)
     place_lat: Mapped[float] = mapped_column(Float, nullable=False)
     place_lng: Mapped[float] = mapped_column(Float, nullable=False)
     radius_m: Mapped[int] = mapped_column(Integer, default=30)
+    trigger_on: Mapped[str] = mapped_column(String, default="enter")  # "enter", "leave", or "both"
 
     # Where to notify
     platform: Mapped[str | None] = mapped_column(String, default=None)

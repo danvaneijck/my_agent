@@ -99,6 +99,7 @@ async def _check_all_reminders(
                     reminder.status = "expired"
                     await session.commit()
                     await mark_waypoints_dirty(redis_client, user_id)
+                    await redis_client.delete(f"geofence_inside:{reminder.id}")
                     continue
 
                 # Compute distance
@@ -109,8 +110,29 @@ async def _check_all_reminders(
                     reminder.place_lng,
                 )
 
-                if dist <= reminder.radius_m:
-                    # Trigger
+                trigger_on = reminder.trigger_on or "enter"
+                inside = dist <= reminder.radius_m
+                inside_key = f"geofence_inside:{reminder.id}"
+                was_inside = await redis_client.exists(inside_key)
+
+                # Determine whether this is a triggering event
+                should_trigger = False
+                event_type = None
+
+                if inside and not was_inside:
+                    # User just entered the geofence
+                    await redis_client.set(inside_key, "1")
+                    if trigger_on in ("enter", "both"):
+                        should_trigger = True
+                        event_type = "enter"
+                elif not inside and was_inside:
+                    # User just left the geofence
+                    await redis_client.delete(inside_key)
+                    if trigger_on in ("leave", "both"):
+                        should_trigger = True
+                        event_type = "leave"
+
+                if should_trigger:
                     reminder.status = "triggered"
                     reminder.triggered_at = now
                     await session.commit()
@@ -118,14 +140,16 @@ async def _check_all_reminders(
                     await mark_waypoints_dirty(redis_client, user_id)
 
                     if reminder.platform and reminder.platform_channel_id:
+                        if event_type == "leave":
+                            prefix = f"You've left **{reminder.place_name}**!"
+                        else:
+                            prefix = f"You're near **{reminder.place_name}**!"
+
                         notification = Notification(
                             platform=reminder.platform,
                             platform_channel_id=reminder.platform_channel_id,
                             platform_thread_id=reminder.platform_thread_id,
-                            content=(
-                                f"You're near **{reminder.place_name}**!\n\n"
-                                f"Reminder: {reminder.message}"
-                            ),
+                            content=f"{prefix}\n\nReminder: {reminder.message}",
                             user_id=user_id,
                         )
                         channel = f"notifications:{notification.platform}"
@@ -136,5 +160,6 @@ async def _check_all_reminders(
                             "geofence_worker_triggered",
                             reminder_id=str(reminder.id),
                             user_id=user_id,
+                            event=event_type,
                             distance_m=round(dist, 1),
                         )

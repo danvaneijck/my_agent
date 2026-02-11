@@ -143,8 +143,13 @@ async def trigger_reminder_by_rid(
     redis_client,
     user_id: str,
     rid: str,
+    event: str,
 ) -> Notification | None:
-    """Trigger a reminder by OwnTracks region ID. Returns a Notification if triggered."""
+    """Trigger a reminder by OwnTracks region ID. Returns a Notification if triggered.
+
+    Args:
+        event: The OwnTracks transition event type ("enter" or "leave").
+    """
     uid = uuid.UUID(user_id)
     now = datetime.now(timezone.utc)
 
@@ -158,6 +163,17 @@ async def trigger_reminder_by_rid(
     reminder = result.scalar_one_or_none()
     if reminder is None:
         logger.info("reminder_not_found_for_rid", rid=rid, user_id=user_id)
+        return None
+
+    # Check whether this event type matches the reminder's trigger_on setting
+    trigger_on = reminder.trigger_on or "enter"
+    if trigger_on != "both" and trigger_on != event:
+        logger.info(
+            "reminder_event_mismatch",
+            rid=rid,
+            event=event,
+            trigger_on=trigger_on,
+        )
         return None
 
     # Check cooldown
@@ -178,14 +194,16 @@ async def trigger_reminder_by_rid(
         logger.warning("reminder_no_notification_target", reminder_id=str(reminder.id))
         return None
 
+    if event == "leave":
+        prefix = f"You've left **{reminder.place_name}**!"
+    else:
+        prefix = f"You're near **{reminder.place_name}**!"
+
     return Notification(
         platform=reminder.platform,
         platform_channel_id=reminder.platform_channel_id,
         platform_thread_id=reminder.platform_thread_id,
-        content=(
-            f"You're near **{reminder.place_name}**!\n\n"
-            f"Reminder: {reminder.message}"
-        ),
+        content=f"{prefix}\n\nReminder: {reminder.message}",
         user_id=user_id,
     )
 
@@ -231,24 +249,25 @@ async def handle_owntracks_publish(
             await session.commit()
 
     elif msg_type == "transition":
-        if payload.get("event") == "enter":
-            rid = payload.get("rid")
-            if rid:
-                notification = await trigger_reminder_by_rid(
-                    session, redis_client, user_id, rid
+        event = payload.get("event")
+        rid = payload.get("rid")
+        if event in ("enter", "leave") and rid:
+            notification = await trigger_reminder_by_rid(
+                session, redis_client, user_id, rid, event
+            )
+            if notification:
+                # Publish to Redis pub/sub
+                channel = f"notifications:{notification.platform}"
+                await redis_client.publish(
+                    channel, notification.model_dump_json()
                 )
-                if notification:
-                    # Publish to Redis pub/sub
-                    channel = f"notifications:{notification.platform}"
-                    await redis_client.publish(
-                        channel, notification.model_dump_json()
-                    )
-                    logger.info(
-                        "reminder_triggered",
-                        rid=rid,
-                        user_id=user_id,
-                        platform=notification.platform,
-                    )
+                logger.info(
+                    "reminder_triggered",
+                    rid=rid,
+                    event=event,
+                    user_id=user_id,
+                    platform=notification.platform,
+                )
 
     elif msg_type == "waypoint":
         logger.info("owntracks_waypoint_received", user_id=user_id, payload=payload)
