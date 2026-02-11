@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import re
 
 import httpx
 import redis.asyncio as aioredis
@@ -18,7 +19,7 @@ from telegram.ext import (
     filters,
 )
 
-from comms.telegram_bot.normalizer import TelegramNormalizer, to_telegram_markdown
+from comms.telegram_bot.normalizer import TelegramNormalizer, to_telegram_markdown_v2
 from shared.config import Settings
 from shared.file_utils import upload_attachment
 from shared.schemas.messages import AgentResponse
@@ -28,11 +29,13 @@ logger = structlog.get_logger()
 
 
 async def _safe_send(bot, chat_id: str, text: str) -> None:
-    """Send a message with Markdown, falling back to plain text on failure."""
+    """Send a message with MarkdownV2, falling back to plain text on failure."""
     try:
-        await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="MarkdownV2")
     except Exception:
-        await bot.send_message(chat_id=chat_id, text=text)
+        # Strip escape backslashes so plain-text fallback is readable
+        plain = re.sub(r'\\([_*\[\]()~`>#\+\-=|{}.!\\])', r'\1', text)
+        await bot.send_message(chat_id=chat_id, text=plain)
 
 
 class AgentTelegramBot:
@@ -75,7 +78,7 @@ class AgentTelegramBot:
                     continue
                 try:
                     notification = Notification.model_validate_json(message["data"])
-                    text = to_telegram_markdown(notification.content)
+                    text = to_telegram_markdown_v2(notification.content)
                     await _safe_send(
                         application.bot,
                         chat_id=notification.platform_channel_id,
@@ -183,10 +186,11 @@ class AgentTelegramBot:
         # Send text response
         text = self.normalizer.format_response(response)
         try:
-            await message.reply_text(text, parse_mode="Markdown")
+            await message.reply_text(text, parse_mode="MarkdownV2")
         except Exception:
-            # Fallback: send without markdown if Telegram rejects the formatting
-            await message.reply_text(text)
+            # Strip escape backslashes so plain-text fallback is readable
+            plain = re.sub(r'\\([_*\[\]()~`>#\+\-=|{}.!\\])', r'\1', text)
+            await message.reply_text(plain)
 
         # Send response files as native Telegram documents
         response_files = await self._download_response_files(response.files)
