@@ -1,11 +1,14 @@
-"""Selenium-based authentication for MyFitnessPal.
+"""SeleniumBase UC Mode authentication for MyFitnessPal.
 
-Uses headless Chrome to perform the MFP login flow (which requires
-captcha/JS that prevents direct HTTP auth), captures session cookies,
-and caches them to a JSON file for reuse across restarts.
+Uses SeleniumBase in Undetected ChromeDriver mode with Xvfb (virtual
+display) to bypass Cloudflare Turnstile on the MFP login page.
 
-Based on the approach from:
-https://github.com/coddingtonbear/python-myfitnesspal/issues/144
+UC Mode disconnects ChromeDriver during page loads and clicks, making
+the browser invisible to Cloudflare's bot detection.  The
+uc_gui_click_captcha() method handles the Turnstile checkbox via
+pyautogui on the virtual display.
+
+Cookies are cached to disk for reuse across restarts.
 """
 
 from __future__ import annotations
@@ -22,7 +25,6 @@ logger = structlog.get_logger()
 
 COOKIE_FILE = "/app/.mfp_cookies.json"
 LOGIN_URL = "https://www.myfitnesspal.com/account/login"
-POST_LOGIN_INDICATOR = "/food/diary"
 
 
 def _cookies_to_jar(cookies: list[dict]) -> RequestsCookieJar:
@@ -62,188 +64,207 @@ def _load_cookies(path: str = COOKIE_FILE) -> list[dict] | None:
         return None
 
 
-def _dismiss_consent_overlay(driver) -> None:
-    """Attempt to dismiss the SP Consent / privacy overlay.
+def _dismiss_consent_overlay(sb) -> None:
+    """Dismiss the SP Consent / privacy overlay if present.
 
-    Tries multiple strategies:
-    1. Switch into the iframe and click accept/OK buttons
-    2. If that fails, remove the overlay elements via JavaScript
+    Uses SeleniumBase driver methods.  Tries clicking inside the iframe
+    first, then falls back to removing elements via JS.
     """
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.support.ui import WebDriverWait
+    driver = sb.driver
 
     # Strategy 1: find the consent iframe and click accept inside it
     try:
-        iframe = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located(
-                (By.CSS_SELECTOR, "iframe[id^='sp_message_iframe']")
-            )
-        )
-        logger.info("mfp_consent_iframe_found", iframe_id=iframe.get_attribute("id"))
-        driver.switch_to.frame(iframe)
+        if sb.is_element_present("iframe[id^='sp_message_iframe']"):
+            iframe_el = driver.find_element("css selector", "iframe[id^='sp_message_iframe']")
+            logger.info("mfp_consent_iframe_found", iframe_id=iframe_el.get_attribute("id"))
+            driver.switch_to.frame(iframe_el)
 
-        # Try multiple button selectors — OK confirmed working on MFP
-        accept_selectors = [
-            "button[title='OK']",
-            "button[title='ACCEPT']",
-            "button[title='Accept All']",
-            "button[title='ACCEPT ALL']",
-            "button.pm-btn-accept",
-        ]
-        clicked = False
-        for selector in accept_selectors:
-            try:
-                btn = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                )
-                btn.click()
-                clicked = True
-                logger.info("mfp_consent_accepted", selector=selector)
-                break
-            except Exception:
-                continue
+            accept_selectors = [
+                "button[title='OK']",
+                "button[title='ACCEPT']",
+                "button[title='Accept All']",
+                "button[title='ACCEPT ALL']",
+                "button.pm-btn-accept",
+            ]
+            clicked = False
+            for selector in accept_selectors:
+                try:
+                    from selenium.webdriver.common.by import By
+                    from selenium.webdriver.support import expected_conditions as EC
+                    from selenium.webdriver.support.ui import WebDriverWait
 
-        driver.switch_to.default_content()
+                    btn = WebDriverWait(driver, 2).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+                    btn.click()
+                    clicked = True
+                    logger.info("mfp_consent_accepted", selector=selector)
+                    break
+                except Exception:
+                    continue
 
-        if clicked:
-            time.sleep(1)
-            return
+            driver.switch_to.default_content()
 
-        logger.warning("mfp_consent_no_button_matched")
+            if clicked:
+                time.sleep(1)
+                return
+
+            logger.warning("mfp_consent_no_button_matched")
     except Exception as e:
-        driver.switch_to.default_content()
+        try:
+            driver.switch_to.default_content()
+        except Exception:
+            pass
         logger.debug("mfp_consent_iframe_strategy_failed", error=str(e))
 
     # Strategy 2: nuke the overlay via JavaScript
-    removed = driver.execute_script("""
-        let removed = 0;
-        // Remove SP consent iframes
-        document.querySelectorAll('iframe[id^="sp_message_iframe"]').forEach(el => {
-            el.remove(); removed++;
-        });
-        // Remove SP message containers / overlays
-        document.querySelectorAll('[class*="sp_message"], [id*="sp_message"]').forEach(el => {
-            el.remove(); removed++;
-        });
-        // Remove any full-screen overlay divs that block clicks
-        document.querySelectorAll('.message-overlay, .overlay').forEach(el => {
-            el.remove(); removed++;
-        });
-        return removed;
-    """)
-    logger.info("mfp_consent_js_removed", elements_removed=removed)
+    try:
+        removed = driver.execute_script("""
+            let removed = 0;
+            document.querySelectorAll('iframe[id^="sp_message_iframe"]').forEach(el => {
+                el.remove(); removed++;
+            });
+            document.querySelectorAll('[class*="sp_message"], [id*="sp_message"]').forEach(el => {
+                el.remove(); removed++;
+            });
+            document.querySelectorAll('.message-overlay, .overlay').forEach(el => {
+                el.remove(); removed++;
+            });
+            return removed;
+        """)
+        logger.info("mfp_consent_js_removed", elements_removed=removed)
+    except Exception:
+        pass
     time.sleep(0.5)
 
 
-def _selenium_login(username: str, password: str) -> list[dict]:
-    """Perform headless Chrome login to MyFitnessPal and return cookies.
+def _seleniumbase_login(username: str, password: str) -> list[dict]:
+    """Login to MyFitnessPal using SeleniumBase UC Mode.
 
+    UC Mode (Undetected ChromeDriver) + Xvfb bypasses Cloudflare
+    Turnstile by:
+    - Disconnecting ChromeDriver during page loads (invisible to CF)
+    - Using uc_gui_click_captcha() to click the Turnstile checkbox
+      via pyautogui on the Xvfb virtual display
+
+    Returns a list of cookie dicts on success.
     Raises RuntimeError on failure.
     """
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.support.ui import WebDriverWait
+    from seleniumbase import SB
 
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-popup-blocking")
-    options.add_argument("--disable-background-networking")
-    options.add_argument("--window-size=1920,1080")
-    options.binary_location = "/usr/bin/chromium"
+    logger.info("mfp_uc_login_starting", url=LOGIN_URL)
 
-    service = Service(executable_path="/usr/bin/chromedriver")
-
-    driver = None
     try:
-        driver = webdriver.Chrome(service=service, options=options)
-        driver.set_page_load_timeout(60)
+        with SB(
+            uc=True,
+            xvfb=True,
+            chromium_arg="--no-sandbox,--disable-dev-shm-usage",
+            binary_location="/usr/bin/chromium",
+        ) as sb:
+            # Navigate using UC Mode (driver disconnected during load)
+            sb.uc_open_with_reconnect(LOGIN_URL, reconnect_time=4)
+            logger.info("mfp_uc_page_loaded", url=sb.get_current_url())
 
-        logger.info("mfp_selenium_navigating", url=LOGIN_URL)
-        driver.get(LOGIN_URL)
-
-        wait = WebDriverWait(driver, 30)
-
-        # Dismiss consent / privacy overlay
-        _dismiss_consent_overlay(driver)
-
-        # Fill login form
-        email_input = wait.until(
-            EC.presence_of_element_located((By.NAME, "email"))
-        )
-        password_input = driver.find_element(By.NAME, "password")
-
-        email_input.clear()
-        email_input.send_keys(username)
-        password_input.clear()
-        password_input.send_keys(password)
-
-        logger.info("mfp_selenium_credentials_entered")
-
-        # Click submit — try normal click first, JS click as fallback
-        submit = driver.find_element(By.XPATH, "//button[@type='submit']")
-        try:
-            submit.click()
-        except Exception:
-            # Overlay may have reappeared — remove it and use JS click
-            logger.warning("mfp_selenium_submit_intercepted_retrying")
-            _dismiss_consent_overlay(driver)
-            driver.execute_script("arguments[0].click();", submit)
-
-        logger.info("mfp_selenium_login_submitted")
-
-        # Brief pause to let the page start navigating before polling URL
-        time.sleep(3)
-
-        # Wait for redirect away from login page (indicates success)
-        def login_complete(drv):
+            # Handle Cloudflare Turnstile if it appears
             try:
-                return "/account/login" not in drv.current_url
-            except Exception:
-                return False
+                sb.uc_gui_click_captcha()
+                logger.info("mfp_uc_captcha_handled")
+            except Exception as e:
+                logger.debug("mfp_uc_no_captcha_or_already_passed", note=str(e))
 
-        WebDriverWait(driver, 30).until(login_complete)
+            time.sleep(2)
 
-        # Give the page a moment to settle and set all cookies
-        time.sleep(3)
+            # If Cloudflare redirected us to a challenge page, check and retry
+            current = sb.get_current_url()
+            if "/account/login" not in current:
+                # CF might have redirected to a challenge — wait and check
+                logger.info("mfp_uc_post_captcha_url", url=current)
+                time.sleep(3)
+                if "/account/login" not in sb.get_current_url():
+                    # Navigate explicitly to login after clearing CF
+                    sb.uc_open_with_reconnect(LOGIN_URL, reconnect_time=3)
+                    time.sleep(2)
 
-        cookies = driver.get_cookies()
-        if not cookies:
-            raise RuntimeError("Selenium login succeeded but no cookies captured")
+            # Dismiss privacy/consent overlay
+            _dismiss_consent_overlay(sb)
 
-        logger.info(
-            "mfp_selenium_login_success",
-            url=driver.current_url,
-            cookie_count=len(cookies),
-        )
-        return cookies
+            # Fill login form
+            sb.wait_for_element('input[name="email"]', timeout=15)
+            sb.type('input[name="email"]', username)
+            sb.type('input[name="password"]', password)
+            logger.info("mfp_uc_credentials_entered")
+
+            # Submit the form
+            sb.click('button[type="submit"]')
+            logger.info("mfp_uc_login_submitted")
+
+            # Wait for the page to respond
+            time.sleep(5)
+
+            # Check for error messages
+            driver = sb.driver
+            page_state = driver.execute_script("""
+                const state = {};
+                const alerts = document.querySelectorAll(
+                    '[role="alert"], .MuiAlert-root, .MuiAlert-message'
+                );
+                state.error_messages = [];
+                alerts.forEach(el => {
+                    const text = el.textContent.trim();
+                    if (text && text.length < 500) state.error_messages.push(text);
+                });
+                state.url = window.location.href;
+                return state;
+            """)
+            logger.info("mfp_uc_post_submit_state", **page_state)
+
+            if page_state.get("error_messages"):
+                errors = "; ".join(page_state["error_messages"][:3])
+                raise RuntimeError(f"MyFitnessPal login error: {errors}")
+
+            # Wait for redirect away from login page
+            timeout_end = time.time() + 25
+            while time.time() < timeout_end:
+                current_url = sb.get_current_url()
+                if "/account/login" not in current_url:
+                    break
+                time.sleep(1)
+            else:
+                # Last resort diagnostics
+                body_text = ""
+                try:
+                    body_text = driver.execute_script(
+                        "return document.body ? document.body.innerText.substring(0, 500) : '';"
+                    )
+                except Exception:
+                    pass
+                try:
+                    driver.save_screenshot("/app/.mfp_debug_screenshot.png")
+                    logger.info("mfp_debug_screenshot_saved")
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f"Login did not redirect within 25s. "
+                    f"Visible text: {body_text[:300]}"
+                )
+
+            # Let cookies settle
+            time.sleep(3)
+
+            cookies = driver.get_cookies()
+            if not cookies:
+                raise RuntimeError("Login succeeded but no cookies captured")
+
+            logger.info(
+                "mfp_uc_login_success",
+                url=sb.get_current_url(),
+                cookie_count=len(cookies),
+            )
+            return cookies
 
     except Exception as exc:
-        # Capture diagnostic info before quitting the driver
-        current_url = None
-        page_title = None
-        try:
-            current_url = driver.current_url if driver else None
-            page_title = driver.title if driver else None
-        except Exception:
-            pass
-        logger.error(
-            "mfp_selenium_login_failed",
-            error=str(exc),
-            current_url=current_url,
-            page_title=page_title,
-        )
-        raise RuntimeError(f"MyFitnessPal Selenium login failed: {exc}") from exc
-    finally:
-        if driver:
-            driver.quit()
+        logger.error("mfp_uc_login_failed", error=str(exc))
+        raise RuntimeError(f"MyFitnessPal UC Mode login failed: {exc}") from exc
 
 
 def get_cookiejar(
@@ -255,7 +276,7 @@ def get_cookiejar(
 
     Priority:
     1. Load cached cookies from disk (unless force_refresh)
-    2. Perform Selenium login and cache the result
+    2. Perform SeleniumBase UC Mode login and cache the result
     """
 
     if not force_refresh:
@@ -269,7 +290,7 @@ def get_cookiejar(
             "Set MFP_USERNAME and MFP_PASSWORD in .env."
         )
 
-    cookies = _selenium_login(username, password)
+    cookies = _seleniumbase_login(username, password)
     _save_cookies(cookies)
     return _cookies_to_jar(cookies)
 

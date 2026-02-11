@@ -2,9 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install Chromium and chromedriver for Selenium-based MFP authentication
+# Install Chromium, Xvfb (virtual display), and supporting packages
+# Xvfb is required because SeleniumBase UC Mode cannot run headless —
+# it needs a display to bypass Cloudflare Turnstile via uc_gui_click_captcha().
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium chromium-driver \
+    xvfb x11-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install shared package
@@ -14,6 +17,10 @@ RUN pip install --no-cache-dir /shared/
 # Install module requirements
 COPY modules/myfitnesspal/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# SeleniumBase needs to know where Chromium lives
+ENV CHROME_BIN="/usr/bin/chromium"
+ENV CHROMEDRIVER_PATH="/usr/bin/chromedriver"
 
 # Copy application code
 COPY modules/ /app/modules/
