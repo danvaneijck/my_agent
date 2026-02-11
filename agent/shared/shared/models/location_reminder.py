@@ -27,7 +27,7 @@ class LocationReminder(Base):
     place_name: Mapped[str] = mapped_column(String, nullable=False)
     place_lat: Mapped[float] = mapped_column(Float, nullable=False)
     place_lng: Mapped[float] = mapped_column(Float, nullable=False)
-    radius_m: Mapped[int] = mapped_column(Integer, default=150)
+    radius_m: Mapped[int] = mapped_column(Integer, default=30)
 
     # Where to notify
     platform: Mapped[str | None] = mapped_column(String, default=None)

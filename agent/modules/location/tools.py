@@ -38,7 +38,7 @@ class LocationTools:
         self,
         place: str,
         message: str,
-        radius_m: int = 150,
+        radius_m: int = 30,
         place_lat: float | None = None,
         place_lng: float | None = None,
         platform: str | None = None,
@@ -91,7 +91,9 @@ class LocationTools:
                                 "lat": c.lat,
                                 "lng": c.lng,
                                 "address": c.address,
-                                "distance_m": round(c.distance_m) if c.distance_m else None,
+                                "distance_m": (
+                                    round(c.distance_m) if c.distance_m else None
+                                ),
                             }
                             for c in candidates[:5]
                         ],
@@ -163,7 +165,9 @@ class LocationTools:
                         "radius_m": r.radius_m,
                         "status": r.status,
                         "synced_to_device": r.synced_to_device,
-                        "triggered_at": r.triggered_at.isoformat() if r.triggered_at else None,
+                        "triggered_at": (
+                            r.triggered_at.isoformat() if r.triggered_at else None
+                        ),
                         "created_at": r.created_at.isoformat(),
                     }
                     for r in reminders
@@ -328,7 +332,9 @@ class LocationTools:
         uid = uuid.UUID(user_id)
 
         # Generate username and password
-        suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(4))
+        suffix = "".join(
+            secrets.choice(string.ascii_lowercase + string.digits) for _ in range(4)
+        )
         username = f"agent_{suffix}"
         password = "".join(
             secrets.choice(string.ascii_letters + string.digits) for _ in range(12)

@@ -28,7 +28,7 @@ MANIFEST = ModuleManifest(
                 ToolParameter(
                     name="radius_m",
                     type="integer",
-                    description="Trigger radius in meters (default 150)",
+                    description="Trigger radius in meters (default 30)",
                     required=False,
                 ),
                 ToolParameter(
