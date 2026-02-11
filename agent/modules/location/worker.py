@@ -171,7 +171,7 @@ async def _check_all_reminders(
                             "geofence_worker_triggered",
                             reminder_id=str(reminder.id),
                             user_id=user_id_str,
-                            event=event_type,
+                            trigger_event=event_type,
                             mode=reminder.mode,
                             distance_m=round(dist, 1),
                         )
