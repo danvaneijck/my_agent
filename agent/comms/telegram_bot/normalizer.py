@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from telegram import Update
 
 from shared.schemas.messages import AgentResponse, IncomingMessage
@@ -44,8 +46,27 @@ class TelegramNormalizer:
         if response.error:
             content += f"\n\n⚠️ Error: {response.error}"
 
+        content = to_telegram_markdown(content)
+
         # Telegram message limit is 4096
         if len(content) > 4096:
             content = content[:4090] + "\n..."
 
         return content
+
+
+def to_telegram_markdown(text: str) -> str:
+    """Convert GitHub-flavored markdown to Telegram v1 Markdown.
+
+    Telegram v1 uses *bold* and _italic_, whereas GitHub-flavored markdown
+    uses **bold** and *italic*.  This converts the most common patterns
+    so text renders correctly in Telegram.
+    """
+    # **bold** → *bold*  (must be done before single * handling)
+    text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
+
+    # ~~strikethrough~~ → ~strikethrough~ (Telegram v1 doesn't support it,
+    # but stripping one layer of tildes makes it less noisy)
+    text = re.sub(r"~~(.+?)~~", r"\1", text)
+
+    return text

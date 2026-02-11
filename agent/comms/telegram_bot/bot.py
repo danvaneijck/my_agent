@@ -18,13 +18,21 @@ from telegram.ext import (
     filters,
 )
 
-from comms.telegram_bot.normalizer import TelegramNormalizer
+from comms.telegram_bot.normalizer import TelegramNormalizer, to_telegram_markdown
 from shared.config import Settings
 from shared.file_utils import upload_attachment
 from shared.schemas.messages import AgentResponse
 from shared.schemas.notifications import Notification
 
 logger = structlog.get_logger()
+
+
+async def _safe_send(bot, chat_id: str, text: str) -> None:
+    """Send a message with Markdown, falling back to plain text on failure."""
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+    except Exception:
+        await bot.send_message(chat_id=chat_id, text=text)
 
 
 class AgentTelegramBot:
@@ -67,9 +75,11 @@ class AgentTelegramBot:
                     continue
                 try:
                     notification = Notification.model_validate_json(message["data"])
-                    await application.bot.send_message(
+                    text = to_telegram_markdown(notification.content)
+                    await _safe_send(
+                        application.bot,
                         chat_id=notification.platform_channel_id,
-                        text=notification.content,
+                        text=text,
                     )
                     logger.info(
                         "notification_sent",
@@ -172,7 +182,11 @@ class AgentTelegramBot:
 
         # Send text response
         text = self.normalizer.format_response(response)
-        await message.reply_text(text, parse_mode="Markdown")
+        try:
+            await message.reply_text(text, parse_mode="Markdown")
+        except Exception:
+            # Fallback: send without markdown if Telegram rejects the formatting
+            await message.reply_text(text)
 
         # Send response files as native Telegram documents
         response_files = await self._download_response_files(response.files)
