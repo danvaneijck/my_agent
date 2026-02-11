@@ -103,9 +103,10 @@ class Settings(BaseSettings):
     confluence_default_space: str = ""
 
     # Git Platform (GitHub / Bitbucket)
-    git_platform_provider: str = "github"  # "github" or "bitbucket" (bitbucket coming soon)
-    git_platform_token: str = ""  # Personal access token
-    git_platform_base_url: str = "https://api.github.com"  # Override for GitHub Enterprise or Bitbucket
+    git_platform_provider: str = "github"  # "github" or "bitbucket"
+    git_platform_token: str = ""  # GitHub PAT or Bitbucket app password
+    git_platform_username: str = ""  # Required for Bitbucket (app password owner)
+    git_platform_base_url: str = "https://api.github.com"  # or "https://api.bitbucket.org/2.0"
 
     # OwnTracks
     owntracks_endpoint_url: str = "https://your-agent.com/pub"
