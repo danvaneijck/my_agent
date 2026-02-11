@@ -7,5 +7,5 @@ pydantic-settings>=2.1
 
 # Module-specific
 myfitnesspal>=2.0
-selenium>=4.15
+seleniumbase>=4.32
 requests>=2.31
