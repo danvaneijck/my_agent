@@ -252,6 +252,8 @@ services:
       context: .
       dockerfile: modules/location/Dockerfile
     env_file: .env
+    ports:
+      - "${LOCATION_PORT:-8100}:8000"
     depends_on:
       postgres:
         condition: service_healthy
