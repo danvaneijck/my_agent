@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from modules.location.geocoding import haversine_m
-from modules.location.owntracks import queue_waypoint_deletion
+from modules.location.owntracks import mark_waypoints_dirty
 from shared.models.location_reminder import LocationReminder
 from shared.models.user_location import UserLocation
 from shared.schemas.notifications import Notification
@@ -98,7 +98,7 @@ async def _check_all_reminders(
                 if reminder.expires_at and now > reminder.expires_at:
                     reminder.status = "expired"
                     await session.commit()
-                    await queue_waypoint_deletion(redis_client, user_id, reminder)
+                    await mark_waypoints_dirty(redis_client, user_id)
                     continue
 
                 # Compute distance
@@ -115,7 +115,7 @@ async def _check_all_reminders(
                     reminder.triggered_at = now
                     await session.commit()
 
-                    await queue_waypoint_deletion(redis_client, user_id, reminder)
+                    await mark_waypoints_dirty(redis_client, user_id)
 
                     if reminder.platform and reminder.platform_channel_id:
                         notification = Notification(

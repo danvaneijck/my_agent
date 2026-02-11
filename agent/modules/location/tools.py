@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from modules.location.geocoding import haversine_m, resolve_place, reverse_geocode
-from modules.location.owntracks import queue_waypoint, queue_waypoint_deletion
+from modules.location.owntracks import mark_waypoints_dirty
 from shared.models.location_reminder import LocationReminder
 from shared.models.named_place import UserNamedPlace
 from shared.models.owntracks_credential import OwnTracksCredential
@@ -119,8 +119,8 @@ class LocationTools:
             await session.commit()
             await session.refresh(reminder)
 
-            # Queue waypoint for OwnTracks
-            await queue_waypoint(self.redis_client, user_id, reminder)
+            # Flag waypoints as needing sync on next OwnTracks check-in
+            await mark_waypoints_dirty(self.redis_client, user_id)
 
             return {
                 "success": True,
@@ -207,8 +207,9 @@ class LocationTools:
             reminder.status = "cancelled"
             await session.commit()
 
-            # Queue waypoint deletion from device
-            await queue_waypoint_deletion(self.redis_client, user_id, reminder)
+            # Flag waypoints as needing sync (the cancelled reminder will be
+            # excluded from the active list on next OwnTracks check-in)
+            await mark_waypoints_dirty(self.redis_client, user_id)
 
             return {
                 "success": True,
