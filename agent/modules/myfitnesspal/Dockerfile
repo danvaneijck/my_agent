@@ -17,6 +17,12 @@ RUN pip install --no-cache-dir /shared/
 # Install module requirements
 COPY modules/myfitnesspal/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# myfitnesspal requires rich<13 but seleniumbase requires rich>=14.
+# We only use myfitnesspal as a library (Client API), not its CLI,
+# so rich is not needed at runtime.  Install it --no-deps and pull
+# its actual runtime dependencies separately.
+RUN pip install --no-cache-dir --no-deps myfitnesspal>=2.0 \
+    && pip install --no-cache-dir beautifulsoup4 lxml measurement isodate
 
 # SeleniumBase needs to know where Chromium lives
 ENV CHROME_BIN="/usr/bin/chromium"
