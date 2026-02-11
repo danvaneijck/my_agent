@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from sqlalchemy import select
@@ -133,11 +133,21 @@ async def _check_all_reminders(
                         event_type = "leave"
 
                 if should_trigger:
-                    reminder.status = "triggered"
-                    reminder.triggered_at = now
-                    await session.commit()
+                    is_persistent = (reminder.mode or "once") == "persistent"
 
-                    await mark_waypoints_dirty(redis_client, user_id)
+                    if is_persistent:
+                        reminder.triggered_at = now
+                        reminder.trigger_count = (reminder.trigger_count or 0) + 1
+                        reminder.cooldown_until = now + timedelta(
+                            seconds=reminder.cooldown_seconds or 3600
+                        )
+                        await session.commit()
+                    else:
+                        reminder.status = "triggered"
+                        reminder.triggered_at = now
+                        reminder.trigger_count = (reminder.trigger_count or 0) + 1
+                        await session.commit()
+                        await mark_waypoints_dirty(redis_client, user_id)
 
                     if reminder.platform and reminder.platform_channel_id:
                         if event_type == "leave":
@@ -161,5 +171,6 @@ async def _check_all_reminders(
                             reminder_id=str(reminder.id),
                             user_id=user_id,
                             event=event_type,
+                            mode=reminder.mode,
                             distance_m=round(dist, 1),
                         )
