@@ -84,7 +84,7 @@ MANIFEST = ModuleManifest(
         ),
         ToolDefinition(
             name="location.disable_reminder",
-            description="Pause/disable an active location event so it stops triggering. Can be re-enabled later.",
+            description="Pause/cancel an active location event so it stops triggering. The reminder stays in the database and can be re-enabled later with enable_reminder.",
             parameters=[
                 ToolParameter(
                     name="reminder_id",
@@ -108,24 +108,12 @@ MANIFEST = ModuleManifest(
         ),
         ToolDefinition(
             name="location.delete_reminder",
-            description="Permanently delete a location event/reminder (any status).",
+            description="Permanently delete a location event/reminder from the database (any status). This cannot be undone — use disable_reminder to pause instead.",
             parameters=[
                 ToolParameter(
                     name="reminder_id",
                     type="string",
                     description="UUID of the reminder to delete",
-                ),
-            ],
-            required_permission="user",
-        ),
-        ToolDefinition(
-            name="location.cancel_reminder",
-            description="Cancel an active one-off reminder by its ID (alias for delete).",
-            parameters=[
-                ToolParameter(
-                    name="reminder_id",
-                    type="string",
-                    description="UUID of the reminder to cancel",
                 ),
             ],
             required_permission="user",

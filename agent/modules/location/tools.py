@@ -226,14 +226,6 @@ class LocationTools:
                 "count": len(reminders),
             }
 
-    async def cancel_reminder(
-        self,
-        reminder_id: str,
-        user_id: str | None = None,
-    ) -> dict:
-        """Cancel/delete an active or paused reminder."""
-        return await self.delete_reminder(reminder_id=reminder_id, user_id=user_id)
-
     async def delete_reminder(
         self,
         reminder_id: str,
