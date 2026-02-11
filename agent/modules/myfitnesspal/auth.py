@@ -199,8 +199,61 @@ def _selenium_login(username: str, password: str) -> list[dict]:
 
         logger.info("mfp_selenium_login_submitted")
 
-        # Brief pause to let the page start navigating before polling URL
-        time.sleep(3)
+        # Brief pause to let the page respond to the submit
+        time.sleep(5)
+
+        # Check for CAPTCHA or error messages before waiting for redirect
+        page_state = driver.execute_script("""
+            const state = {};
+
+            // Check for reCAPTCHA
+            const recaptcha = document.querySelector(
+                'iframe[src*="recaptcha"], iframe[title*="recaptcha"], '
+                + 'iframe[title*="reCAPTCHA"], .g-recaptcha, [data-sitekey], '
+                + 'iframe[src*="hcaptcha"], .h-captcha'
+            );
+            state.has_captcha = !!recaptcha;
+            if (recaptcha) {
+                state.captcha_src = recaptcha.src || recaptcha.getAttribute('data-sitekey') || 'present';
+            }
+
+            // Check for error/alert messages (MUI uses role="alert" and .MuiAlert-*)
+            const alerts = document.querySelectorAll(
+                '[role="alert"], .MuiAlert-root, .MuiAlert-message, '
+                + '.error-message, .login-error, [class*="error" i], '
+                + '[class*="Error"]'
+            );
+            state.error_messages = [];
+            alerts.forEach(el => {
+                const text = el.textContent.trim();
+                if (text && text.length < 500) state.error_messages.push(text);
+            });
+
+            // Check for any new consent/privacy overlays that reappeared
+            const overlays = document.querySelectorAll('iframe[id^="sp_message_iframe"]');
+            state.has_consent_overlay = overlays.length > 0;
+
+            // Get page URL (in case SPA navigation happened)
+            state.url = window.location.href;
+
+            return state;
+        """)
+        logger.info("mfp_post_submit_state", **page_state)
+
+        if page_state.get("has_captcha"):
+            raise RuntimeError(
+                "MyFitnessPal login is blocked by CAPTCHA. "
+                "Automated login is not possible. "
+                "Please provide session cookies via MFP_COOKIE_STRING in .env instead."
+            )
+
+        if page_state.get("error_messages"):
+            errors = "; ".join(page_state["error_messages"][:3])
+            raise RuntimeError(f"MyFitnessPal login error: {errors}")
+
+        # If consent overlay reappeared, dismiss it again
+        if page_state.get("has_consent_overlay"):
+            _dismiss_consent_overlay(driver)
 
         # Wait for redirect away from login page (indicates success)
         def login_complete(drv):
@@ -209,7 +262,28 @@ def _selenium_login(username: str, password: str) -> list[dict]:
             except Exception:
                 return False
 
-        WebDriverWait(driver, 30).until(login_complete)
+        try:
+            WebDriverWait(driver, 25).until(login_complete)
+        except Exception:
+            # Save screenshot for debugging
+            try:
+                driver.save_screenshot("/app/.mfp_debug_screenshot.png")
+                logger.info("mfp_debug_screenshot_saved", path="/app/.mfp_debug_screenshot.png")
+            except Exception:
+                pass
+            # Capture visible text for clues
+            body_text = ""
+            try:
+                body_text = driver.execute_script(
+                    "return document.body ? document.body.innerText.substring(0, 1000) : '';"
+                )
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"Login did not redirect from /account/login within 25s. "
+                f"Page may have CAPTCHA or credential error. "
+                f"Visible text: {body_text[:500]}"
+            )
 
         # Give the page a moment to settle and set all cookies
         time.sleep(3)
