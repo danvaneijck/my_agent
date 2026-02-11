@@ -9,8 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         python3 \
         python3-pip \
+        python3-venv \
         curl \
         ca-certificates \
+        sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # GitHub CLI
@@ -28,7 +30,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 RUN npm install -g @anthropic-ai/claude-code
 
 # Create non-root user (claude CLI refuses --dangerously-skip-permissions as root)
-RUN useradd -m -s /bin/bash claude
+# Grant passwordless sudo so Claude Code can install tools at runtime
+# (the container is disposable and isolated, so this is safe)
+RUN useradd -m -s /bin/bash claude && \
+    echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude
 
 # Pre-populate SSH known_hosts for common Git hosts
 RUN mkdir -p /home/claude/.ssh && \
