@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from sqlalchemy import select, update
@@ -181,14 +181,23 @@ async def trigger_reminder_by_rid(
         logger.info("reminder_in_cooldown", rid=rid)
         return None
 
-    # Mark as triggered
-    reminder.status = "triggered"
-    reminder.triggered_at = now
-    await session.commit()
+    is_persistent = (reminder.mode or "once") == "persistent"
 
-    # Flag waypoints as needing sync (triggered reminder will be excluded
-    # from the active list on next check-in)
-    await mark_waypoints_dirty(redis_client, user_id)
+    if is_persistent:
+        # Stay active, set cooldown, increment counter
+        reminder.triggered_at = now
+        reminder.trigger_count = (reminder.trigger_count or 0) + 1
+        reminder.cooldown_until = now + timedelta(seconds=reminder.cooldown_seconds or 3600)
+        await session.commit()
+    else:
+        # One-off: mark as triggered and remove from waypoints
+        reminder.status = "triggered"
+        reminder.triggered_at = now
+        reminder.trigger_count = (reminder.trigger_count or 0) + 1
+        await session.commit()
+        # Flag waypoints as needing sync (triggered reminder will be excluded
+        # from the active list on next check-in)
+        await mark_waypoints_dirty(redis_client, user_id)
 
     if not reminder.platform or not reminder.platform_channel_id:
         logger.warning("reminder_no_notification_target", reminder_id=str(reminder.id))

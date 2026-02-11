@@ -9,7 +9,9 @@ MANIFEST = ModuleManifest(
         ToolDefinition(
             name="location.create_reminder",
             description=(
-                "Create a reminder that triggers when the user enters or leaves a location. "
+                "Create a location event that triggers when the user enters or leaves a location. "
+                "Use mode='persistent' for recurring events (e.g. always remind when arriving at work) "
+                "or mode='once' for one-off reminders. "
                 "Resolves place names to coordinates via geocoding. If multiple candidates "
                 "are found, returns them so you can ask the user to pick one, then call "
                 "again with explicit lat/lng."
@@ -26,11 +28,24 @@ MANIFEST = ModuleManifest(
                     description='What to remind the user about, e.g. "buy toilet paper"',
                 ),
                 ToolParameter(
+                    name="mode",
+                    type="string",
+                    description='"once" (default) fires once then completes, "persistent" fires every time and stays active',
+                    required=False,
+                    enum=["once", "persistent"],
+                ),
+                ToolParameter(
                     name="trigger_on",
                     type="string",
                     description='When to trigger: "enter" (arriving), "leave" (departing), or "both" (default "enter")',
                     required=False,
                     enum=["enter", "leave", "both"],
+                ),
+                ToolParameter(
+                    name="cooldown_minutes",
+                    type="integer",
+                    description="For persistent events: minimum minutes between triggers (default 60). Ignored for one-off reminders.",
+                    required=False,
                 ),
                 ToolParameter(
                     name="radius_m",
@@ -55,21 +70,57 @@ MANIFEST = ModuleManifest(
         ),
         ToolDefinition(
             name="location.list_reminders",
-            description="List the user's location-based reminders, optionally filtered by status.",
+            description="List the user's location events/reminders, optionally filtered by status.",
             parameters=[
                 ToolParameter(
                     name="status",
                     type="string",
                     description='Filter by status (default "active")',
                     required=False,
-                    enum=["active", "triggered", "cancelled", "expired", "all"],
+                    enum=["active", "paused", "triggered", "cancelled", "expired", "all"],
+                ),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
+            name="location.disable_reminder",
+            description="Pause/disable an active location event so it stops triggering. Can be re-enabled later.",
+            parameters=[
+                ToolParameter(
+                    name="reminder_id",
+                    type="string",
+                    description="UUID of the reminder to disable",
+                ),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
+            name="location.enable_reminder",
+            description="Re-enable a paused location event so it starts triggering again.",
+            parameters=[
+                ToolParameter(
+                    name="reminder_id",
+                    type="string",
+                    description="UUID of the reminder to enable",
+                ),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
+            name="location.delete_reminder",
+            description="Permanently delete a location event/reminder (any status).",
+            parameters=[
+                ToolParameter(
+                    name="reminder_id",
+                    type="string",
+                    description="UUID of the reminder to delete",
                 ),
             ],
             required_permission="user",
         ),
         ToolDefinition(
             name="location.cancel_reminder",
-            description="Cancel an active location reminder by its ID.",
+            description="Cancel an active one-off reminder by its ID (alias for delete).",
             parameters=[
                 ToolParameter(
                     name="reminder_id",

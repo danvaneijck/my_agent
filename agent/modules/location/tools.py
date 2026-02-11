@@ -38,7 +38,9 @@ class LocationTools:
         self,
         place: str,
         message: str,
+        mode: str = "once",
         trigger_on: str = "enter",
+        cooldown_minutes: int | None = None,
         radius_m: int = 30,
         place_lat: float | None = None,
         place_lng: float | None = None,
@@ -47,12 +49,17 @@ class LocationTools:
         platform_thread_id: str | None = None,
         user_id: str | None = None,
     ) -> dict:
-        """Create a location-based reminder."""
+        """Create a location-based reminder or persistent event."""
         if not user_id:
             return {"error": "user_id is required"}
 
         if trigger_on not in ("enter", "leave", "both"):
             return {"error": "trigger_on must be 'enter', 'leave', or 'both'"}
+
+        if mode not in ("once", "persistent"):
+            return {"error": "mode must be 'once' or 'persistent'"}
+
+        cooldown_seconds = (cooldown_minutes * 60) if cooldown_minutes else 3600
 
         uid = uuid.UUID(user_id)
 
@@ -114,6 +121,8 @@ class LocationTools:
                 place_lng=lng,
                 radius_m=radius_m,
                 trigger_on=trigger_on,
+                mode=mode,
+                cooldown_seconds=cooldown_seconds,
                 platform=platform,
                 platform_channel_id=platform_channel_id,
                 platform_thread_id=platform_thread_id,
@@ -135,6 +144,8 @@ class LocationTools:
                 "lng": lng,
                 "radius_m": radius_m,
                 "trigger_on": trigger_on,
+                "mode": mode,
+                "cooldown_minutes": cooldown_seconds // 60,
                 "message": message,
                 "status": "active",
                 "note": "The geofence will be synced to the user's phone on the next OwnTracks check-in.",
@@ -170,6 +181,9 @@ class LocationTools:
                         "lng": r.place_lng,
                         "radius_m": r.radius_m,
                         "trigger_on": r.trigger_on,
+                        "mode": r.mode,
+                        "cooldown_minutes": r.cooldown_seconds // 60,
+                        "trigger_count": r.trigger_count,
                         "status": r.status,
                         "synced_to_device": r.synced_to_device,
                         "triggered_at": (
@@ -187,7 +201,51 @@ class LocationTools:
         reminder_id: str,
         user_id: str | None = None,
     ) -> dict:
-        """Cancel an active reminder."""
+        """Cancel/delete an active or paused reminder."""
+        return await self.delete_reminder(reminder_id=reminder_id, user_id=user_id)
+
+    async def delete_reminder(
+        self,
+        reminder_id: str,
+        user_id: str | None = None,
+    ) -> dict:
+        """Permanently delete a reminder/event."""
+        if not user_id:
+            return {"error": "user_id is required"}
+
+        uid = uuid.UUID(user_id)
+        rid = uuid.UUID(reminder_id)
+
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(LocationReminder).where(
+                    LocationReminder.id == rid,
+                    LocationReminder.user_id == uid,
+                )
+            )
+            reminder = result.scalar_one_or_none()
+            if reminder is None:
+                return {"success": False, "error": "Reminder not found"}
+
+            reminder.status = "cancelled"
+            await session.commit()
+
+            # Clean up Redis state
+            await self.redis_client.delete(f"geofence_inside:{reminder.id}")
+            await mark_waypoints_dirty(self.redis_client, user_id)
+
+            return {
+                "success": True,
+                "reminder_id": str(reminder.id),
+                "message": f"Deleted: {reminder.message} (at {reminder.place_name})",
+            }
+
+    async def disable_reminder(
+        self,
+        reminder_id: str,
+        user_id: str | None = None,
+    ) -> dict:
+        """Pause an active reminder so it stops triggering."""
         if not user_id:
             return {"error": "user_id is required"}
 
@@ -208,20 +266,62 @@ class LocationTools:
             if reminder.status != "active":
                 return {
                     "success": False,
-                    "error": f"Reminder is already '{reminder.status}', cannot cancel",
+                    "error": f"Reminder is '{reminder.status}', can only disable active reminders",
                 }
 
-            reminder.status = "cancelled"
+            reminder.status = "paused"
             await session.commit()
 
-            # Flag waypoints as needing sync (the cancelled reminder will be
-            # excluded from the active list on next OwnTracks check-in)
+            # Clean up Redis state and remove waypoint from device
+            await self.redis_client.delete(f"geofence_inside:{reminder.id}")
             await mark_waypoints_dirty(self.redis_client, user_id)
 
             return {
                 "success": True,
                 "reminder_id": str(reminder.id),
-                "message": f"Cancelled reminder: {reminder.message} (at {reminder.place_name})",
+                "message": f"Disabled: {reminder.message} (at {reminder.place_name})",
+            }
+
+    async def enable_reminder(
+        self,
+        reminder_id: str,
+        user_id: str | None = None,
+    ) -> dict:
+        """Re-enable a paused reminder."""
+        if not user_id:
+            return {"error": "user_id is required"}
+
+        uid = uuid.UUID(user_id)
+        rid = uuid.UUID(reminder_id)
+
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(LocationReminder).where(
+                    LocationReminder.id == rid,
+                    LocationReminder.user_id == uid,
+                )
+            )
+            reminder = result.scalar_one_or_none()
+            if reminder is None:
+                return {"success": False, "error": "Reminder not found"}
+
+            if reminder.status != "paused":
+                return {
+                    "success": False,
+                    "error": f"Reminder is '{reminder.status}', can only enable paused reminders",
+                }
+
+            reminder.status = "active"
+            reminder.cooldown_until = None
+            await session.commit()
+
+            # Re-sync waypoint to device
+            await mark_waypoints_dirty(self.redis_client, user_id)
+
+            return {
+                "success": True,
+                "reminder_id": str(reminder.id),
+                "message": f"Enabled: {reminder.message} (at {reminder.place_name})",
             }
 
     async def get_location(

@@ -29,6 +29,9 @@ class LocationReminder(Base):
     place_lng: Mapped[float] = mapped_column(Float, nullable=False)
     radius_m: Mapped[int] = mapped_column(Integer, default=30)
     trigger_on: Mapped[str] = mapped_column(String, default="enter")  # "enter", "leave", or "both"
+    mode: Mapped[str] = mapped_column(String, default="once")  # "once" or "persistent"
+    cooldown_seconds: Mapped[int] = mapped_column(Integer, default=3600)  # re-trigger cooldown for persistent
+    trigger_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # Where to notify
     platform: Mapped[str | None] = mapped_column(String, default=None)
