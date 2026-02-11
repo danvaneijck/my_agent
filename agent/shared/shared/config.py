@@ -102,6 +102,11 @@ class Settings(BaseSettings):
     atlassian_cloud: bool = True
     confluence_default_space: str = ""
 
+    # Git Platform (GitHub / Bitbucket)
+    git_platform_provider: str = "github"  # "github" or "bitbucket" (bitbucket coming soon)
+    git_platform_token: str = ""  # Personal access token
+    git_platform_base_url: str = "https://api.github.com"  # Override for GitHub Enterprise or Bitbucket
+
     # OwnTracks
     owntracks_endpoint_url: str = "https://your-agent.com/pub"
 
@@ -125,6 +130,7 @@ class Settings(BaseSettings):
         "deployer": "http://deployer:8000",
         "scheduler": "http://scheduler:8000",
         "location": "http://location:8000",
+        "git_platform": "http://git-platform:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
