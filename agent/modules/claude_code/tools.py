@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
+import shutil
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16,12 +18,13 @@ logger = structlog.get_logger()
 # ---------------------------------------------------------------------------
 # Configuration (from environment)
 # ---------------------------------------------------------------------------
-DEFAULT_TIMEOUT = int(os.environ.get("CLAUDE_CODE_TIMEOUT", "600"))
+DEFAULT_TIMEOUT = int(os.environ.get("CLAUDE_CODE_TIMEOUT", "1800"))
 CLAUDE_CODE_IMAGE = os.environ.get("CLAUDE_CODE_IMAGE", "my-claude-code-image")
 CLAUDE_AUTH_PATH = os.environ.get("CLAUDE_AUTH_PATH", "")
 SSH_KEY_PATH = os.environ.get("SSH_KEY_PATH", "")
 GH_CONFIG_PATH = os.environ.get("GH_CONFIG_PATH", "")
 GIT_CONFIG_PATH = os.environ.get("GIT_CONFIG_PATH", "")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 TASK_VOLUME = os.environ.get("CLAUDE_TASK_VOLUME", "")  # absolute host path to bind-mount
 
 # Bot git identity — overrides any mounted .gitconfig for commits
@@ -30,8 +33,19 @@ CLAUDE_CODE_GIT_AUTHOR_EMAIL = os.environ.get("CLAUDE_CODE_GIT_AUTHOR_EMAIL", "c
 TASK_BASE_DIR = "/tmp/claude_tasks"
 
 MAX_OUTPUT = 50_000  # chars kept from stdout/stderr
+MAX_FILE_READ = 100_000  # max chars returned by read_workspace_file
 LOG_TAIL_DEFAULT = 100  # lines returned by task_logs when no limit given
 TASK_META_FILE = "task_meta.json"  # persisted in each task workspace
+GIT_CMD_TIMEOUT = 60  # seconds for git operations (push, status, etc.)
+USER_CREDS_DIR = os.path.join(TASK_BASE_DIR, ".user_creds")  # per-user credentials
+
+_GIT_REF_PATTERN = re.compile(r"^[a-zA-Z0-9._/:\-]+$")
+
+
+def _validate_git_ref(value: str, label: str) -> None:
+    """Reject values that could be used for command injection."""
+    if not _GIT_REF_PATTERN.match(value):
+        raise ValueError(f"Invalid {label}: {value!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -43,8 +57,13 @@ class Task:
     prompt: str
     repo_url: str | None = None
     branch: str | None = None
+    source_branch: str | None = None
     workspace: str = ""
-    status: str = "queued"  # queued | running | completed | failed | cancelled
+    status: str = "queued"  # queued | running | completed | failed | timed_out | cancelled | awaiting_input
+    mode: str = "execute"  # "execute" or "plan"
+    parent_task_id: str | None = None  # links tasks in a planning chain (points to chain root)
+    continue_session: bool = False  # whether to use --continue for CLI session resumption
+    user_id: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -67,9 +86,13 @@ class Task:
             "prompt": self.prompt,
             "repo_url": self.repo_url,
             "branch": self.branch,
+            "source_branch": self.source_branch,
             "workspace": self.workspace,
             "log_file": self.log_file,
             "status": self.status,
+            "mode": self.mode,
+            "parent_task_id": self.parent_task_id,
+            "user_id": self.user_id,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
@@ -100,8 +123,12 @@ class Task:
             prompt=data.get("prompt", ""),
             repo_url=data.get("repo_url"),
             branch=data.get("branch"),
+            source_branch=data.get("source_branch"),
             workspace=data.get("workspace", ""),
             status=data.get("status", "unknown"),
+            mode=data.get("mode", "execute"),
+            parent_task_id=data.get("parent_task_id"),
+            user_id=data.get("user_id"),
             created_at=_parse_dt(data.get("created_at")) or datetime.now(timezone.utc),
             started_at=_parse_dt(data.get("started_at")),
             completed_at=_parse_dt(data.get("completed_at")),
@@ -183,6 +210,19 @@ class ClaudeCodeTools:
             logger.info("loaded_persisted_tasks", count=loaded)
 
     # ------------------------------------------------------------------
+    # Ownership helper
+    # ------------------------------------------------------------------
+
+    def _get_task(self, task_id: str, user_id: str | None = None) -> Task:
+        """Look up a task, enforcing ownership when user_id is provided."""
+        task = self.tasks.get(task_id)
+        if not task:
+            raise ValueError(f"Task not found: {task_id}")
+        if user_id and task.user_id and task.user_id != user_id:
+            raise ValueError(f"Task not found: {task_id}")
+        return task
+
+    # ------------------------------------------------------------------
     # Public tools (called by orchestrator)
     # ------------------------------------------------------------------
 
@@ -191,33 +231,62 @@ class ClaudeCodeTools:
         prompt: str,
         repo_url: str | None = None,
         branch: str | None = None,
+        source_branch: str | None = None,
         timeout: int = DEFAULT_TIMEOUT,
+        mode: str = "execute",
         user_id: str | None = None,
+        user_credentials: dict[str, dict[str, str]] | None = None,
     ) -> dict:
-        """Submit a coding task. Returns immediately with task_id."""
+        """Submit a coding task. Returns immediately with task_id.
+
+        When ``mode="plan"``, the prompt is augmented to instruct Claude to
+        produce a plan without implementing.  The task will finish with
+        ``awaiting_input`` status so the user can review before proceeding.
+        """
+        if mode not in ("execute", "plan"):
+            raise ValueError(f"Invalid mode: {mode}. Must be 'execute' or 'plan'.")
+
         task_id = uuid.uuid4().hex[:12]
         workspace = os.path.join(TASK_BASE_DIR, task_id)
         os.makedirs(workspace, exist_ok=True)
 
-        task = Task(id=task_id, prompt=prompt, repo_url=repo_url, branch=branch, workspace=workspace)
+        effective_prompt = prompt
+        if mode == "plan":
+            effective_prompt = (
+                "Create a detailed implementation plan for the following task. "
+                "Do NOT implement anything yet. Write your plan to PLAN.md. "
+                "Analyze the codebase, identify files to modify, and describe "
+                "your approach step by step.\n\n"
+                f"Task: {prompt}"
+            )
+
+        task = Task(
+            id=task_id, prompt=prompt, repo_url=repo_url, branch=branch,
+            source_branch=source_branch, workspace=workspace, mode=mode,
+            user_id=user_id,
+        )
         self.tasks[task_id] = task
         task.save()
 
         # Fire-and-forget background execution
-        task._asyncio_task = asyncio.create_task(self._execute_task(task, timeout))
+        task._asyncio_task = asyncio.create_task(
+            self._execute_task(
+                task, timeout, effective_prompt=effective_prompt,
+                user_credentials=user_credentials, user_id=user_id,
+            )
+        )
 
-        logger.info("task_submitted", task_id=task_id, repo_url=repo_url)
+        logger.info("task_submitted", task_id=task_id, repo_url=repo_url, mode=mode)
         return {
             "task_id": task_id,
             "status": "queued",
+            "mode": mode,
             "workspace": workspace,
             "log_file": task.log_file,
             "message": (
-                f"Task submitted. Use claude_code.task_logs with "
+                f"Task submitted (mode={mode}). Use claude_code.task_logs with "
                 f"task_id='{task_id}' to stream live output. "
-                f"Use claude_code.task_status to check completion. "
-                f"When the task completes, use deployer.deploy with "
-                f"project_path='{workspace}' to deploy it."
+                f"Use claude_code.task_status to check completion."
             ),
         }
 
@@ -226,26 +295,36 @@ class ClaudeCodeTools:
         task_id: str,
         prompt: str,
         timeout: int = DEFAULT_TIMEOUT,
+        mode: str | None = None,
         user_id: str | None = None,
+        user_credentials: dict[str, dict[str, str]] | None = None,
     ) -> dict:
         """Run a follow-up prompt against an existing task's workspace.
 
         This lets you make edits to a project that was created by a previous
         ``run_task`` call.  The original workspace is reused so all existing
         files are visible to Claude Code.
+
+        Uses ``--continue`` to resume the Claude CLI session, preserving full
+        conversation context from previous runs in the same workspace.
+
+        ``mode`` can be set to override the parent task's mode (e.g. switch
+        from ``"plan"`` to ``"execute"`` when approving a plan).
         """
-        original = self.tasks.get(task_id)
-        if not original:
-            raise ValueError(f"Task not found: {task_id}")
+        original = self._get_task(task_id, user_id)
         if original.status in ("queued", "running"):
             raise ValueError(
                 f"Task {task_id} is still {original.status} — wait for it "
-                f"to finish before continuing."
+                f"to finish or cancel it before continuing."
             )
         if not os.path.isdir(original.workspace):
             raise ValueError(
                 f"Workspace no longer exists: {original.workspace}"
             )
+
+        # Determine chain root for linking
+        chain_root = original.parent_task_id or original.id
+        effective_mode = mode if mode else original.mode
 
         # Create a new task that shares the original workspace
         new_id = uuid.uuid4().hex[:12]
@@ -255,6 +334,10 @@ class ClaudeCodeTools:
             id=new_id,
             prompt=prompt,
             workspace=new_workspace,
+            mode=effective_mode,
+            parent_task_id=chain_root,
+            continue_session=True,
+            user_id=user_id,
         )
         self.tasks[new_id] = task
 
@@ -262,36 +345,48 @@ class ClaudeCodeTools:
         # so it doesn't clobber the original task_meta.json
         task.save()
 
+        # Build context-enriched prompt with workspace file listing
+        tree = self._workspace_tree(new_workspace)
+        enriched_prompt = (
+            f"Workspace files from previous tasks in this chain:\n"
+            f"{tree}\n\n"
+            f"{prompt}"
+        )
+
         # Fire-and-forget background execution (no repo clone — workspace
         # already has the project files)
-        task._asyncio_task = asyncio.create_task(self._execute_task(task, timeout))
+        task._asyncio_task = asyncio.create_task(
+            self._execute_task(
+                task, timeout, effective_prompt=enriched_prompt,
+                user_credentials=user_credentials, user_id=user_id,
+            )
+        )
 
         logger.info(
             "continue_task_submitted",
             new_task_id=new_id,
             original_task_id=task_id,
             workspace=new_workspace,
+            mode=effective_mode,
+            continue_session=True,
         )
         return {
             "task_id": new_id,
             "original_task_id": task_id,
             "status": "queued",
+            "mode": effective_mode,
             "workspace": new_workspace,
             "log_file": task.log_file,
             "message": (
                 f"Continuation task submitted against workspace from task "
                 f"'{task_id}'. Use claude_code.task_status with "
-                f"task_id='{new_id}' to check progress. "
-                f"When done, use deployer.deploy with "
-                f"project_path='{new_workspace}' to deploy (or redeploy)."
+                f"task_id='{new_id}' to check progress."
             ),
         }
 
     async def task_status(self, task_id: str, user_id: str | None = None) -> dict:
         """Return the current status of a task."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+        task = self._get_task(task_id, user_id)
         return task.to_dict()
 
     async def task_logs(
@@ -302,9 +397,7 @@ class ClaudeCodeTools:
         user_id: str | None = None,
     ) -> dict:
         """Return recent lines from a task's live log file."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+        task = self._get_task(task_id, user_id)
 
         log_path = task.log_file
         if not os.path.exists(log_path):
@@ -337,11 +430,9 @@ class ClaudeCodeTools:
 
     async def cancel_task(self, task_id: str, user_id: str | None = None) -> dict:
         """Cancel a running or queued task by killing its Docker container."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+        task = self._get_task(task_id, user_id)
 
-        if task.status in ("completed", "failed"):
+        if task.status in ("completed", "failed", "timed_out"):
             return {
                 "task_id": task_id,
                 "status": task.status,
@@ -372,8 +463,11 @@ class ClaudeCodeTools:
     async def list_tasks(
         self, status_filter: str | None = None, user_id: str | None = None
     ) -> dict:
-        """List all tasks, optionally filtered by status."""
-        tasks = list(self.tasks.values())
+        """List tasks for the given user, optionally filtered by status."""
+        if user_id:
+            tasks = [t for t in self.tasks.values() if t.user_id == user_id]
+        else:
+            tasks = list(self.tasks.values())
         if status_filter:
             tasks = [t for t in tasks if t.status == status_filter]
         return {
@@ -381,11 +475,201 @@ class ClaudeCodeTools:
             "total": len(tasks),
         }
 
+    async def delete_workspace(self, task_id: str, user_id: str | None = None) -> dict:
+        """Delete a task's workspace directory and remove all tasks in the chain from memory."""
+        task = self._get_task(task_id, user_id)
+
+        if task.status in ("queued", "running"):
+            raise ValueError(f"Task {task_id} is still {task.status} — cancel it first.")
+
+        # Find all tasks sharing this workspace (chain siblings)
+        workspace = task.workspace
+        chain_root = task.parent_task_id or task.id
+        related_ids = [
+            t.id for t in self.tasks.values()
+            if t.workspace == workspace or t.id == chain_root or t.parent_task_id == chain_root
+        ]
+
+        # Cancel any that are still running
+        for tid in related_ids:
+            t = self.tasks.get(tid)
+            if t and t.status in ("queued", "running"):
+                if t._asyncio_task and not t._asyncio_task.done():
+                    t._asyncio_task.cancel()
+                container_name = f"claude-task-{t.id}"
+                await self._kill_container(container_name)
+
+        # Remove workspace directory
+        deleted_dir = False
+        if workspace and os.path.isdir(workspace):
+            shutil.rmtree(workspace, ignore_errors=True)
+            deleted_dir = True
+
+        # Remove from in-memory registry
+        for tid in related_ids:
+            self.tasks.pop(tid, None)
+
+        logger.info("workspace_deleted", task_id=task_id, workspace=workspace, related_tasks=len(related_ids))
+        return {
+            "task_id": task_id,
+            "workspace": workspace,
+            "deleted_directory": deleted_dir,
+            "removed_tasks": related_ids,
+            "message": f"Deleted workspace and {len(related_ids)} associated task(s).",
+        }
+
+    async def get_task_chain(self, task_id: str, user_id: str | None = None) -> dict:
+        """Return all tasks in the same planning chain, sorted chronologically."""
+        root_task = self._get_task(task_id, user_id)
+
+        chain_root = root_task.parent_task_id or root_task.id
+
+        chain = [
+            t.to_dict() for t in self.tasks.values()
+            if t.id == chain_root or t.parent_task_id == chain_root
+        ]
+        chain.sort(key=lambda t: t["created_at"])
+
+        return {"chain_root": chain_root, "tasks": chain, "total": len(chain)}
+
+    # ------------------------------------------------------------------
+    # Workspace helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _workspace_tree(workspace: str, max_files: int = 200) -> str:
+        """Build a concise file tree string for a workspace directory."""
+        skip = {".git", ".claude_sessions", "node_modules", "__pycache__", ".venv"}
+        lines: list[str] = []
+        count = 0
+
+        for root, dirs, files in os.walk(workspace):
+            # Prune skipped directories
+            dirs[:] = sorted(d for d in dirs if d not in skip)
+            rel = os.path.relpath(root, workspace)
+            depth = 0 if rel == "." else rel.count(os.sep) + 1
+
+            # Skip internal task files at workspace root
+            if rel == ".":
+                files = [
+                    f for f in files
+                    if not (f.startswith("task_meta") and f.endswith(".json"))
+                    and not (f.startswith("task_") and f.endswith(".log"))
+                ]
+
+            for fname in sorted(files):
+                if count >= max_files:
+                    lines.append(f"  ... and more files (truncated at {max_files})")
+                    return "\n".join(lines)
+                path = f"{rel}/{fname}" if rel != "." else fname
+                lines.append(f"  {path}")
+                count += 1
+
+        return "\n".join(lines) if lines else "  (empty workspace)"
+
+    # ------------------------------------------------------------------
+    # Workspace browsing
+    # ------------------------------------------------------------------
+
+    async def browse_workspace(
+        self,
+        task_id: str,
+        path: str = "",
+        user_id: str | None = None,
+    ) -> dict:
+        """List files and directories in a task's workspace."""
+        task = self._get_task(task_id, user_id)
+
+        base = os.path.realpath(task.workspace)
+        target = os.path.realpath(os.path.join(base, path))
+
+        # Prevent path traversal outside workspace
+        if not target.startswith(base):
+            raise ValueError("Path traversal not allowed")
+        if not os.path.isdir(target):
+            raise ValueError(f"Not a directory: {path}")
+
+        skip = {".git", ".claude_sessions"}
+        entries = []
+        for entry in sorted(os.scandir(target), key=lambda e: (not e.is_dir(), e.name)):
+            if entry.name in skip:
+                continue
+            # Skip internal task metadata / log files at workspace root
+            if target == base and (
+                entry.name.startswith("task_meta") and entry.name.endswith(".json")
+                or entry.name.startswith("task_") and entry.name.endswith(".log")
+            ):
+                continue
+            try:
+                stat = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            entries.append({
+                "name": entry.name,
+                "type": "directory" if entry.is_dir() else "file",
+                "size": stat.st_size if entry.is_file() else None,
+                "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            })
+
+        return {
+            "task_id": task_id,
+            "path": path or "/",
+            "workspace": task.workspace,
+            "entries": entries,
+            "total": len(entries),
+        }
+
+    async def read_workspace_file(
+        self,
+        task_id: str,
+        path: str,
+        user_id: str | None = None,
+    ) -> dict:
+        """Read a file from a task's workspace."""
+        task = self._get_task(task_id, user_id)
+
+        base = os.path.realpath(task.workspace)
+        target = os.path.realpath(os.path.join(base, path))
+
+        if not target.startswith(base):
+            raise ValueError("Path traversal not allowed")
+        if not os.path.isfile(target):
+            raise ValueError(f"Not a file: {path}")
+
+        stat = os.stat(target)
+
+        try:
+            with open(target, encoding="utf-8") as f:
+                content = f.read(MAX_FILE_READ)
+            truncated = stat.st_size > MAX_FILE_READ
+        except UnicodeDecodeError:
+            return {
+                "task_id": task_id,
+                "path": path,
+                "size": stat.st_size,
+                "binary": True,
+                "content": None,
+                "message": "Binary file — cannot display content",
+            }
+
+        return {
+            "task_id": task_id,
+            "path": path,
+            "size": stat.st_size,
+            "binary": False,
+            "content": content,
+            "truncated": truncated,
+        }
+
     # ------------------------------------------------------------------
     # Background execution
     # ------------------------------------------------------------------
 
-    async def _execute_task(self, task: Task, timeout: int) -> None:
+    async def _execute_task(
+        self, task: Task, timeout: int, effective_prompt: str | None = None,
+        user_credentials: dict[str, dict[str, str]] | None = None,
+        user_id: str | None = None,
+    ) -> None:
         """Background coroutine: run the Claude Code Docker container."""
         container_name = f"claude-task-{task.id}"
         task.status = "running"
@@ -393,7 +677,18 @@ class ClaudeCodeTools:
         task.heartbeat = task.started_at
         task.save()
 
-        cmd = self._build_docker_cmd(task, container_name)
+        # Prepare per-user credential mounts if provided
+        user_mounts: dict[str, str] | None = None
+        if user_credentials and user_id:
+            try:
+                user_mounts = self._prepare_user_credentials(user_id, user_credentials)
+            except Exception as e:
+                logger.warning("user_credential_prep_failed", user_id=user_id, error=str(e))
+
+        # effective_prompt allows run_task to augment the prompt (e.g. plan
+        # mode instructions) while keeping the original prompt in task metadata.
+        prompt_for_cli = effective_prompt or task.prompt
+        cmd = self._build_docker_cmd(task, container_name, prompt_for_cli, user_mounts=user_mounts)
         logger.info("task_starting", task_id=task.id, container=container_name)
         logger.debug("task_docker_cmd", task_id=task.id, cmd=" ".join(cmd))
 
@@ -406,6 +701,7 @@ class ClaudeCodeTools:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                limit=1024 * 1024,  # 1 MB — tool_result JSON can exceed default 64 KB
             )
 
             heartbeat_handle = asyncio.create_task(self._heartbeat_loop(task))
@@ -418,7 +714,11 @@ class ClaudeCodeTools:
             ) -> None:
                 """Read lines from a stream and append to log file in real time."""
                 while True:
-                    line_bytes = await stream.readline()
+                    try:
+                        line_bytes = await stream.readline()
+                    except ValueError:
+                        # Line exceeded buffer limit — skip it and continue
+                        continue
                     if not line_bytes:
                         break
                     line = line_bytes.decode("utf-8", errors="replace")
@@ -443,17 +743,41 @@ class ClaudeCodeTools:
                 )
             except asyncio.TimeoutError:
                 logger.warning("task_timeout", task_id=task.id, timeout=timeout)
-                await self._kill_container(container_name)
-                task.status = "failed"
-                task.error = f"Task timed out after {timeout}s"
+                # Graceful stop: SIGTERM first so the entrypoint can persist
+                # session data, then SIGKILL after 10s grace period.
+                await self._stop_container(container_name, grace_seconds=15)
+                task.status = "timed_out"
+                task.error = (
+                    f"Task timed out after {timeout}s. "
+                    f"The workspace and any files written so far are preserved. "
+                    f"Use claude_code.continue_task with task_id='{task.id}' "
+                    f"to resume where it left off."
+                )
                 return
 
             stdout = "".join(stdout_buf)[:MAX_OUTPUT]
             stderr = "".join(stderr_buf)[:MAX_OUTPUT]
 
             if proc.returncode == 0:
-                task.status = "completed"
                 task.result = self._parse_output(stdout)
+                if task.mode == "plan":
+                    task.status = "awaiting_input"
+                    # Extract plan content from PLAN.md or CLI output
+                    plan_md = os.path.join(task.workspace, "PLAN.md")
+                    if os.path.isfile(plan_md):
+                        try:
+                            with open(plan_md) as f:
+                                task.result["plan_content"] = f.read()
+                        except OSError:
+                            pass
+                    if "plan_content" not in (task.result or {}):
+                        # Fallback: extract from CLI JSON result
+                        for obj in (task.result.get("json_output") or []):
+                            if obj.get("type") == "result" and obj.get("result"):
+                                task.result["plan_content"] = obj["result"]
+                                break
+                else:
+                    task.status = "completed"
             else:
                 task.status = "failed"
                 task.error = stderr or stdout or f"Process exited with code {proc.returncode}"
@@ -488,41 +812,153 @@ class ClaudeCodeTools:
             )
 
     # ------------------------------------------------------------------
+    # Per-user credential management
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _prepare_user_credentials(
+        user_id: str, user_credentials: dict[str, dict[str, str]],
+    ) -> dict[str, str]:
+        """Write decrypted per-user credentials to disk for Docker mounting.
+
+        Creates directory structure under ``USER_CREDS_DIR/{user_id}/`` with:
+        - ``.claude/.credentials.json`` — Claude CLI OAuth credentials
+        - ``.ssh/id_ed25519`` — SSH private key
+        - ``.gitconfig`` — Git author name/email config
+
+        Returns a dict of mount-type → host path for use in _build_docker_cmd.
+        File permissions are set restrictively (0600 for keys, 0700 for dirs).
+        """
+        user_dir = os.path.join(USER_CREDS_DIR, user_id)
+        os.makedirs(user_dir, exist_ok=True)
+        mounts: dict[str, str] = {}
+
+        # -- Claude CLI credentials (OAuth JSON) --
+        claude_creds = user_credentials.get("claude_code", {})
+        credentials_json = claude_creds.get("credentials_json", "")
+        if credentials_json:
+            claude_dir = os.path.join(user_dir, ".claude")
+            os.makedirs(claude_dir, exist_ok=True)
+            creds_file = os.path.join(claude_dir, ".credentials.json")
+            with open(creds_file, "w") as f:
+                f.write(credentials_json)
+            os.chmod(creds_file, 0o600)
+            # Host path: TASK_VOLUME maps to TASK_BASE_DIR, so derive host path
+            host_claude_dir = os.path.join(
+                TASK_VOLUME, ".user_creds", user_id, ".claude"
+            )
+            mounts["claude_auth"] = host_claude_dir
+
+        # -- SSH private key --
+        github_creds = user_credentials.get("github", {})
+        ssh_key = github_creds.get("ssh_private_key", "")
+        if ssh_key:
+            ssh_dir = os.path.join(user_dir, ".ssh")
+            os.makedirs(ssh_dir, exist_ok=True)
+            os.chmod(ssh_dir, 0o700)
+            key_file = os.path.join(ssh_dir, "id_ed25519")
+            with open(key_file, "w") as f:
+                f.write(ssh_key)
+                if not ssh_key.endswith("\n"):
+                    f.write("\n")
+            os.chmod(key_file, 0o600)
+            host_ssh_dir = os.path.join(
+                TASK_VOLUME, ".user_creds", user_id, ".ssh"
+            )
+            mounts["ssh_key"] = host_ssh_dir
+
+        # -- Git config (author name/email) --
+        git_name = github_creds.get("git_author_name", "")
+        git_email = github_creds.get("git_author_email", "")
+        if git_name or git_email:
+            lines = ["[user]"]
+            if git_name:
+                lines.append(f"    name = {git_name}")
+            if git_email:
+                lines.append(f"    email = {git_email}")
+            gitconfig_file = os.path.join(user_dir, ".gitconfig")
+            with open(gitconfig_file, "w") as f:
+                f.write("\n".join(lines) + "\n")
+            host_gitconfig = os.path.join(
+                TASK_VOLUME, ".user_creds", user_id, ".gitconfig"
+            )
+            mounts["git_config"] = host_gitconfig
+            # Store names for env var overrides too
+            mounts["_git_author_name"] = git_name
+            mounts["_git_author_email"] = git_email
+
+        # -- GitHub token --
+        gh_token = github_creds.get("github_token", "")
+        if gh_token:
+            mounts["_github_token"] = gh_token
+
+        logger.info(
+            "user_credentials_prepared",
+            user_id=user_id,
+            mount_keys=[k for k in mounts if not k.startswith("_")],
+        )
+        return mounts
+
+    # ------------------------------------------------------------------
     # Docker helpers
     # ------------------------------------------------------------------
 
-    def _build_docker_cmd(self, task: Task, container_name: str) -> list[str]:
+    def _build_docker_cmd(
+        self, task: Task, container_name: str, prompt: str,
+        user_mounts: dict[str, str] | None = None,
+    ) -> list[str]:
         """Assemble the ``docker run`` argument list."""
         cmd: list[str] = [
-            "docker", "run", "--rm",
+            "docker", "run", "--rm", "--init",
             "--name", container_name,
             "-v", f"{TASK_VOLUME}:{TASK_BASE_DIR}",
             "-w", task.workspace,
-            "-e", f"PROMPT={task.prompt}",
+            "-e", f"PROMPT={prompt}",
         ]
 
         if task.repo_url:
             cmd.extend(["-e", f"REPO_URL={task.repo_url}"])
+        if task.source_branch:
+            cmd.extend(["-e", f"SOURCE_BRANCH={task.source_branch}"])
         if task.branch:
             cmd.extend(["-e", f"BRANCH={task.branch}"])
+        if task.continue_session:
+            cmd.extend(["-e", "CONTINUE_SESSION=1"])
 
-        # Mount credentials read-only at staging paths (entrypoint copies them)
-        if CLAUDE_AUTH_PATH:
-            cmd.extend(["-v", f"{CLAUDE_AUTH_PATH}:/tmp/.claude-ro:ro"])
-        if SSH_KEY_PATH:
-            cmd.extend(["-v", f"{SSH_KEY_PATH}:/tmp/.ssh-ro:ro"])
+        # Mount credentials read-only at staging paths (entrypoint copies them).
+        # Per-user mounts take priority over global env var paths.
+        um = user_mounts or {}
+
+        claude_auth = um.get("claude_auth") or CLAUDE_AUTH_PATH
+        if claude_auth:
+            cmd.extend(["-v", f"{claude_auth}:/tmp/.claude-ro:ro"])
+
+        ssh_key = um.get("ssh_key") or SSH_KEY_PATH
+        if ssh_key:
+            cmd.extend(["-v", f"{ssh_key}:/tmp/.ssh-ro:ro"])
+
+        git_config = um.get("git_config") or GIT_CONFIG_PATH
+        if git_config:
+            cmd.extend(["-v", f"{git_config}:/tmp/.gitconfig-ro:ro"])
+
+        # GH CLI config (global only — no per-user equivalent yet)
         if GH_CONFIG_PATH:
             cmd.extend(["-v", f"{GH_CONFIG_PATH}:/tmp/.gh-ro:ro"])
-        if GIT_CONFIG_PATH:
-            cmd.extend(["-v", f"{GIT_CONFIG_PATH}:/tmp/.gitconfig-ro:ro"])
 
-        # Override git identity so commits are attributed to the bot
+        # Git identity — per-user overrides global bot identity
+        git_author_name = um.get("_git_author_name") or CLAUDE_CODE_GIT_AUTHOR_NAME
+        git_author_email = um.get("_git_author_email") or CLAUDE_CODE_GIT_AUTHOR_EMAIL
         cmd.extend([
-            "-e", f"GIT_AUTHOR_NAME={CLAUDE_CODE_GIT_AUTHOR_NAME}",
-            "-e", f"GIT_AUTHOR_EMAIL={CLAUDE_CODE_GIT_AUTHOR_EMAIL}",
-            "-e", f"GIT_COMMITTER_NAME={CLAUDE_CODE_GIT_AUTHOR_NAME}",
-            "-e", f"GIT_COMMITTER_EMAIL={CLAUDE_CODE_GIT_AUTHOR_EMAIL}",
+            "-e", f"GIT_AUTHOR_NAME={git_author_name}",
+            "-e", f"GIT_AUTHOR_EMAIL={git_author_email}",
+            "-e", f"GIT_COMMITTER_NAME={git_author_name}",
+            "-e", f"GIT_COMMITTER_EMAIL={git_author_email}",
         ])
+
+        # Pass tokens — per-user GitHub token overrides global
+        github_token = um.get("_github_token") or GITHUB_TOKEN
+        if github_token:
+            cmd.extend(["-e", f"GITHUB_TOKEN={github_token}"])
 
         cmd.extend([
             CLAUDE_CODE_IMAGE,
@@ -532,7 +968,15 @@ class ClaudeCodeTools:
 
     @staticmethod
     def _entrypoint_script() -> str:
-        """Shell script executed inside the worker container."""
+        """Shell script executed inside the worker container.
+
+        Environment variables used:
+        - ``PROMPT``: The prompt to send to Claude Code CLI.
+        - ``REPO_URL`` / ``SOURCE_BRANCH`` / ``BRANCH``: Optional git clone parameters.
+        - ``CONTINUE_SESSION``: When set to ``1``, uses ``--continue`` to
+          resume the most recent Claude CLI session in the workspace and
+          restores persisted session data from ``.claude_sessions/``.
+        """
         return (
             'set -e\n'
             'CLAUDE_HOME=/home/claude\n'
@@ -554,6 +998,12 @@ class ClaudeCodeTools:
             '    cp /tmp/.gitconfig-ro "$CLAUDE_HOME/.gitconfig"\n'
             'fi\n'
             '\n'
+            '# Restore persisted session data for --continue support\n'
+            'SESSION_DIR="$PWD/.claude_sessions"\n'
+            'if [ "$CONTINUE_SESSION" = "1" ] && [ -d "$SESSION_DIR" ]; then\n'
+            '    cp -r "$SESSION_DIR/projects" "$CLAUDE_HOME/.claude/projects" 2>/dev/null || true\n'
+            'fi\n'
+            '\n'
             '# Fix ownership so claude user can read/write everything\n'
             'chown -R claude:claude "$CLAUDE_HOME"\n'
             '\n'
@@ -565,13 +1015,49 @@ class ClaudeCodeTools:
             '#!/bin/sh\n'
             'set -e\n'
             'export HOME=/home/claude\n'
+            '\n'
+            '# Persist session data on SIGTERM (timeout graceful stop)\n'
+            'persist_session() {\n'
+            '    SESSION_DIR="$PWD/.claude_sessions"\n'
+            '    mkdir -p "$SESSION_DIR"\n'
+            '    cp -r "$HOME/.claude/projects" "$SESSION_DIR/" 2>/dev/null || true\n'
+            '}\n'
+            'trap "persist_session; exit 143" TERM\n'
+            '\n'
             'if [ -n "$REPO_URL" ]; then\n'
+            '    # Move task metadata aside so git clone into . succeeds\n'
+            '    mkdir -p /tmp/_task_meta\n'
+            '    mv task_meta_* task_*.log /tmp/_task_meta/ 2>/dev/null || true\n'
             '    git clone "$REPO_URL" . 2>&1\n'
+            '    # Restore metadata files\n'
+            '    mv /tmp/_task_meta/* . 2>/dev/null || true\n'
+            '    rm -rf /tmp/_task_meta\n'
+            '    if [ -n "$SOURCE_BRANCH" ]; then\n'
+            '        git checkout "$SOURCE_BRANCH" 2>&1\n'
+            '    fi\n'
             '    if [ -n "$BRANCH" ]; then\n'
             '        git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH"\n'
             '    fi\n'
             'fi\n'
-            'claude -p "$PROMPT" --output-format json --dangerously-skip-permissions\n'
+            '\n'
+            '# Build claude command with optional --continue\n'
+            'CLAUDE_CMD="claude -p \\"$PROMPT\\" --output-format stream-json --verbose --dangerously-skip-permissions"\n'
+            'if [ "$CONTINUE_SESSION" = "1" ]; then\n'
+            '    CLAUDE_CMD="claude --continue -p \\"$PROMPT\\" --output-format stream-json --verbose --dangerously-skip-permissions"\n'
+            'fi\n'
+            '\n'
+            '# Run claude; capture exit code so we can persist session data even on failure\n'
+            'set +e\n'
+            'eval $CLAUDE_CMD &\n'
+            'CLAUDE_PID=$!\n'
+            'wait $CLAUDE_PID\n'
+            'EXIT_CODE=$?\n'
+            'set -e\n'
+            '\n'
+            '# Persist session data for future --continue runs\n'
+            'persist_session\n'
+            '\n'
+            'exit $EXIT_CODE\n'
             'INNER\n'
             'chmod +x /tmp/run.sh\n'
             'exec su -p claude -c /tmp/run.sh\n'
@@ -618,6 +1104,19 @@ class ClaudeCodeTools:
         except Exception:
             pass
 
+    async def _stop_container(self, name: str, grace_seconds: int = 10) -> None:
+        """Gracefully stop a container (SIGTERM, then SIGKILL after grace period)."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "stop", "-t", str(grace_seconds), name,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+        except Exception:
+            # Fallback to kill if stop fails
+            await self._kill_container(name)
+
     async def _remove_container(self, name: str) -> None:
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -628,3 +1127,289 @@ class ClaudeCodeTools:
             await proc.wait()
         except Exception:
             pass
+
+    # ------------------------------------------------------------------
+    # Git helpers
+    # ------------------------------------------------------------------
+
+    def _validate_git_workspace(self, task_id: str, user_id: str | None = None) -> Task:
+        """Validate task exists, belongs to user, and has a git repository."""
+        task = self._get_task(task_id, user_id)
+        if not os.path.isdir(task.workspace):
+            raise ValueError(f"Workspace no longer exists: {task.workspace}")
+        git_dir = os.path.join(task.workspace, ".git")
+        if not os.path.isdir(git_dir):
+            raise ValueError(
+                f"No git repository found in workspace for task {task_id}. "
+                "This task may not have been created from a git clone."
+            )
+        return task
+
+    async def _run_git_in_workspace(
+        self,
+        task: Task,
+        git_command: str,
+        timeout: int = GIT_CMD_TIMEOUT,
+        user_mounts: dict[str, str] | None = None,
+    ) -> tuple[str, str, int]:
+        """Run a git command in a task workspace via a short-lived Docker container.
+
+        Uses the same image and credential mounting pattern as task containers.
+        Returns ``(stdout, stderr, exit_code)``.
+        """
+        container_name = f"claude-git-{task.id}-{uuid.uuid4().hex[:6]}"
+
+        entrypoint = (
+            'set -e\n'
+            'CLAUDE_HOME=/home/claude\n'
+            '\n'
+            '# Copy SSH keys\n'
+            'if [ -d /tmp/.ssh-ro ]; then\n'
+            '    cp -r /tmp/.ssh-ro "$CLAUDE_HOME/.ssh"\n'
+            '    chmod 700 "$CLAUDE_HOME/.ssh"\n'
+            '    chmod 600 "$CLAUDE_HOME/.ssh"/* 2>/dev/null || true\n'
+            'fi\n'
+            '# Copy git config\n'
+            'if [ -f /tmp/.gitconfig-ro ]; then\n'
+            '    cp /tmp/.gitconfig-ro "$CLAUDE_HOME/.gitconfig"\n'
+            'fi\n'
+            'chown -R claude:claude "$CLAUDE_HOME"\n'
+            '\n'
+            '# Write inner script and run as claude user\n'
+            'cat > /tmp/git_run.sh << \'INNER\'\n'
+            '#!/bin/sh\n'
+            'set -e\n'
+            'export HOME=/home/claude\n'
+            'eval "$GIT_CMD"\n'
+            'INNER\n'
+            'chmod +x /tmp/git_run.sh\n'
+            'exec su -p claude -c /tmp/git_run.sh\n'
+        )
+
+        cmd: list[str] = [
+            "docker", "run", "--rm", "--init",
+            "--name", container_name,
+            "-v", f"{TASK_VOLUME}:{TASK_BASE_DIR}",
+            "-w", task.workspace,
+            "-e", f"GIT_CMD={git_command}",
+        ]
+
+        # Mount credentials (read-only) — per-user overrides global
+        um = user_mounts or {}
+
+        ssh_key = um.get("ssh_key") or SSH_KEY_PATH
+        if ssh_key:
+            cmd.extend(["-v", f"{ssh_key}:/tmp/.ssh-ro:ro"])
+
+        git_config = um.get("git_config") or GIT_CONFIG_PATH
+        if git_config:
+            cmd.extend(["-v", f"{git_config}:/tmp/.gitconfig-ro:ro"])
+
+        # Git identity env vars — per-user overrides global bot identity
+        git_author_name = um.get("_git_author_name") or CLAUDE_CODE_GIT_AUTHOR_NAME
+        git_author_email = um.get("_git_author_email") or CLAUDE_CODE_GIT_AUTHOR_EMAIL
+        cmd.extend([
+            "-e", f"GIT_AUTHOR_NAME={git_author_name}",
+            "-e", f"GIT_AUTHOR_EMAIL={git_author_email}",
+            "-e", f"GIT_COMMITTER_NAME={git_author_name}",
+            "-e", f"GIT_COMMITTER_EMAIL={git_author_email}",
+        ])
+
+        github_token = um.get("_github_token") or GITHUB_TOKEN
+        if github_token:
+            cmd.extend(["-e", f"GITHUB_TOKEN={github_token}"])
+
+        cmd.extend([CLAUDE_CODE_IMAGE, "sh", "-c", entrypoint])
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout,
+            )
+            stdout = stdout_bytes.decode("utf-8", errors="replace")
+            stderr = stderr_bytes.decode("utf-8", errors="replace")
+            return stdout, stderr, proc.returncode or 0
+        except asyncio.TimeoutError:
+            await self._kill_container(container_name)
+            raise ValueError(f"Git command timed out after {timeout}s")
+        finally:
+            await self._remove_container(container_name)
+
+    # ------------------------------------------------------------------
+    # Git tools (called by orchestrator)
+    # ------------------------------------------------------------------
+
+    async def git_status(self, task_id: str, user_id: str | None = None) -> dict:
+        """Return comprehensive git status for a task's workspace."""
+        task = self._validate_git_workspace(task_id, user_id)
+
+        git_script = (
+            'echo "===BRANCH==="\n'
+            'git branch --show-current\n'
+            'echo "===REMOTE==="\n'
+            'git remote -v 2>/dev/null || echo "no remotes"\n'
+            'echo "===TRACKING==="\n'
+            'git rev-parse --abbrev-ref @{upstream} 2>/dev/null || echo "no upstream"\n'
+            'echo "===AHEAD_BEHIND==="\n'
+            'git rev-list --left-right --count @{upstream}...HEAD 2>/dev/null || echo "unknown"\n'
+            'echo "===STATUS==="\n'
+            'git status --porcelain\n'
+            'echo "===LOG==="\n'
+            'git log --oneline -10\n'
+            'echo "===END==="'
+        )
+
+        stdout, stderr, exit_code = await self._run_git_in_workspace(task, git_script)
+
+        if exit_code != 0:
+            return {
+                "task_id": task_id,
+                "error": f"Git command failed (exit {exit_code}): {stderr.strip()}",
+            }
+
+        # Parse sectioned output
+        sections: dict[str, list[str]] = {}
+        current_section: str | None = None
+        current_lines: list[str] = []
+
+        for line in stdout.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("===") and stripped.endswith("==="):
+                if current_section is not None:
+                    sections[current_section] = current_lines
+                current_section = stripped.strip("=")
+                current_lines = []
+            elif stripped:
+                current_lines.append(stripped)
+        if current_section is not None:
+            sections[current_section] = current_lines
+
+        # Parse ahead/behind
+        ahead: int | None = None
+        behind: int | None = None
+        ab_lines = sections.get("AHEAD_BEHIND", ["unknown"])
+        if ab_lines and ab_lines[0] != "unknown":
+            parts = ab_lines[0].split()
+            if len(parts) == 2:
+                try:
+                    behind, ahead = int(parts[0]), int(parts[1])
+                except ValueError:
+                    pass
+
+        # Parse porcelain status
+        staged, unstaged, untracked = [], [], []
+        for line in sections.get("STATUS", []):
+            if len(line) < 2:
+                continue
+            idx, wt = line[0], line[1]
+            filepath = line[3:] if len(line) > 3 else line[2:]
+            if idx == "?":
+                untracked.append(filepath)
+            else:
+                if idx != " ":
+                    staged.append(f"{idx} {filepath}")
+                if wt != " ":
+                    unstaged.append(f"{wt} {filepath}")
+
+        tracking_lines = sections.get("TRACKING", ["no upstream"])
+        tracking = tracking_lines[0] if tracking_lines else "no upstream"
+
+        branch_lines = sections.get("BRANCH", [])
+        branch = branch_lines[0] if branch_lines else "(detached HEAD)"
+
+        return {
+            "task_id": task_id,
+            "branch": branch,
+            "tracking": tracking if tracking != "no upstream" else None,
+            "ahead": ahead,
+            "behind": behind,
+            "remotes": sections.get("REMOTE", []),
+            "staged_changes": staged,
+            "unstaged_changes": unstaged,
+            "untracked_files": untracked,
+            "recent_commits": sections.get("LOG", []),
+            "clean": not staged and not unstaged and not untracked,
+        }
+
+    async def git_push(
+        self,
+        task_id: str,
+        remote: str = "origin",
+        branch: str | None = None,
+        force: bool = False,
+        user_id: str | None = None,
+    ) -> dict:
+        """Push the task workspace's branch to a remote."""
+        task = self._validate_git_workspace(task_id, user_id)
+
+        if not SSH_KEY_PATH:
+            raise ValueError(
+                "SSH_KEY_PATH is not configured. Git push requires SSH keys "
+                "to be mounted for authentication."
+            )
+
+        # Validate user-supplied values to prevent injection
+        _validate_git_ref(remote, "remote")
+        if branch:
+            _validate_git_ref(branch, "branch")
+
+        # Get current branch for the response
+        branch_stdout, _, _ = await self._run_git_in_workspace(
+            task, "git branch --show-current",
+        )
+        current_branch = branch_stdout.strip() or "(detached HEAD)"
+
+        # Build push command
+        push_parts = ["git", "push"]
+        if force:
+            push_parts.append("--force-with-lease")
+        push_parts.append(remote)
+        if branch:
+            push_parts.append(branch)
+
+        stdout, stderr, exit_code = await self._run_git_in_workspace(
+            task, " ".join(push_parts),
+        )
+
+        # Git push writes progress to stderr even on success
+        output = (stdout.strip() + "\n" + stderr.strip()).strip()
+
+        if exit_code != 0:
+            error_msg = stderr.strip() or stdout.strip()
+            error_lower = error_msg.lower()
+
+            hint = None
+            if "rejected" in error_lower:
+                hint = (
+                    "Push was rejected. The remote branch has diverging commits. "
+                    "Use force=true to force push (with lease), or rebase first."
+                )
+            elif "permission denied" in error_lower or "publickey" in error_lower:
+                hint = "SSH authentication failed. Check that SSH_KEY_PATH credentials are valid."
+            elif "could not read from remote" in error_lower:
+                hint = "Cannot reach the remote repository. Check the remote URL and network access."
+
+            result: dict = {
+                "task_id": task_id,
+                "success": False,
+                "branch": current_branch,
+                "remote": remote,
+                "error": error_msg,
+            }
+            if hint:
+                result["hint"] = hint
+            return result
+
+        return {
+            "task_id": task_id,
+            "success": True,
+            "branch": branch or current_branch,
+            "remote": remote,
+            "force": force,
+            "output": output,
+            "message": f"Successfully pushed {branch or current_branch} to {remote}.",
+        }

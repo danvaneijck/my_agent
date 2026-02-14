@@ -74,6 +74,8 @@
   .tag-discord { background: #5865f222; color: #7289da; }
   .tag-telegram { background: #229ed922; color: #29b6f6; }
   .tag-slack { background: #4a154b22; color: #e01e5a; }
+  .tag-web { background: #6c8cff22; color: #6c8cff; }
+  .tag-google { background: #4285f422; color: #4285f4; }
 
   /* Buttons */
   .btn {
@@ -147,6 +149,16 @@
   .expand-row:hover td { background: var(--surface2); }
   .detail-row td { padding: 0; background: var(--bg); }
   .detail-content { padding: 12px 14px; }
+  .module-picker { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; }
+  .module-chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px;
+    border-radius: 6px; border: 1px solid var(--border); background: var(--surface);
+    font-size: 12px; cursor: pointer; user-select: none; transition: all 0.15s;
+  }
+  .module-chip:hover { border-color: var(--accent); }
+  .module-chip.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .module-picker-loading { font-size: 12px; color: var(--text-dim); padding: 4px; }
+
   .platform-chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .platform-chip {
     display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
@@ -233,6 +245,7 @@
             <option value="discord">Discord</option>
             <option value="telegram">Telegram</option>
             <option value="slack">Slack</option>
+            <option value="web">Web</option>
           </select>
         </div>
         <div class="form-group">
@@ -308,8 +321,10 @@
         </div>
       </div>
       <div class="form-group" style="margin-top:12px">
-        <label>Allowed Modules (JSON array)</label>
-        <input type="text" id="new-persona-modules" value='["research", "file_manager", "code_executor"]'>
+        <label>Allowed Modules</label>
+        <div id="new-persona-modules" class="module-picker">
+          <span class="module-picker-loading">Loading modules...</span>
+        </div>
       </div>
       <div class="form-group" style="margin-top:12px">
         <label>System Prompt</label>
@@ -372,6 +387,7 @@
           <option value="discord">Discord</option>
           <option value="telegram">Telegram</option>
           <option value="slack">Slack</option>
+          <option value="web">Web</option>
         </select>
       </div>
       <div class="form-group">
@@ -433,8 +449,10 @@
       </div>
     </div>
     <div class="form-group" style="margin-top:12px">
-      <label>Allowed Modules (JSON array)</label>
-      <input type="text" id="edit-persona-modules">
+      <label>Allowed Modules</label>
+      <div id="edit-persona-modules" class="module-picker">
+        <span class="module-picker-loading">Loading modules...</span>
+      </div>
     </div>
     <div class="form-group" style="margin-top:12px">
       <label>System Prompt</label>
@@ -479,6 +497,7 @@ async function doLogin() {
       sessionStorage.setItem('admin_api_key', key);
       document.getElementById('login-error').style.display = 'none';
       showApp();
+      loadModules();
       loadUsers();
       loadPersonas();
     } else {
@@ -515,6 +534,39 @@ function toast(msg, type='success') {
   el.textContent = msg;
   document.getElementById('toast-container').appendChild(el);
   setTimeout(() => el.remove(), 3000);
+}
+
+// ---- Module picker ----
+let availableModules = [];
+
+async function loadModules() {
+  try {
+    const data = await (await fetch('/api/system-health')).json();
+    availableModules = Object.keys(data).filter(m => m !== 'core').sort();
+    renderModulePicker('new-persona-modules', ['research', 'file_manager', 'code_executor']);
+    renderModulePicker('edit-persona-modules', []);
+  } catch(e) { console.error('loadModules', e); }
+}
+
+function renderModulePicker(containerId, selected) {
+  const container = document.getElementById(containerId);
+  if (!availableModules.length) {
+    container.innerHTML = '<span class="module-picker-loading">No modules found</span>';
+    return;
+  }
+  container.innerHTML = availableModules.map(m =>
+    `<div class="module-chip ${selected.includes(m) ? 'selected' : ''}"
+          onclick="toggleModuleChip(this)" data-module="${m}">${m}</div>`
+  ).join('');
+}
+
+function toggleModuleChip(el) {
+  el.classList.toggle('selected');
+}
+
+function getSelectedModules(containerId) {
+  return [...document.querySelectorAll(`#${containerId} .module-chip.selected`)]
+    .map(el => el.dataset.module);
 }
 
 async function api(url, method='GET', body=null) {
@@ -742,8 +794,7 @@ async function createPersona() {
   const prompt = document.getElementById('new-persona-prompt').value;
   if (!name || !prompt) { toast('Name and System Prompt are required', 'error'); return; }
 
-  const modules = document.getElementById('new-persona-modules').value;
-  try { JSON.parse(modules); } catch(e) { toast('Allowed Modules must be valid JSON', 'error'); return; }
+  const modules = JSON.stringify(getSelectedModules('new-persona-modules'));
 
   try {
     await api('/api/admin/personas', 'POST', {
@@ -761,6 +812,7 @@ async function createPersona() {
     document.getElementById('new-persona-prompt').value = '';
     document.getElementById('new-persona-server').value = '';
     document.getElementById('new-persona-model').value = '';
+    renderModulePicker('new-persona-modules', ['research', 'file_manager', 'code_executor']);
     loadPersonas();
   } catch(e) { toast(e.message, 'error'); }
 }
@@ -774,7 +826,9 @@ async function editPersona(personaId) {
     document.getElementById('edit-persona-server').value = p.platform_server_id || '';
     document.getElementById('edit-persona-model').value = p.default_model || '';
     document.getElementById('edit-persona-max-tokens').value = p.max_tokens_per_request;
-    document.getElementById('edit-persona-modules').value = p.allowed_modules;
+    let selected = [];
+    try { selected = JSON.parse(p.allowed_modules); } catch(e) {}
+    renderModulePicker('edit-persona-modules', selected);
     document.getElementById('edit-persona-prompt').value = p.system_prompt;
     document.getElementById('edit-persona-default').value = p.is_default ? 'true' : 'false';
     openModal('edit-persona-modal');
@@ -783,8 +837,7 @@ async function editPersona(personaId) {
 
 async function savePersona() {
   const id = document.getElementById('edit-persona-id').value;
-  const modules = document.getElementById('edit-persona-modules').value;
-  try { JSON.parse(modules); } catch(e) { toast('Allowed Modules must be valid JSON', 'error'); return; }
+  const modules = JSON.stringify(getSelectedModules('edit-persona-modules'));
 
   try {
     await api(`/api/admin/personas/${id}`, 'PUT', {
@@ -822,6 +875,7 @@ async function deletePersona(personaId) {
     const resp = await fetch('/api/admin/users', {headers: {'X-Admin-Key': key}});
     if (resp.ok) {
       showApp();
+      loadModules();
       loadUsers();
       loadPersonas();
     } else {

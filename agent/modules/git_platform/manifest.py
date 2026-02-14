@@ -16,6 +16,16 @@ MANIFEST = ModuleManifest(
     tools=[
         # ---- Repository ----
         ToolDefinition(
+            name="git_platform.list_repos",
+            description="List repositories accessible to the authenticated user. Returns name, description, language, stars, and clone URL for each repo.",
+            parameters=[
+                ToolParameter(name="per_page", type="integer", description="Max repos to return (default 30).", required=False),
+                ToolParameter(name="sort", type="string", description="Sort order.", enum=["updated", "created", "pushed", "full_name"], required=False),
+                ToolParameter(name="search", type="string", description="Filter repos by name.", required=False),
+            ],
+            required_permission="guest",
+        ),
+        ToolDefinition(
             name="git_platform.get_repo",
             description="Get repository metadata including description, default branch, language, stars, and fork count.",
             parameters=[_OWNER, _REPO],

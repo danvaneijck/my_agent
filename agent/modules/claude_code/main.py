@@ -7,6 +7,9 @@ from fastapi import FastAPI
 
 from modules.claude_code.manifest import MANIFEST
 from modules.claude_code.tools import ClaudeCodeTools
+from shared.config import get_settings
+from shared.credential_store import CredentialStore
+from shared.database import get_session_factory
 from shared.schemas.common import HealthResponse
 from shared.schemas.tools import ModuleManifest, ToolCall, ToolResult
 
@@ -21,13 +24,40 @@ logger = structlog.get_logger()
 app = FastAPI(title="Claude Code Module", version="1.0.0")
 
 tools: ClaudeCodeTools | None = None
+_credential_store: CredentialStore | None = None
 
 
 @app.on_event("startup")
 async def startup() -> None:
-    global tools
+    global tools, _credential_store
     tools = ClaudeCodeTools()
+    settings = get_settings()
+    if settings.credential_encryption_key:
+        _credential_store = CredentialStore(settings.credential_encryption_key)
+        logger.info("credential_store_initialized")
+    else:
+        logger.warning("credential_store_not_configured", reason="CREDENTIAL_ENCRYPTION_KEY not set")
     logger.info("claude_code_module_ready")
+
+
+async def _get_user_credentials(user_id: str) -> dict[str, dict[str, str]]:
+    """Look up per-user credentials for claude_code and github services."""
+    if not _credential_store:
+        return {}
+    try:
+        factory = get_session_factory()
+        async with factory() as session:
+            claude_creds = await _credential_store.get_all(session, user_id, "claude_code")
+            github_creds = await _credential_store.get_all(session, user_id, "github")
+        result = {}
+        if claude_creds:
+            result["claude_code"] = claude_creds
+        if github_creds:
+            result["github"] = github_creds
+        return result
+    except Exception as e:
+        logger.warning("credential_lookup_failed", user_id=user_id, error=str(e))
+        return {}
 
 
 @app.get("/manifest", response_model=ModuleManifest)
@@ -46,6 +76,12 @@ async def execute(call: ToolCall) -> ToolResult:
         if call.user_id:
             args["user_id"] = call.user_id
 
+        # Look up per-user credentials for task execution methods
+        if tool_name in ("run_task", "continue_task") and call.user_id:
+            user_creds = await _get_user_credentials(call.user_id)
+            if user_creds:
+                args["user_credentials"] = user_creds
+
         if tool_name == "run_task":
             result = await tools.run_task(**args)
         elif tool_name == "continue_task":
@@ -58,13 +94,24 @@ async def execute(call: ToolCall) -> ToolResult:
             result = await tools.cancel_task(**args)
         elif tool_name == "list_tasks":
             result = await tools.list_tasks(**args)
+        elif tool_name == "get_task_chain":
+            result = await tools.get_task_chain(**args)
+        elif tool_name == "delete_workspace":
+            result = await tools.delete_workspace(**args)
+        elif tool_name == "browse_workspace":
+            result = await tools.browse_workspace(**args)
+        elif tool_name == "read_workspace_file":
+            result = await tools.read_workspace_file(**args)
+        elif tool_name == "git_status":
+            result = await tools.git_status(**args)
+        elif tool_name == "git_push":
+            result = await tools.git_push(**args)
         else:
             return ToolResult(
                 tool_name=call.tool_name,
                 success=False,
                 error=f"Unknown tool: {call.tool_name}",
             )
-
         return ToolResult(tool_name=call.tool_name, success=True, result=result)
     except Exception as e:
         logger.error("tool_execution_error", tool=call.tool_name, error=str(e))

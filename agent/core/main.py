@@ -223,6 +223,100 @@ class EmbedRequest(BaseModel):
     text: str
 
 
+class ContinueRequest(BaseModel):
+    """Request from scheduler to resume a conversation after a background job completes."""
+    platform: str
+    platform_channel_id: str
+    platform_thread_id: str | None = None
+    user_id: str  # internal UUID (not platform ID)
+    content: str  # completion context message for the LLM
+    job_id: str | None = None
+    workflow_id: str | None = None
+    result_data: dict | None = None
+
+
+@app.post("/continue", response_model=AgentResponse)
+async def continue_conversation(req: ContinueRequest) -> AgentResponse:
+    """Resume a conversation after a scheduler job completes.
+
+    This is called by the scheduler worker when a job with
+    on_complete='resume_conversation' finishes. It re-enters the agent loop
+    with the completion context, allowing the LLM to continue with follow-up
+    actions (e.g. deploy after a build).
+    """
+    if agent_loop is None:
+        raise HTTPException(status_code=503, detail="Orchestrator not ready")
+
+    logger.info(
+        "continue_conversation",
+        platform=req.platform,
+        user_id=req.user_id,
+        channel=req.platform_channel_id,
+        job_id=req.job_id,
+    )
+
+    # Look up the platform_user_id for this internal user_id so the agent loop
+    # can resolve the user properly via its normal path.
+    from sqlalchemy import select as sa_select
+    from shared.models.user import UserPlatformLink
+
+    session_factory = get_session_factory()
+    platform_user_id = req.user_id  # fallback to internal ID
+
+    async with session_factory() as session:
+        result = await session.execute(
+            sa_select(UserPlatformLink).where(
+                UserPlatformLink.user_id == req.user_id,
+                UserPlatformLink.platform == req.platform,
+            )
+        )
+        link = result.scalar_one_or_none()
+        if link:
+            platform_user_id = link.platform_user_id
+
+    # Build a system-initiated message that the agent loop processes normally
+    context_parts = [f"[Automated workflow continuation — job {req.job_id or 'unknown'}]"]
+    context_parts.append(req.content)
+    if req.result_data:
+        # Only include essential fields — full json_output can be enormous
+        summary_keys = [
+            "task_id", "status", "workspace", "mode", "error",
+            "elapsed_seconds", "exit_code",
+        ]
+        summary = {
+            k: v for k, v in req.result_data.items()
+            if k in summary_keys and v is not None
+        }
+        if summary:
+            context_parts.append(
+                f"\nTask result summary: {json.dumps(summary, default=str)}"
+            )
+    context_parts.append(
+        "\nContinue with the next steps. If the task succeeded, proceed with "
+        "deployment or any other planned follow-up actions. If it failed, "
+        "explain what went wrong."
+    )
+
+    incoming = IncomingMessage(
+        platform=req.platform,
+        platform_user_id=platform_user_id,
+        platform_channel_id=req.platform_channel_id,
+        platform_thread_id=req.platform_thread_id,
+        content="\n".join(context_parts),
+    )
+
+    response = await agent_loop.run(incoming)
+
+    logger.info(
+        "continue_conversation_complete",
+        platform=req.platform,
+        job_id=req.job_id,
+        has_error=response.error is not None,
+    )
+
+    return response
+
+
 @app.post("/embed")
 async def embed(req: EmbedRequest):
     """Generate an embedding for a given text. Used by modules like knowledge."""

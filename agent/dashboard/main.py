@@ -483,7 +483,7 @@ async def update_user(user_id: str, body: UserUpdate):
 
 @app.delete("/api/admin/users/{user_id}", dependencies=[Depends(require_admin)])
 async def delete_user(user_id: str):
-    """Delete a user and their platform links."""
+    """Delete a user and all their related data."""
     factory = get_session_factory()
     async with factory() as s:
         uid = uuid.UUID(user_id)
@@ -492,9 +492,28 @@ async def delete_user(user_id: str):
         )).scalar_one_or_none()
         if not user:
             raise HTTPException(404, "User not found")
-        await s.execute(
-            delete(UserPlatformLink).where(UserPlatformLink.user_id == uid)
-        )
+
+        # Delete messages via conversation IDs first (messages FK → conversations)
+        conv_ids = (await s.execute(
+            select(Conversation.id).where(Conversation.user_id == uid)
+        )).scalars().all()
+        if conv_ids:
+            await s.execute(
+                delete(Message).where(Message.conversation_id.in_(conv_ids))
+            )
+
+        # Delete all records referencing user_id
+        for tbl in [
+            "token_logs", "memory_summaries", "scheduled_jobs",
+            "location_reminders", "file_records", "user_locations",
+            "owntracks_credentials", "user_named_places", "user_credentials",
+            "conversations", "user_platform_links",
+        ]:
+            await s.execute(
+                text(f"DELETE FROM {tbl} WHERE user_id = :uid"),
+                {"uid": uid},
+            )
+
         await s.delete(user)
         await s.commit()
         return {"ok": True}
@@ -530,7 +549,7 @@ async def add_platform_link(user_id: str, body: PlatformLinkCreate):
         )).scalar_one_or_none()
         if not user:
             raise HTTPException(404, "User not found")
-        if body.platform not in ("discord", "telegram", "slack"):
+        if body.platform not in ("discord", "telegram", "slack", "web"):
             raise HTTPException(400, "Invalid platform")
         # Check for duplicate
         existing = (await s.execute(

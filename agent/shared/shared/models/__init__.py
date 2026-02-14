@@ -11,6 +11,7 @@ from shared.models.persona import Persona
 from shared.models.scheduled_job import ScheduledJob
 from shared.models.token_usage import TokenLog
 from shared.models.user import User, UserPlatformLink
+from shared.models.user_credential import UserCredential
 from shared.models.user_location import UserLocation
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "ScheduledJob",
     "TokenLog",
     "User",
+    "UserCredential",
     "UserLocation",
     "UserNamedPlace",
     "UserPlatformLink",

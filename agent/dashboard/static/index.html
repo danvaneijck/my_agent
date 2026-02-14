@@ -87,6 +87,8 @@
   .tag-discord { background: #5865f222; color: #7289da; }
   .tag-telegram { background: #229ed922; color: #29b6f6; }
   .tag-slack { background: #4a154b22; color: #e01e5a; }
+  .tag-web { background: #6c8cff22; color: #6c8cff; }
+  .tag-google { background: #4285f422; color: #4285f4; }
 
   /* Two column layout */
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -102,6 +104,14 @@
     display: flex; align-items: center; padding: 0 8px; font-size: 11px;
     font-weight: 500; min-width: fit-content; transition: width 0.4s ease; }
   .bar-value { width: 70px; font-size: 12px; text-align: right; flex-shrink: 0; }
+
+  /* Tool usage groups */
+  .tool-group-header { cursor: pointer; }
+  .tool-group-header:hover .bar-label { color: var(--text); }
+  .tool-group-header .expand-icon { display: inline-block; width: 12px; font-size: 10px; color: var(--text-dim); }
+  .tool-group-detail { display: none; margin-bottom: 4px; }
+  .tool-group.expanded .tool-group-detail { display: block; }
+  .tool-group.expanded .expand-icon { transform: rotate(90deg); }
 
   /* Loading */
   .loading { text-align: center; padding: 40px; color: var(--text-dim); }
@@ -269,13 +279,39 @@ async function loadToolUsage() {
     const data = await (await fetch('/api/tool-usage')).json();
     const el = document.getElementById('tool-chart');
     if (!data.length) { el.innerHTML = '<div class="loading">No tool usage data yet</div>'; return; }
-    const max = Math.max(...data.map(t => t.call_count));
-    el.innerHTML = '<div class="bar-chart">' + data.map(t => {
-      const pct = max > 0 ? (t.call_count / max * 100) : 0;
-      return `<div class="bar-row">
-        <div class="bar-label" title="${t.tool_name}">${t.tool_name || 'unknown'}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(pct,2)}%;background:var(--green)"></div></div>
-        <div class="bar-value mono">${fmt(t.call_count)}</div>
+
+    // Group by module (prefix before the dot)
+    const modules = {};
+    data.forEach(t => {
+      const parts = (t.tool_name || 'unknown').split('.');
+      const mod = parts.length > 1 ? parts[0] : 'other';
+      if (!modules[mod]) modules[mod] = { total: 0, tools: [] };
+      modules[mod].total += t.call_count;
+      modules[mod].tools.push(t);
+    });
+
+    const sorted = Object.entries(modules).sort((a, b) => b[1].total - a[1].total);
+    const max = Math.max(...sorted.map(([, m]) => m.total));
+
+    el.innerHTML = '<div class="bar-chart">' + sorted.map(([mod, info]) => {
+      const pct = max > 0 ? (info.total / max * 100) : 0;
+      const toolMax = Math.max(...info.tools.map(t => t.call_count));
+      const toolBars = info.tools.sort((a, b) => b.call_count - a.call_count).map(t => {
+        const tPct = toolMax > 0 ? (t.call_count / toolMax * 100) : 0;
+        const name = t.tool_name?.split('.').pop() || 'unknown';
+        return `<div class="bar-row" style="padding-left:20px">
+          <div class="bar-label" style="width:140px;font-size:11px" title="${t.tool_name}">${name}</div>
+          <div class="bar-track" style="height:18px"><div class="bar-fill" style="width:${Math.max(tPct,2)}%;background:var(--accent);opacity:0.7"></div></div>
+          <div class="bar-value mono" style="font-size:11px">${fmt(t.call_count)}</div>
+        </div>`;
+      }).join('');
+      return `<div class="tool-group">
+        <div class="bar-row tool-group-header" onclick="this.parentElement.classList.toggle('expanded')">
+          <div class="bar-label"><span class="expand-icon">&#9656;</span> ${mod}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.max(pct,2)}%;background:var(--green)">${info.tools.length > 1 ? '<span style="color:#0f1117;opacity:0.8;font-size:10px">' + info.tools.length + ' tools</span>' : ''}</div></div>
+          <div class="bar-value mono">${fmt(info.total)}</div>
+        </div>
+        <div class="tool-group-detail">${toolBars}</div>
       </div>`;
     }).join('') + '</div>';
   } catch(e) { console.error('tools', e); }

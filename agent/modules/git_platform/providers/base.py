@@ -13,6 +13,10 @@ class GitProvider(ABC):
     """Abstract base class for git hosting platform providers."""
 
     @abstractmethod
+    async def list_repos(self, per_page: int = 30, sort: str = "updated", search: str | None = None) -> dict:
+        """List repositories accessible to the authenticated user."""
+
+    @abstractmethod
     async def get_repo(self, owner: str, repo: str) -> dict:
         """Get repository metadata."""
 

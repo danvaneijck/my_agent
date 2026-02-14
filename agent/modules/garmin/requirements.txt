@@ -3,4 +3,10 @@ uvicorn[standard]>=0.27
 structlog>=24.1
 pydantic>=2.5
 pydantic-settings>=2.1
+
+# Database (for per-user credential lookup)
+sqlalchemy>=2.0
+asyncpg>=0.29
+cryptography>=42.0
+
 garminconnect>=0.2

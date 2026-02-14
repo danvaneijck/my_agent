@@ -52,9 +52,10 @@ def _safe_get(data: dict | None, *keys, default=None):
 class GarminTools:
     """Tool implementations for fetching Garmin Connect data."""
 
-    def __init__(self, email: str, password: str):
+    def __init__(self, email: str, password: str, tokenstore_path: Path | None = None):
         self.email = email
         self.password = password
+        self._tokenstore_path = tokenstore_path or TOKENSTORE_PATH
         self._client: Garmin | None = None
 
     def _ensure_client(self) -> Garmin:
@@ -63,10 +64,10 @@ class GarminTools:
             return self._client
 
         # Try loading saved tokens first
-        if TOKENSTORE_PATH.exists():
+        if self._tokenstore_path.exists():
             try:
                 client = Garmin()
-                client.login(str(TOKENSTORE_PATH))
+                client.login(str(self._tokenstore_path))
                 self._client = client
                 logger.info("garmin_auth_from_tokens")
                 return client
@@ -76,13 +77,13 @@ class GarminTools:
         # Fall back to email/password login
         if not self.email or not self.password:
             raise RuntimeError(
-                "Garmin credentials not configured. Set GARMIN_EMAIL and GARMIN_PASSWORD in .env"
+                "Garmin credentials not configured. Add credentials in Portal Settings or set GARMIN_EMAIL and GARMIN_PASSWORD in .env"
             )
 
         client = Garmin(email=self.email, password=self.password)
         client.login()
-        TOKENSTORE_PATH.mkdir(parents=True, exist_ok=True)
-        client.garth.dump(str(TOKENSTORE_PATH))
+        self._tokenstore_path.mkdir(parents=True, exist_ok=True)
+        client.garth.dump(str(self._tokenstore_path))
         self._client = client
         logger.info("garmin_auth_from_credentials")
         return client

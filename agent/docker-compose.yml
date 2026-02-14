@@ -169,6 +169,7 @@ services:
     env_file: .env
     depends_on:
       - core
+      - postgres
     networks:
       - agent-net
     restart: unless-stopped
@@ -180,6 +181,7 @@ services:
     env_file: .env
     depends_on:
       - core
+      - postgres
     networks:
       - agent-net
     restart: unless-stopped
@@ -202,6 +204,7 @@ services:
     env_file: .env
     depends_on:
       - core
+      - postgres
     networks:
       - agent-net
     restart: unless-stopped
@@ -281,6 +284,26 @@ services:
     env_file: .env
     depends_on:
       - core
+      - postgres
+    networks:
+      - agent-net
+    restart: unless-stopped
+
+  # --- Web Portal ---
+  portal:
+    build:
+      context: .
+      dockerfile: portal/Dockerfile
+    env_file: .env
+    ports:
+      - "${PORTAL_PORT:-8080}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     networks:
       - agent-net
     restart: unless-stopped

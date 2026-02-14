@@ -50,6 +50,26 @@ Makefile:       Makefile (top-level, wraps docker compose)
 
 All services communicate over the `agent-net` Docker bridge network. Services are containerized with Python 3.12-slim base images.
 
+## Module Documentation
+
+Detailed per-module docs live in `agent/docs/modules/`:
+
+- [Module System Overview](agent/docs/modules/overview.md) — discovery, routing, permissions, workflow chaining
+- [research](agent/docs/modules/research.md) — web search, news, scraping, summarization
+- [file_manager](agent/docs/modules/file_manager.md) — file CRUD on MinIO + DB records
+- [code_executor](agent/docs/modules/code_executor.md) — sandboxed Python/shell execution
+- [knowledge](agent/docs/modules/knowledge.md) — semantic memory with pgvector embeddings
+- [atlassian](agent/docs/modules/atlassian.md) — Jira + Confluence integration
+- [claude_code](agent/docs/modules/claude_code.md) — coding tasks via Claude Code CLI in Docker
+- [deployer](agent/docs/modules/deployer.md) — deploy projects to live URLs
+- [scheduler](agent/docs/modules/scheduler.md) — background jobs + workflow chaining
+- [garmin](agent/docs/modules/garmin.md) — Garmin Connect health/fitness data
+- [renpho_biometrics](agent/docs/modules/renpho_biometrics.md) — Renpho smart scale body composition
+- [location](agent/docs/modules/location.md) — OwnTracks geofence reminders + tracking
+- [git_platform](agent/docs/modules/git_platform.md) — GitHub/Bitbucket repos, issues, PRs, CI
+- [myfitnesspal](agent/docs/modules/myfitnesspal.md) — nutrition and meal tracking
+- [injective](agent/docs/modules/injective.md) — blockchain spot and perpetual trading
+
 ## Tech Stack
 
 | Layer | Technology |

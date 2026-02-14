@@ -38,6 +38,13 @@ class ScheduledJob(Base):
     on_success_message: Mapped[str] = mapped_column(Text)
     on_failure_message: Mapped[str | None] = mapped_column(Text, default=None)
 
+    # Completion behaviour: "notify" (send message) or "resume_conversation"
+    # (re-enter agent loop so LLM can continue with next steps)
+    on_complete: Mapped[str] = mapped_column(default="notify")
+
+    # Optional workflow grouping — jobs sharing a workflow_id are a multi-step chain
+    workflow_id: Mapped[uuid.UUID | None] = mapped_column(default=None)
+
     # Lifecycle
     status: Mapped[str] = mapped_column(default="active")  # active | completed | failed | cancelled
     next_run_at: Mapped[datetime] = mapped_column(

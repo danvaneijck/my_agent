@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import base64
 import io
-import json
 import uuid
 from datetime import datetime, timezone
 
 import structlog
 from minio import Minio
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import Settings
 from shared.models.file import FileRecord
@@ -50,19 +48,6 @@ MIME_TYPES = {
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 
-# MinIO anonymous read policy for the bucket
-_PUBLIC_READ_POLICY = {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Principal": {"AWS": ["*"]},
-            "Action": ["s3:GetObject"],
-            "Resource": ["arn:aws:s3:::{bucket}/*"],
-        }
-    ],
-}
-
 
 class FileManagerTools:
     """Tool implementations for file management with MinIO."""
@@ -76,12 +61,10 @@ class FileManagerTools:
             secret_key=settings.minio_secret_key,
             secure=False,
         )
-        # Ensure bucket exists with public-read policy
+        # Ensure bucket exists (private — no public access policy)
         bucket = settings.minio_bucket
         if not self.minio.bucket_exists(bucket):
             self.minio.make_bucket(bucket)
-        policy = json.loads(json.dumps(_PUBLIC_READ_POLICY).replace("{bucket}", bucket))
-        self.minio.set_bucket_policy(bucket, json.dumps(policy))
 
     async def create_document(
         self,
@@ -194,12 +177,13 @@ class FileManagerTools:
             "mime_type": mime_type,
         }
 
-    async def read_document(self, file_id: str) -> dict:
+    async def read_document(self, file_id: str, user_id: str | None = None) -> dict:
         """Read the contents of a stored document."""
         async with self.session_factory() as session:
-            result = await session.execute(
-                select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
-            )
+            query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
+            if user_id:
+                query = query.where(FileRecord.user_id == uuid.UUID(user_id))
+            result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
                 raise ValueError(f"File not found: {file_id}")
@@ -224,11 +208,13 @@ class FileManagerTools:
             }
 
     async def list_files(self, user_id: str | None = None) -> list[dict]:
-        """List files, optionally filtered by user."""
+        """List files for the given user."""
         async with self.session_factory() as session:
             query = select(FileRecord).order_by(FileRecord.created_at.desc())
             if user_id:
                 query = query.where(FileRecord.user_id == uuid.UUID(user_id))
+            else:
+                logger.warning("list_files_called_without_user_id")
 
             result = await session.execute(query.limit(50))
             records = result.scalars().all()
@@ -244,12 +230,13 @@ class FileManagerTools:
                 for r in records
             ]
 
-    async def get_file_link(self, file_id: str) -> dict:
+    async def get_file_link(self, file_id: str, user_id: str | None = None) -> dict:
         """Get the public URL for a file."""
         async with self.session_factory() as session:
-            result = await session.execute(
-                select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
-            )
+            query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
+            if user_id:
+                query = query.where(FileRecord.user_id == uuid.UUID(user_id))
+            result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
                 raise ValueError(f"File not found: {file_id}")
@@ -260,12 +247,13 @@ class FileManagerTools:
                 "url": record.public_url,
             }
 
-    async def delete_file(self, file_id: str) -> dict:
+    async def delete_file(self, file_id: str, user_id: str | None = None) -> dict:
         """Delete a file from MinIO and its database record."""
         async with self.session_factory() as session:
-            result = await session.execute(
-                select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
-            )
+            query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
+            if user_id:
+                query = query.where(FileRecord.user_id == uuid.UUID(user_id))
+            result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
                 raise ValueError(f"File not found: {file_id}")
