@@ -57,6 +57,16 @@ async def execute(call: ToolCall) -> ToolResult:
             result = await tools.teardown_all(**args)
         elif tool_name == "get_logs":
             result = await tools.get_logs(**args)
+        elif tool_name == "get_services":
+            result = await tools.get_services(**args)
+        elif tool_name == "get_service_logs":
+            result = await tools.get_service_logs(**args)
+        elif tool_name == "get_env_vars":
+            result = await tools.get_env_vars(**args)
+        elif tool_name == "update_env_vars":
+            result = await tools.update_env_vars(**args)
+        elif tool_name == "restart":
+            result = await tools.restart_deployment(**args)
         else:
             return ToolResult(
                 tool_name=call.tool_name,

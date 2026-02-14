@@ -179,15 +179,34 @@ export interface GitPullRequest {
 }
 
 // Deployment types (from deployer module)
+export interface ServicePort {
+  host: number;
+  container: number;
+  protocol: string;
+  service?: string;
+}
+
+export interface DeploymentService {
+  name: string;
+  container_id: string | null;
+  container_name: string;
+  status: string;
+  ports: ServicePort[];
+  image: string;
+}
+
 export interface Deployment {
   deploy_id: string;
   project_name: string;
-  project_type: "react" | "nextjs" | "static" | "node" | "docker";
+  project_type: "react" | "nextjs" | "static" | "node" | "docker" | "compose";
   port: number;
   container_id: string | null;
   url: string;
   status: "building" | "running" | "failed" | "stopped";
   created_at: string;
+  services: DeploymentService[];
+  all_ports: ServicePort[];
+  env_var_count: number;
 }
 
 // Module health

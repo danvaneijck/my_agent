@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 import httpx
 import structlog
+import yaml
 
 logger = structlog.get_logger()
 
@@ -25,8 +26,16 @@ DEPLOY_NETWORK = os.environ.get("DEPLOY_NETWORK", "agent-net")
 TASK_BASE_DIR = "/tmp/claude_tasks"
 
 BUILD_TIMEOUT = 300  # seconds for docker build
+COMPOSE_BUILD_TIMEOUT = 600  # seconds for docker compose build
 HEALTH_CHECK_RETRIES = 5
 HEALTH_CHECK_DELAY = 2.0
+
+_COMPOSE_FILENAMES = [
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+]
 
 
 async def _resolve_network_name(hint: str = DEPLOY_NETWORK) -> str:
@@ -56,6 +65,27 @@ async def _resolve_network_name(hint: str = DEPLOY_NETWORK) -> str:
 # Deployment data model
 # ---------------------------------------------------------------------------
 @dataclass
+class ServiceInfo:
+    """A single service within a compose deployment."""
+    name: str
+    container_id: str | None = None
+    container_name: str = ""
+    status: str = "pending"  # pending | running | exited | failed
+    ports: list[dict] = field(default_factory=list)  # [{"host": 4000, "container": 8000, "protocol": "tcp"}]
+    image: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "container_id": self.container_id,
+            "container_name": self.container_name,
+            "status": self.status,
+            "ports": self.ports,
+            "image": self.image,
+        }
+
+
+@dataclass
 class Deployment:
     id: str
     project_name: str
@@ -66,6 +96,12 @@ class Deployment:
     url: str = ""
     status: str = "building"  # building | running | failed | stopped
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    # Compose-specific fields
+    services: list[ServiceInfo] = field(default_factory=list)
+    compose_project_dir: str = ""
+    deploy_compose_file: str = ""  # path to generated remapped compose file
+    env_vars: dict[str, str] = field(default_factory=dict)
+    all_ports: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -78,6 +114,9 @@ class Deployment:
             "url": self.url,
             "status": self.status,
             "created_at": self.created_at.isoformat(),
+            "services": [s.to_dict() for s in self.services],
+            "all_ports": self.all_ports,
+            "env_var_count": len(self.env_vars),
         }
 
 
@@ -262,6 +301,98 @@ class DeployerTools:
         if recovered:
             logger.info("rediscovered_deployments", count=recovered)
 
+        # Also rediscover compose deployments
+        await self._rediscover_compose_deployments()
+
+    async def _rediscover_compose_deployments(self) -> None:
+        """Find existing deploy-* compose projects and restore them."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "compose", "ls", "--format", "json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode != 0:
+                return
+
+            projects = json.loads(stdout.decode()) if stdout.decode().strip() else []
+        except Exception as exc:
+            logger.warning("rediscover_compose_ls_failed", error=str(exc))
+            return
+
+        recovered = 0
+        for project in projects:
+            name = project.get("Name", "")
+            if not name.startswith("deploy-"):
+                continue
+            deploy_id = name[len("deploy-"):]
+            if deploy_id in self.deployments:
+                continue
+
+            try:
+                config_files = project.get("ConfigFiles", "")
+                compose_dir = ""
+                deploy_file = ""
+                if config_files:
+                    # ConfigFiles is a comma-separated string of paths
+                    first_file = config_files.split(",")[0].strip()
+                    compose_dir = os.path.dirname(first_file)
+                    # Check if this is our generated deploy file
+                    if f"deploy-{deploy_id}" in os.path.basename(first_file):
+                        deploy_file = first_file
+
+                status_str = project.get("Status", "").lower()
+                status = "running" if "running" in status_str else "stopped"
+
+                services = await self._build_compose_services(
+                    deploy_id, compose_dir, deploy_file or None
+                ) if compose_dir else []
+
+                all_ports: list[dict] = []
+                for svc in services:
+                    for port in svc.ports:
+                        all_ports.append({**port, "service": svc.name})
+                        self._used_ports.add(port["host"])
+
+                # Read env vars if compose dir is accessible
+                env_vars = {}
+                if compose_dir:
+                    env_path = os.path.join(compose_dir, ".env")
+                    env_vars = self._read_env_file(env_path)
+
+                primary_port = 0
+                primary_url = ""
+                if all_ports:
+                    primary_port = all_ports[0]["host"]
+                    primary_url = f"http://localhost:{primary_port}"
+
+                deployment = Deployment(
+                    id=deploy_id,
+                    project_name=deploy_id,  # Best guess without metadata
+                    project_type="compose",
+                    port=primary_port,
+                    url=primary_url,
+                    status=status,
+                    services=services,
+                    compose_project_dir=compose_dir,
+                    deploy_compose_file=deploy_file,
+                    env_vars=env_vars,
+                    all_ports=all_ports,
+                )
+                self.deployments[deploy_id] = deployment
+                recovered += 1
+
+            except Exception as exc:
+                logger.warning(
+                    "rediscover_compose_project_failed",
+                    project=name,
+                    error=str(exc),
+                )
+
+        if recovered:
+            logger.info("rediscovered_compose_deployments", count=recovered)
+
     async def _inspect_container(self, name: str) -> dict | None:
         """Run ``docker inspect`` and return the parsed JSON for a container."""
         proc = await asyncio.create_subprocess_exec(
@@ -331,6 +462,7 @@ class DeployerTools:
 
     # Marker files whose presence indicates a project root, keyed by type.
     _PROJECT_MARKERS: dict[str, list[str]] = {
+        "compose": _COMPOSE_FILENAMES,
         "react": ["package.json"],
         "nextjs": ["package.json", "next.config.js", "next.config.mjs", "next.config.ts"],
         "node": ["package.json"],
@@ -405,11 +537,24 @@ class DeployerTools:
         user_id: str | None = None,
     ) -> dict:
         """Build and deploy a project. Returns a live URL."""
+        # Auto-detect compose project if compose file present and type not explicitly set
+        if project_type not in ("compose",) and self._find_compose_file(project_path):
+            project_type = "compose"
+
         # Auto-detect project subdirectory if workspace root was given
         project_path = self._resolve_project_dir(project_path, project_type)
 
         if not os.path.isdir(project_path):
             raise ValueError(f"Project path does not exist: {project_path}")
+
+        # Route compose deployments to dedicated method
+        if project_type == "compose":
+            return await self.deploy_compose(
+                project_path=project_path,
+                project_name=project_name,
+                env_vars=env_vars,
+                user_id=user_id,
+            )
 
         deploy_id = uuid.uuid4().hex[:8]
         port = self._allocate_port()
@@ -521,10 +666,20 @@ class DeployerTools:
         """Stop and remove a single deployment."""
         deployment = self._get_deployment(deploy_id, user_id)
 
-        container_name = f"deploy-{deploy_id}"
-        await self._remove_container(container_name)
-        await self._remove_image(f"deploy-{deploy_id}")
-        self._free_port(deployment.port)
+        if deployment.project_type == "compose":
+            await self._compose_down(
+                deploy_id, deployment.compose_project_dir,
+                deployment.deploy_compose_file,
+            )
+            # Free all tracked ports
+            for port_info in deployment.all_ports:
+                self._free_port(port_info.get("host", 0))
+        else:
+            container_name = f"deploy-{deploy_id}"
+            await self._remove_container(container_name)
+            await self._remove_image(f"deploy-{deploy_id}")
+            self._free_port(deployment.port)
+
         del self.deployments[deploy_id]
 
         logger.info("deployment_torn_down", deploy_id=deploy_id)
@@ -548,14 +703,30 @@ class DeployerTools:
         self, deploy_id: str, lines: int = 50, user_id: str | None = None
     ) -> dict:
         """Return recent logs from a deployment container."""
-        self._get_deployment(deploy_id, user_id)
+        deployment = self._get_deployment(deploy_id, user_id)
 
-        container_name = f"deploy-{deploy_id}"
-        proc = await asyncio.create_subprocess_exec(
-            "docker", "logs", "--tail", str(lines), container_name,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        if deployment.project_type == "compose":
+            compose_file = self._get_compose_file_for(deployment)
+            cmd = [
+                "docker", "compose",
+                "-p", f"deploy-{deploy_id}",
+                "-f", compose_file or "docker-compose.yml",
+                "logs", "--tail", str(lines), "--no-color",
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=deployment.compose_project_dir or None,
+            )
+        else:
+            container_name = f"deploy-{deploy_id}"
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "logs", "--tail", str(lines), container_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
         stdout, stderr = await proc.communicate()
 
         return {
@@ -566,6 +737,576 @@ class DeployerTools:
             ),
             "lines_requested": lines,
         }
+
+    # ------------------------------------------------------------------
+    # Compose deployment
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _find_compose_file(project_path: str) -> str | None:
+        """Find a docker-compose/compose file in the given directory."""
+        for name in _COMPOSE_FILENAMES:
+            path = os.path.join(project_path, name)
+            if os.path.isfile(path):
+                return path
+        return None
+
+    def _get_compose_file_for(self, deployment: Deployment) -> str | None:
+        """Get the compose file to use for commands on a deployment.
+
+        Prefers the generated deploy file (with remapped ports),
+        falls back to the original compose file.
+        """
+        if deployment.deploy_compose_file and os.path.isfile(deployment.deploy_compose_file):
+            return deployment.deploy_compose_file
+        return self._find_compose_file(deployment.compose_project_dir)
+
+    @staticmethod
+    def _read_env_file(path: str) -> dict[str, str]:
+        """Parse a .env file into a dict."""
+        env = {}
+        if not os.path.isfile(path):
+            return env
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, _, value = line.partition("=")
+                    env[key.strip()] = value.strip()
+        return env
+
+    @staticmethod
+    def _write_env_file(path: str, env_vars: dict[str, str]) -> None:
+        """Write a dict to a .env file."""
+        with open(path, "w") as f:
+            for key, value in sorted(env_vars.items()):
+                f.write(f"{key}={value}\n")
+
+    def _remap_compose_ports(
+        self, compose_path: str, deploy_id: str
+    ) -> tuple[str, list[dict]]:
+        """Parse compose file, remap host ports to managed range, write modified file.
+
+        Returns (modified_file_path, all_ports_list).
+        Internal container ports and service-to-service networking are unchanged.
+        Only host-facing port bindings are remapped.
+        """
+        with open(compose_path) as f:
+            compose = yaml.safe_load(f)
+
+        all_ports: list[dict] = []
+        services = compose.get("services", {})
+
+        for svc_name, svc_config in services.items():
+            ports = svc_config.get("ports")
+            if not ports:
+                continue
+
+            remapped: list = []
+            for port_spec in ports:
+                if isinstance(port_spec, dict):
+                    # Long syntax: {target: 80, published: 8080, protocol: tcp}
+                    container_port = port_spec.get("target")
+                    original_host = port_spec.get("published")
+                    protocol = port_spec.get("protocol", "tcp")
+                    if original_host is not None:
+                        allocated = self._allocate_port()
+                        all_ports.append({
+                            "service": svc_name,
+                            "host": allocated,
+                            "container": int(container_port),
+                            "protocol": protocol,
+                            "original_host": int(original_host),
+                        })
+                        port_spec = {**port_spec, "published": allocated}
+                    remapped.append(port_spec)
+
+                elif isinstance(port_spec, (str, int)):
+                    spec = str(port_spec)
+                    protocol = "tcp"
+                    if "/" in spec:
+                        spec, protocol = spec.rsplit("/", 1)
+
+                    parts = spec.split(":")
+                    if len(parts) >= 2:
+                        # host_port:container_port or ip:host_port:container_port
+                        if len(parts) == 3:
+                            # ip:host:container
+                            container_port = int(parts[2])
+                            original_host = int(parts[1])
+                        else:
+                            # host:container
+                            container_port = int(parts[1])
+                            original_host = int(parts[0])
+
+                        allocated = self._allocate_port()
+                        all_ports.append({
+                            "service": svc_name,
+                            "host": allocated,
+                            "container": container_port,
+                            "protocol": protocol,
+                            "original_host": original_host,
+                        })
+                        remapped.append(f"{allocated}:{container_port}")
+                    else:
+                        # Container-only port (e.g. "80") — no host binding, keep as-is
+                        remapped.append(port_spec)
+                else:
+                    remapped.append(port_spec)
+
+            svc_config["ports"] = remapped
+
+        # Write modified compose file next to the original
+        compose_dir = os.path.dirname(compose_path)
+        deploy_file = os.path.join(compose_dir, f"docker-compose.deploy-{deploy_id}.yml")
+        with open(deploy_file, "w") as f:
+            yaml.dump(compose, f, default_flow_style=False, sort_keys=False)
+
+        logger.info(
+            "compose_ports_remapped",
+            deploy_id=deploy_id,
+            remapped_ports=len(all_ports),
+        )
+        return deploy_file, all_ports
+
+    async def _compose_ps(
+        self, deploy_id: str, compose_dir: str, compose_file: str | None = None
+    ) -> list[dict]:
+        """Run ``docker compose ps --format json`` and return parsed output."""
+        compose_file = compose_file or self._find_compose_file(compose_dir)
+        cmd = [
+            "docker", "compose",
+            "-p", f"deploy-{deploy_id}",
+        ]
+        if compose_file:
+            cmd.extend(["-f", compose_file])
+        cmd.extend(["ps", "-a", "--format", "json"])
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            cwd=compose_dir or None,
+        )
+        stdout, _ = await proc.communicate()
+        if proc.returncode != 0:
+            return []
+
+        results = []
+        for line in stdout.decode().strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                results.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return results
+
+    async def _inspect_service_ports(self, container_name: str) -> list[dict]:
+        """Extract all port mappings from a container via docker inspect."""
+        info = await self._inspect_container(container_name)
+        if not info:
+            return []
+
+        ports = []
+        bindings = info.get("HostConfig", {}).get("PortBindings") or {}
+        for container_port_proto, mappings in bindings.items():
+            if not mappings:
+                continue
+            container_port = container_port_proto.split("/")[0]
+            protocol = container_port_proto.split("/")[1] if "/" in container_port_proto else "tcp"
+            for mapping in mappings:
+                host_port = mapping.get("HostPort")
+                if host_port:
+                    ports.append({
+                        "host": int(host_port),
+                        "container": int(container_port),
+                        "protocol": protocol,
+                    })
+        return ports
+
+    async def _build_compose_services(
+        self, deploy_id: str, compose_dir: str, compose_file: str | None = None
+    ) -> list[ServiceInfo]:
+        """Enumerate services from a running compose project."""
+        ps_output = await self._compose_ps(deploy_id, compose_dir, compose_file)
+        services = []
+        for svc in ps_output:
+            name = svc.get("Service", svc.get("Name", "unknown"))
+            container_name = svc.get("Name", "")
+            container_id = svc.get("ID", "")[:12] if svc.get("ID") else None
+            state = svc.get("State", "unknown").lower()
+            image = svc.get("Image", "")
+
+            # Map compose states to our status values
+            if state in ("running",):
+                status = "running"
+            elif state in ("exited", "dead"):
+                status = "exited"
+            else:
+                status = state
+
+            ports = await self._inspect_service_ports(container_name) if container_name else []
+
+            services.append(ServiceInfo(
+                name=name,
+                container_id=container_id,
+                container_name=container_name,
+                status=status,
+                ports=ports,
+                image=image,
+            ))
+        return services
+
+    async def deploy_compose(
+        self,
+        project_path: str,
+        project_name: str,
+        env_vars: dict | None = None,
+        user_id: str | None = None,
+    ) -> dict:
+        """Deploy a docker-compose project with remapped ports.
+
+        Host-facing ports are remapped to the managed 4000-4100 range to
+        avoid collisions.  Internal service-to-service communication is
+        unaffected (compose creates an isolated network).
+        """
+        compose_file = self._find_compose_file(project_path)
+        if not compose_file:
+            raise ValueError(
+                f"No docker-compose.yml or compose.yml found in {project_path}"
+            )
+
+        deploy_id = uuid.uuid4().hex[:8]
+        env_vars = env_vars or {}
+
+        deployment = Deployment(
+            id=deploy_id,
+            project_name=project_name,
+            project_type="compose",
+            port=0,
+            user_id=user_id,
+            compose_project_dir=project_path,
+            env_vars=env_vars,
+        )
+        self.deployments[deploy_id] = deployment
+
+        deploy_compose_file = ""
+        allocated_ports: list[dict] = []
+
+        try:
+            # Write .env file if env vars provided (merge with existing)
+            env_path = os.path.join(project_path, ".env")
+            if env_vars:
+                existing = self._read_env_file(env_path)
+                existing.update(env_vars)
+                self._write_env_file(env_path, existing)
+                deployment.env_vars = existing
+            elif os.path.isfile(env_path):
+                deployment.env_vars = self._read_env_file(env_path)
+
+            # Remap host ports to managed range
+            deploy_compose_file, allocated_ports = self._remap_compose_ports(
+                compose_file, deploy_id
+            )
+            deployment.deploy_compose_file = deploy_compose_file
+            deployment.all_ports = allocated_ports
+
+            # Track allocated ports
+            for port_info in allocated_ports:
+                self._used_ports.add(port_info["host"])
+
+            # Set primary URL from first allocated port
+            if allocated_ports:
+                deployment.port = allocated_ports[0]["host"]
+                deployment.url = f"http://localhost:{deployment.port}"
+
+            # Build and start services
+            logger.info("compose_build_starting", deploy_id=deploy_id)
+            cmd = [
+                "docker", "compose",
+                "-p", f"deploy-{deploy_id}",
+                "-f", deploy_compose_file,
+                "up", "-d", "--build",
+            ]
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=project_path,
+            )
+
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=COMPOSE_BUILD_TIMEOUT
+            )
+
+            if proc.returncode != 0:
+                err = stderr.decode("utf-8", errors="replace")[:3000]
+                raise RuntimeError(f"Docker compose up failed:\n{err}")
+
+            # Enumerate live services
+            services = await self._build_compose_services(
+                deploy_id, project_path, deploy_compose_file
+            )
+            deployment.services = services
+            deployment.status = "running"
+
+            logger.info(
+                "compose_deploy_success",
+                deploy_id=deploy_id,
+                services=len(services),
+                ports=len(allocated_ports),
+            )
+
+            return {
+                "deploy_id": deploy_id,
+                "project_name": project_name,
+                "project_type": "compose",
+                "url": deployment.url,
+                "port": deployment.port,
+                "status": "running",
+                "services": [s.to_dict() for s in services],
+                "all_ports": allocated_ports,
+            }
+
+        except Exception as e:
+            deployment.status = "failed"
+            # Free allocated ports
+            for port_info in allocated_ports:
+                self._free_port(port_info["host"])
+            # Try to clean up containers
+            await self._compose_down(deploy_id, project_path, deploy_compose_file)
+            # Clean up generated file
+            if deploy_compose_file and os.path.isfile(deploy_compose_file):
+                try:
+                    os.unlink(deploy_compose_file)
+                except OSError:
+                    pass
+            del self.deployments[deploy_id]
+            logger.error("compose_deploy_failed", deploy_id=deploy_id, error=str(e))
+            raise
+
+    async def _compose_down(
+        self, deploy_id: str, compose_dir: str, deploy_file: str = ""
+    ) -> None:
+        """Tear down a compose project and clean up generated files."""
+        # Prefer the deploy file (has remapped ports), fall back to original
+        file_to_use = deploy_file or self._find_compose_file(compose_dir)
+        cmd = [
+            "docker", "compose",
+            "-p", f"deploy-{deploy_id}",
+        ]
+        if file_to_use:
+            cmd.extend(["-f", file_to_use])
+        cmd.extend(["down", "--volumes", "--remove-orphans"])
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=compose_dir or None,
+            )
+            await asyncio.wait_for(proc.wait(), timeout=60)
+        except Exception as exc:
+            logger.warning("compose_down_failed", deploy_id=deploy_id, error=str(exc))
+
+        # Clean up generated deploy compose file
+        if deploy_file and os.path.isfile(deploy_file):
+            try:
+                os.unlink(deploy_file)
+            except OSError:
+                pass
+
+    # ------------------------------------------------------------------
+    # New tool methods (compose + general)
+    # ------------------------------------------------------------------
+
+    async def get_services(
+        self, deploy_id: str, user_id: str | None = None
+    ) -> dict:
+        """Return live service info for a compose deployment."""
+        deployment = self._get_deployment(deploy_id, user_id)
+        if deployment.project_type != "compose":
+            return {
+                "deploy_id": deploy_id,
+                "services": [],
+                "message": "Not a compose deployment",
+            }
+
+        # Refresh service info from Docker
+        compose_file = self._get_compose_file_for(deployment)
+        services = await self._build_compose_services(
+            deploy_id, deployment.compose_project_dir, compose_file
+        )
+        deployment.services = services
+
+        # Refresh port info
+        all_ports: list[dict] = []
+        for svc in services:
+            for port in svc.ports:
+                all_ports.append({**port, "service": svc.name})
+        deployment.all_ports = all_ports
+
+        return {
+            "deploy_id": deploy_id,
+            "services": [s.to_dict() for s in services],
+            "all_ports": all_ports,
+        }
+
+    async def get_service_logs(
+        self,
+        deploy_id: str,
+        service_name: str,
+        lines: int = 50,
+        user_id: str | None = None,
+    ) -> dict:
+        """Return logs for a specific service in a compose deployment."""
+        deployment = self._get_deployment(deploy_id, user_id)
+        if deployment.project_type != "compose":
+            raise ValueError("Service logs only available for compose deployments")
+
+        compose_file = self._get_compose_file_for(deployment)
+        cmd = [
+            "docker", "compose",
+            "-p", f"deploy-{deploy_id}",
+        ]
+        if compose_file:
+            cmd.extend(["-f", compose_file])
+        cmd.extend(["logs", "--tail", str(lines), "--no-color", service_name])
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=deployment.compose_project_dir or None,
+        )
+        stdout, stderr = await proc.communicate()
+
+        return {
+            "deploy_id": deploy_id,
+            "service_name": service_name,
+            "logs": (
+                stdout.decode("utf-8", errors="replace")
+                + stderr.decode("utf-8", errors="replace")
+            ),
+            "lines_requested": lines,
+        }
+
+    async def get_env_vars(
+        self, deploy_id: str, user_id: str | None = None
+    ) -> dict:
+        """Return current .env vars for a deployment."""
+        deployment = self._get_deployment(deploy_id, user_id)
+
+        if deployment.project_type == "compose" and deployment.compose_project_dir:
+            env_path = os.path.join(deployment.compose_project_dir, ".env")
+            env_vars = self._read_env_file(env_path)
+            deployment.env_vars = env_vars
+        else:
+            env_vars = deployment.env_vars
+
+        return {
+            "deploy_id": deploy_id,
+            "env_vars": env_vars,
+        }
+
+    async def update_env_vars(
+        self,
+        deploy_id: str,
+        env_vars: dict,
+        restart: bool = True,
+        user_id: str | None = None,
+    ) -> dict:
+        """Update .env vars and optionally restart the deployment."""
+        deployment = self._get_deployment(deploy_id, user_id)
+
+        if deployment.project_type == "compose" and deployment.compose_project_dir:
+            env_path = os.path.join(deployment.compose_project_dir, ".env")
+            # Merge: existing values are overwritten, new keys added
+            existing = self._read_env_file(env_path)
+            existing.update(env_vars)
+            self._write_env_file(env_path, existing)
+            deployment.env_vars = existing
+
+            if restart:
+                # Recreate services with new env
+                compose_file = self._get_compose_file_for(deployment)
+                cmd = [
+                    "docker", "compose",
+                    "-p", f"deploy-{deploy_id}",
+                ]
+                if compose_file:
+                    cmd.extend(["-f", compose_file])
+                cmd.extend(["up", "-d"])
+
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=deployment.compose_project_dir,
+                )
+                await asyncio.wait_for(proc.communicate(), timeout=120)
+
+                # Refresh services
+                deployment.services = await self._build_compose_services(
+                    deploy_id, deployment.compose_project_dir, compose_file
+                )
+        else:
+            deployment.env_vars = env_vars
+            # For single-container, restart is needed to apply env vars
+            if restart:
+                await self.restart_deployment(deploy_id, user_id)
+
+        return {
+            "deploy_id": deploy_id,
+            "env_vars": deployment.env_vars,
+            "restarted": restart,
+        }
+
+    async def restart_deployment(
+        self, deploy_id: str, user_id: str | None = None
+    ) -> dict:
+        """Restart a deployment (compose or single-container)."""
+        deployment = self._get_deployment(deploy_id, user_id)
+
+        if deployment.project_type == "compose":
+            compose_file = self._get_compose_file_for(deployment)
+            cmd = [
+                "docker", "compose",
+                "-p", f"deploy-{deploy_id}",
+            ]
+            if compose_file:
+                cmd.extend(["-f", compose_file])
+            cmd.append("restart")
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=deployment.compose_project_dir or None,
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=120)
+
+            # Refresh services
+            deployment.services = await self._build_compose_services(
+                deploy_id, deployment.compose_project_dir, compose_file
+            )
+        else:
+            container_name = f"deploy-{deploy_id}"
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "restart", container_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=60)
+
+        deployment.status = "running"
+        return {"deploy_id": deploy_id, "status": "restarted"}
 
     # ------------------------------------------------------------------
     # Docker helpers
