@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { BarChart3, RefreshCw } from "lucide-react";
 import { api } from "@/api/client";
+import { UsagePageSkeleton } from "@/components/common/Skeleton";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -407,9 +408,7 @@ export default function UsagePage() {
       )}
 
       {loading && !summary ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        </div>
+        <UsagePageSkeleton />
       ) : (
         <>
           {summary && <BudgetCard summary={summary} />}
