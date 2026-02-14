@@ -64,6 +64,9 @@ class GitHubProvider(GitProvider):
     async def _put(self, path: str, json: dict | None = None) -> dict:
         return await self._request("PUT", path, json=json or {})
 
+    async def _delete(self, path: str) -> dict:
+        return await self._request("DELETE", path)
+
     def _repo_url(self, owner: str, repo: str) -> str:
         return f"https://github.com/{owner}/{repo}"
 
@@ -132,6 +135,10 @@ class GitHubProvider(GitProvider):
             for b in data
         ]
         return {"count": len(branches), "branches": branches}
+
+    async def delete_branch(self, owner: str, repo: str, branch: str) -> dict:
+        await self._delete(f"/repos/{owner}/{repo}/git/refs/heads/{branch}")
+        return {"deleted": True, "branch": branch}
 
     async def get_file(self, owner: str, repo: str, path: str, ref: str | None = None) -> dict:
         params = {}
