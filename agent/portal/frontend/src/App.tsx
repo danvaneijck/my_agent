@@ -15,6 +15,10 @@ import PullRequestsPage from "@/pages/PullRequestsPage";
 import PullRequestDetailPage from "@/pages/PullRequestDetailPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsagePage from "@/pages/UsagePage";
+import ProjectsPage from "@/pages/ProjectsPage";
+import ProjectDetailPage from "@/pages/ProjectDetailPage";
+import PhaseDetailPage from "@/pages/PhaseDetailPage";
+import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
 
 interface AuthProvider {
   name: string;
@@ -230,6 +234,10 @@ export default function App() {
         <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/deployments" element={<DeploymentsPage />} />
         <Route path="/usage" element={<UsagePage />} />
+        <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+        <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
+        <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </Layout>

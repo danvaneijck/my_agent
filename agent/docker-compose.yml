@@ -289,6 +289,18 @@ services:
       - agent-net
     restart: unless-stopped
 
+  project-planner:
+    build:
+      context: .
+      dockerfile: modules/project_planner/Dockerfile
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - agent-net
+    restart: unless-stopped
+
   # --- Web Portal ---
   portal:
     build:

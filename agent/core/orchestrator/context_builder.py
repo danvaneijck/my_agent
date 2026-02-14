@@ -14,6 +14,13 @@ from shared.models.conversation import Conversation, Message
 from shared.models.memory import MemorySummary
 from shared.models.persona import Persona
 from shared.models.user import User
+
+try:
+    from shared.models.project import Project
+    from shared.models.project_task import ProjectTask
+    _HAS_PROJECTS = True
+except ImportError:
+    _HAS_PROJECTS = False
 from shared.utils.tokens import count_messages_tokens
 
 logger = structlog.get_logger()
@@ -101,7 +108,12 @@ class ContextBuilder:
         system_prompt = self._build_system_prompt(persona)
         messages.append({"role": "system", "content": system_prompt})
 
-        # 2. Semantic memories (if embedding/llm_router is available)
+        # 2. Active project summaries
+        project_context = await self._get_active_projects(session, user)
+        if project_context:
+            messages.append({"role": "system", "content": project_context})
+
+        # 3. Semantic memories (if embedding/llm_router is available)
         memories = await self._get_semantic_memories(session, user, incoming_message)
         if memories:
             memory_text = "Relevant context from past conversations:\n"
@@ -109,7 +121,7 @@ class ContextBuilder:
                 memory_text += f"- {mem.summary}\n"
             messages.append({"role": "system", "content": memory_text})
 
-        # 3. Conversation summary
+        # 4. Conversation summary
         if conversation.is_summarized:
             summary = await self._get_conversation_summary(session, conversation)
             if summary:
@@ -118,7 +130,7 @@ class ContextBuilder:
                     "content": f"Summary of earlier conversation:\n{summary}",
                 })
 
-        # 4. Working memory — load adaptively based on message content
+        # 5. Working memory — load adaptively based on message content
         needs_full = self._needs_full_context(incoming_message)
         recent_messages = await self._get_recent_messages(
             session, conversation, full=needs_full,
@@ -163,7 +175,7 @@ class ContextBuilder:
             else:
                 messages.append({"role": msg.role, "content": msg.content})
 
-        # 5. New user message
+        # 6. New user message
         messages.append({"role": "user", "content": incoming_message})
 
         # Trim to fit within budget
@@ -215,6 +227,68 @@ class ContextBuilder:
             f"{scheduler_guidance}"
             f"{claude_code_guidance}"
         )
+
+    async def _get_active_projects(
+        self,
+        session: AsyncSession,
+        user: User,
+    ) -> str | None:
+        """Build a brief summary of the user's active projects for system context."""
+        if not _HAS_PROJECTS:
+            return None
+
+        try:
+            from sqlalchemy import func
+
+            result = await session.execute(
+                select(Project)
+                .where(Project.user_id == user.id)
+                .where(Project.status.in_(["active", "planning"]))
+                .order_by(Project.updated_at.desc())
+                .limit(5)
+            )
+            projects = list(result.scalars().all())
+
+            if not projects:
+                return None
+
+            lines = ["Active projects:"]
+            for p in projects:
+                # Get task counts
+                counts_result = await session.execute(
+                    select(ProjectTask.status, func.count(ProjectTask.id))
+                    .where(ProjectTask.project_id == p.id)
+                    .group_by(ProjectTask.status)
+                )
+                counts = {row[0]: row[1] for row in counts_result.all()}
+                total = sum(counts.values())
+                done = counts.get("done", 0)
+                doing = counts.get("doing", 0)
+                review = counts.get("in_review", 0)
+
+                parts = [f'"{p.name}" ({p.status})']
+                if total > 0:
+                    parts.append(f"{done}/{total} tasks done")
+                    if doing > 0:
+                        parts.append(f"{doing} in progress")
+                    if review > 0:
+                        parts.append(f"{review} in review")
+                if p.repo_owner and p.repo_name:
+                    parts.append(f"repo: {p.repo_owner}/{p.repo_name}")
+
+                lines.append(f"- {', '.join(parts)}")
+
+            lines.append(
+                "\nUse project_planner tools to manage projects. "
+                "When implementing a phase, use get_next_task to pick tasks "
+                "sequentially, update_task to track status, and claude_code "
+                "with scheduler for async execution."
+            )
+
+            return "\n".join(lines)
+        except Exception as e:
+            logger.warning("active_projects_context_failed", error=str(e))
+            return None
 
     async def _get_semantic_memories(
         self,

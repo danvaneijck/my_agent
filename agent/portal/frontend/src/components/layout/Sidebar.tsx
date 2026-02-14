@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   FolderOpen,
+  FolderKanban,
   Code2,
   GitBranch,
   GitPullRequest,
@@ -16,6 +17,7 @@ import {
 const NAV_ITEMS = [
   { to: "/chat", icon: MessageSquare, label: "Chat", badgeKey: "chat" },
   { to: "/", icon: LayoutDashboard, label: "Tasks", badgeKey: "tasks" },
+  { to: "/projects", icon: FolderKanban, label: "Projects" },
   { to: "/repos", icon: GitBranch, label: "Repos" },
   { to: "/pulls", icon: GitPullRequest, label: "Pull Requests", badgeKey: "pulls" },
   { to: "/code", icon: Code2, label: "Code" },

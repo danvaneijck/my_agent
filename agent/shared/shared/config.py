@@ -160,6 +160,7 @@ class Settings(BaseSettings):
         "scheduler": "http://scheduler:8000",
         "location": "http://location:8000",
         "git_platform": "http://git-platform:8000",
+        "project_planner": "http://project-planner:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
