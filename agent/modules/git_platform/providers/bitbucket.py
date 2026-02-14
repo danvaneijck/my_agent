@@ -151,9 +151,11 @@ class BitbucketProvider(GitProvider):
                 "name": b["name"],
                 "sha": b.get("target", {}).get("hash", "")[:12],
                 "protected": False,  # Bitbucket handles branch restrictions differently
+                "updated_at": b.get("target", {}).get("date"),
             }
             for b in data.get("values", [])
         ]
+        branches.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
         return {"count": len(branches), "branches": branches}
 
     async def delete_branch(self, owner: str, repo: str, branch: str) -> dict:

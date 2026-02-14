@@ -213,6 +213,41 @@ async def list_pull_requests(
     return result
 
 
+class CreatePRBody(BaseModel):
+    title: str
+    head: str
+    base: str
+    body: str | None = None
+    draft: bool = False
+
+
+@router.post("/{owner}/{repo}/pulls")
+async def create_pull_request(
+    owner: str,
+    repo: str,
+    pr_body: CreatePRBody,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Create a pull request."""
+    result, err = await _safe_call(
+        "git_platform",
+        "git_platform.create_pull_request",
+        {
+            "owner": owner,
+            "repo": repo,
+            "title": pr_body.title,
+            "head": pr_body.head,
+            "base": pr_body.base,
+            "body": pr_body.body,
+            "draft": pr_body.draft,
+        },
+        str(user.user_id),
+    )
+    if err:
+        return err
+    return result
+
+
 @router.get("/{owner}/{repo}/pulls/{pr_number}")
 async def get_pull_request(
     owner: str,
