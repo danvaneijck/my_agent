@@ -17,4 +17,5 @@ data/claude_tasks/
 
 .env
 
-# node_modules/
+node_modules/
+dist/
