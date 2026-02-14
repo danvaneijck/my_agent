@@ -15,7 +15,7 @@ import {
 
 const NAV_ITEMS = [
   { to: "/chat", icon: MessageSquare, label: "Chat", badgeKey: "chat" },
-  { to: "/", icon: LayoutDashboard, label: "Tasks" },
+  { to: "/", icon: LayoutDashboard, label: "Tasks", badgeKey: "tasks" },
   { to: "/repos", icon: GitBranch, label: "Repos" },
   { to: "/pulls", icon: GitPullRequest, label: "Pull Requests", badgeKey: "pulls" },
   { to: "/code", icon: Code2, label: "Code" },
@@ -31,9 +31,10 @@ interface SidebarProps {
   onClose: () => void;
   chatUnreadCount?: number;
   openPrCount?: number;
+  activeTaskCount?: number;
 }
 
-export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCount = 0 }: SidebarProps) {
+export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCount = 0, activeTaskCount = 0 }: SidebarProps) {
   return (
     <>
       {/* Mobile overlay */}
@@ -77,6 +78,11 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
             >
               <Icon size={18} />
               <span className="flex-1">{label}</span>
+              {badgeKey === "tasks" && activeTaskCount > 0 && (
+                <span className="bg-green-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
+                  {activeTaskCount > 99 ? "99+" : activeTaskCount}
+                </span>
+              )}
               {badgeKey === "chat" && chatUnreadCount > 0 && (
                 <span className="bg-accent text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
                   {chatUnreadCount > 99 ? "99+" : chatUnreadCount}

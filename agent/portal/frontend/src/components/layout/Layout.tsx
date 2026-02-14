@@ -28,6 +28,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [openPrCount, setOpenPrCount] = useState(0);
+  const [activeTaskCount, setActiveTaskCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -77,6 +78,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     const interval = setInterval(fetchPrCount, 60000);
     return () => clearInterval(interval);
   }, [fetchPrCount]);
+
+  // Fetch active task count (running + queued)
+  const fetchActiveTaskCount = useCallback(() => {
+    api<{ tasks: { status: string }[] }>("/api/tasks")
+      .then((data) => {
+        const count = (data.tasks || []).filter(
+          (t) => t.status === "running" || t.status === "queued"
+        ).length;
+        setActiveTaskCount(count);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchActiveTaskCount();
+    const interval = setInterval(fetchActiveTaskCount, 10000);
+    return () => clearInterval(interval);
+  }, [fetchActiveTaskCount]);
 
   // Re-fetch PR count when a PR is merged
   useEffect(() => {
@@ -133,6 +152,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         onClose={() => setSidebarOpen(false)}
         chatUnreadCount={chatUnreadCount}
         openPrCount={openPrCount}
+        activeTaskCount={activeTaskCount}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Header
