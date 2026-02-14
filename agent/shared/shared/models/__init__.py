@@ -8,6 +8,9 @@ from shared.models.memory import MemorySummary
 from shared.models.named_place import UserNamedPlace
 from shared.models.owntracks_credential import OwnTracksCredential
 from shared.models.persona import Persona
+from shared.models.project import Project
+from shared.models.project_phase import ProjectPhase
+from shared.models.project_task import ProjectTask
 from shared.models.scheduled_job import ScheduledJob
 from shared.models.token_usage import TokenLog
 from shared.models.user import User, UserPlatformLink
@@ -23,6 +26,9 @@ __all__ = [
     "Message",
     "OwnTracksCredential",
     "Persona",
+    "Project",
+    "ProjectPhase",
+    "ProjectTask",
     "ScheduledJob",
     "TokenLog",
     "User",

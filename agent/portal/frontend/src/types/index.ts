@@ -238,6 +238,74 @@ export interface Deployment {
   env_var_count: number;
 }
 
+// Project planner types
+export interface ProjectTaskCounts {
+  todo?: number;
+  doing?: number;
+  in_review?: number;
+  done?: number;
+  failed?: number;
+}
+
+export interface ProjectPhase {
+  phase_id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  order_index: number;
+  status: "planned" | "in_progress" | "completed";
+  created_at: string;
+  task_counts?: ProjectTaskCounts;
+}
+
+export interface ProjectSummary {
+  project_id: string;
+  name: string;
+  description: string | null;
+  repo_owner: string | null;
+  repo_name: string | null;
+  status: string;
+  auto_merge: boolean;
+  total_tasks: number;
+  done_tasks: number;
+  task_counts: ProjectTaskCounts;
+  updated_at: string;
+}
+
+export interface ProjectDetail {
+  project_id: string;
+  name: string;
+  description: string | null;
+  design_document: string | null;
+  repo_owner: string | null;
+  repo_name: string | null;
+  default_branch: string;
+  auto_merge: boolean;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  phases: ProjectPhase[];
+}
+
+export interface ProjectTask {
+  task_id: string;
+  phase_id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  acceptance_criteria: string | null;
+  order_index: number;
+  status: "todo" | "doing" | "in_review" | "done" | "failed";
+  branch_name: string | null;
+  pr_number: number | null;
+  issue_number: number | null;
+  claude_task_id: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
 // Module health
 export interface ModuleHealth {
   module: string;

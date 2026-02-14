@@ -43,6 +43,7 @@ Makefile:       Makefile (top-level, wraps docker compose)
     ├── garmin            — Garmin Connect health/fitness data
     ├── renpho_biometrics — Renpho smart scale body composition
     ├── location          — OwnTracks geofence reminders + tracking
+    ├── project_planner   — project planning, tracking + autonomous execution
     └── injective         — blockchain trading (scaffold)
 
  Infrastructure: PostgreSQL+pgvector │ Redis │ MinIO (S3)
@@ -68,6 +69,7 @@ Detailed per-module docs live in `agent/docs/modules/`:
 - [location](agent/docs/modules/location.md) — OwnTracks geofence reminders + tracking
 - [git_platform](agent/docs/modules/git_platform.md) — GitHub/Bitbucket repos, issues, PRs, CI
 - [myfitnesspal](agent/docs/modules/myfitnesspal.md) — nutrition and meal tracking
+- [project_planner](agent/docs/modules/project_planner.md) — project planning, tracking + autonomous execution
 - [injective](agent/docs/modules/injective.md) — blockchain spot and perpetual trading
 
 ## Tech Stack
@@ -238,6 +240,51 @@ owntracks_credentials
   is_active             bool       — default true
   last_seen_at          datetime(tz) | null
   created_at            datetime(tz)
+
+projects
+  id                    UUID PK
+  user_id               UUID FK → users.id
+  name                  str
+  description           text | null
+  design_document       text | null       — full markdown design doc
+  repo_owner            str | null
+  repo_name             str | null
+  default_branch        str               — default "main"
+  auto_merge            bool              — default false
+  status                str               — "planning" | "active" | "paused" | "completed" | "archived"
+  created_at            datetime(tz)
+  updated_at            datetime(tz)
+  UNIQUE(user_id, name)
+
+project_phases
+  id                    UUID PK
+  project_id            UUID FK → projects.id (CASCADE)
+  name                  str
+  description           text | null
+  order_index           int               — sort order within project
+  status                str               — "planned" | "in_progress" | "completed"
+  created_at            datetime(tz)
+  updated_at            datetime(tz)
+
+project_tasks
+  id                    UUID PK
+  phase_id              UUID FK → project_phases.id (CASCADE)
+  project_id            UUID FK → projects.id (CASCADE)
+  user_id               UUID FK → users.id
+  title                 str
+  description           text | null
+  acceptance_criteria   text | null
+  order_index           int               — sort order within phase
+  status                str               — "todo" | "doing" | "in_review" | "done" | "failed"
+  branch_name           str | null
+  pr_number             int | null
+  issue_number          int | null
+  claude_task_id        str | null
+  error_message         text | null
+  started_at            datetime(tz) | null
+  completed_at          datetime(tz) | null
+  created_at            datetime(tz)
+  updated_at            datetime(tz)
 ```
 
 **ORM models** are in `agent/shared/shared/models/`. Each model file exports a single class.
@@ -633,4 +680,5 @@ Use `session.commit()` (not `session.flush()`) when another container needs to s
 | `garmin` | `get_daily_summary`, `get_heart_rate`, `get_sleep`, `get_body_composition`, `get_activities`, `get_stress`, `get_steps` | None (external API) | user |
 | `renpho_biometrics` | `get_measurements`, `get_latest`, `get_trend` | None (external API) | user |
 | `location` | `create_reminder`, `list_reminders`, `cancel_reminder`, `get_location`, `set_named_place`, `generate_pairing_credentials` | PostgreSQL, Redis | user |
+| `project_planner` | `create_project`, `update_project`, `get_project`, `list_projects`, `delete_project`, `add_phase`, `update_phase`, `add_task`, `bulk_add_tasks`, `update_task`, `get_task`, `get_phase_tasks`, `get_next_task`, `get_project_status` | PostgreSQL | user/admin |
 | `injective` | `get_portfolio`, `get_market_price`, `place_order`, `cancel_order`, `get_positions` | None (scaffold) | owner |
