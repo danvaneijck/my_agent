@@ -54,6 +54,7 @@ class NewTaskRequest(BaseModel):
     source_branch: str | None = None
     timeout: int | None = None
     mode: str = "execute"  # "execute" or "plan"
+    auto_push: bool = False  # automatically push branch after task completes
 
 
 class ContinueTaskRequest(BaseModel):
@@ -101,6 +102,8 @@ async def create_task(
         args["timeout"] = body.timeout
     if body.mode:
         args["mode"] = body.mode
+    if body.auto_push:
+        args["auto_push"] = body.auto_push
     result = await call_tool(
         module="claude_code",
         tool_name="claude_code.run_task",

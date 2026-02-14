@@ -8,6 +8,7 @@ export interface Task {
   workspace: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled" | "awaiting_input" | "timed_out";
   mode: "execute" | "plan";
+  auto_push: boolean;
   parent_task_id: string | null;
   created_at: string;
   started_at: string | null;

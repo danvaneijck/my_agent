@@ -57,6 +57,17 @@ MANIFEST = ModuleManifest(
                     enum=["execute", "plan"],
                     required=False,
                 ),
+                ToolParameter(
+                    name="auto_push",
+                    type="boolean",
+                    description=(
+                        "Automatically push the branch to the remote after the task "
+                        "completes successfully. Requires a repo_url and branch to be set. "
+                        "Uses gh auth (GITHUB_TOKEN) for HTTPS repos or SSH keys for SSH repos. "
+                        "Default false."
+                    ),
+                    required=False,
+                ),
             ],
             required_permission="admin",
         ),

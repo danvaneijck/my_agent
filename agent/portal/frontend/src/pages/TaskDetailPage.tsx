@@ -111,6 +111,21 @@ export default function TaskDetailPage() {
               plan mode
             </span>
           )}
+          {task.auto_push && (
+            <span className={`px-2 py-0.5 rounded text-xs ${
+              task.result?.auto_push
+                ? (task.result.auto_push as Record<string, unknown>).success
+                  ? "bg-green-500/20 text-green-400"
+                  : "bg-red-500/20 text-red-400"
+                : "bg-blue-500/20 text-blue-400"
+            }`}>
+              {task.result?.auto_push
+                ? (task.result.auto_push as Record<string, unknown>).success
+                  ? "pushed"
+                  : "push failed"
+                : "auto-push"}
+            </span>
+          )}
 
           <div className="flex-1" />
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, GitBranch } from "lucide-react";
+import { X, GitBranch, Upload } from "lucide-react";
 import { api } from "@/api/client";
 
 interface NewTaskModalProps {
@@ -26,6 +26,7 @@ export default function NewTaskModal({
   const [branch, setBranch] = useState(defaultBranch);
   const [newBranch, setNewBranch] = useState("");
   const [mode, setMode] = useState<"execute" | "plan">("execute");
+  const [autoPush, setAutoPush] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -41,6 +42,7 @@ export default function NewTaskModal({
       setNewBranch("");
       setPrompt(defaultPrompt);
       setMode("execute");
+      setAutoPush(false);
       setError("");
       setTimeout(() => promptRef.current?.focus(), 50);
     }
@@ -65,7 +67,7 @@ export default function NewTaskModal({
     setError("");
 
     try {
-      const body: Record<string, string> = { prompt: prompt.trim(), mode };
+      const body: Record<string, string | boolean> = { prompt: prompt.trim(), mode };
       if (repoUrl.trim()) body.repo_url = repoUrl.trim();
       if (effectiveBranch) body.branch = effectiveBranch;
       // When creating a new branch from a specific source, tell the backend
@@ -73,6 +75,7 @@ export default function NewTaskModal({
       if (newBranch.trim() && branch.trim()) {
         body.source_branch = branch.trim();
       }
+      if (autoPush) body.auto_push = true;
 
       const result = await api<{ task_id: string }>("/api/tasks", {
         method: "POST",
@@ -204,6 +207,30 @@ export default function NewTaskModal({
               </span>
             )}
           </div>
+
+          {/* Auto-push (only shown when a repo + branch is configured) */}
+          {(repoUrl.trim() || defaultRepoUrl) && effectiveBranch && (
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-400">Auto-push:</label>
+              <button
+                type="button"
+                onClick={() => setAutoPush(!autoPush)}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5 ${
+                  autoPush
+                    ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                    : "bg-surface-lighter text-gray-300 border border-border"
+                }`}
+              >
+                <Upload size={14} />
+                {autoPush ? "Enabled" : "Disabled"}
+              </button>
+              {autoPush && (
+                <span className="text-xs text-gray-500">
+                  Will push to <span className="font-mono text-accent">{effectiveBranch}</span> on completion
+                </span>
+              )}
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-400">{error}</p>}
 

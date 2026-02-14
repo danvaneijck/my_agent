@@ -61,6 +61,7 @@ class Task:
     workspace: str = ""
     status: str = "queued"  # queued | running | completed | failed | timed_out | cancelled | awaiting_input
     mode: str = "execute"  # "execute" or "plan"
+    auto_push: bool = False  # automatically push branch to remote after successful completion
     parent_task_id: str | None = None  # links tasks in a planning chain (points to chain root)
     continue_session: bool = False  # whether to use --continue for CLI session resumption
     user_id: str | None = None
@@ -91,6 +92,7 @@ class Task:
             "log_file": self.log_file,
             "status": self.status,
             "mode": self.mode,
+            "auto_push": self.auto_push,
             "parent_task_id": self.parent_task_id,
             "user_id": self.user_id,
             "created_at": self.created_at.isoformat(),
@@ -127,6 +129,7 @@ class Task:
             workspace=data.get("workspace", ""),
             status=data.get("status", "unknown"),
             mode=data.get("mode", "execute"),
+            auto_push=data.get("auto_push", False),
             parent_task_id=data.get("parent_task_id"),
             user_id=data.get("user_id"),
             created_at=_parse_dt(data.get("created_at")) or datetime.now(timezone.utc),
@@ -234,6 +237,7 @@ class ClaudeCodeTools:
         source_branch: str | None = None,
         timeout: int = DEFAULT_TIMEOUT,
         mode: str = "execute",
+        auto_push: bool = False,
         user_id: str | None = None,
         user_credentials: dict[str, dict[str, str]] | None = None,
     ) -> dict:
@@ -263,7 +267,7 @@ class ClaudeCodeTools:
         task = Task(
             id=task_id, prompt=prompt, repo_url=repo_url, branch=branch,
             source_branch=source_branch, workspace=workspace, mode=mode,
-            user_id=user_id,
+            auto_push=auto_push, user_id=user_id,
         )
         self.tasks[task_id] = task
         task.save()
@@ -296,6 +300,7 @@ class ClaudeCodeTools:
         prompt: str,
         timeout: int = DEFAULT_TIMEOUT,
         mode: str | None = None,
+        auto_push: bool | None = None,
         user_id: str | None = None,
         user_credentials: dict[str, dict[str, str]] | None = None,
     ) -> dict:
@@ -325,6 +330,7 @@ class ClaudeCodeTools:
         # Determine chain root for linking
         chain_root = original.parent_task_id or original.id
         effective_mode = mode if mode else original.mode
+        effective_auto_push = auto_push if auto_push is not None else original.auto_push
 
         # Create a new task that shares the original workspace
         new_id = uuid.uuid4().hex[:12]
@@ -333,8 +339,11 @@ class ClaudeCodeTools:
         task = Task(
             id=new_id,
             prompt=prompt,
+            repo_url=original.repo_url,
+            branch=original.branch,
             workspace=new_workspace,
             mode=effective_mode,
+            auto_push=effective_auto_push,
             parent_task_id=chain_root,
             continue_session=True,
             user_id=user_id,
@@ -778,6 +787,10 @@ class ClaudeCodeTools:
                                 break
                 else:
                     task.status = "completed"
+
+                # Auto-push: push branch to remote after successful completion
+                if task.auto_push and task.repo_url and task.status == "completed":
+                    await self._auto_push_branch(task, user_mounts)
             else:
                 task.status = "failed"
                 task.error = stderr or stdout or f"Process exited with code {proc.returncode}"
@@ -1024,6 +1037,12 @@ class ClaudeCodeTools:
             '}\n'
             'trap "persist_session; exit 143" TERM\n'
             '\n'
+            '# Set up gh auth for HTTPS git operations when GITHUB_TOKEN is available\n'
+            'if [ -n "$GITHUB_TOKEN" ]; then\n'
+            '    # Configure git credential helper to use the token for HTTPS repos\n'
+            '    git config --global credential.helper "!f() { echo username=x-access-token; echo password=$GITHUB_TOKEN; }; f"\n'
+            'fi\n'
+            '\n'
             'if [ -n "$REPO_URL" ]; then\n'
             '    # Move task metadata aside so git clone into . succeeds\n'
             '    mkdir -p /tmp/_task_meta\n'
@@ -1129,6 +1148,65 @@ class ClaudeCodeTools:
             pass
 
     # ------------------------------------------------------------------
+    # Auto-push
+    # ------------------------------------------------------------------
+
+    async def _auto_push_branch(
+        self, task: Task, user_mounts: dict[str, str] | None = None,
+    ) -> None:
+        """Push the task branch to remote after successful completion.
+
+        Uses ``gh auth`` (via GITHUB_TOKEN) for HTTPS repos or SSH keys
+        for SSH repos.  Logs the result to the task log file and stores
+        push status in ``task.result["auto_push"]``.
+        """
+        try:
+            # Determine the push command — use -u to set upstream for new branches
+            push_cmd = "git push -u origin HEAD"
+
+            stdout, stderr, exit_code = await self._run_git_in_workspace(
+                task, push_cmd, user_mounts=user_mounts,
+            )
+
+            output = (stdout.strip() + "\n" + stderr.strip()).strip()
+            push_result: dict = {
+                "success": exit_code == 0,
+                "output": output[:2000],
+            }
+
+            if exit_code != 0:
+                push_result["error"] = stderr.strip() or stdout.strip()
+                logger.warning(
+                    "auto_push_failed",
+                    task_id=task.id,
+                    exit_code=exit_code,
+                    stderr=stderr[:500],
+                )
+            else:
+                logger.info("auto_push_success", task_id=task.id)
+
+            # Store push result in task metadata
+            if task.result is None:
+                task.result = {}
+            task.result["auto_push"] = push_result
+
+            # Append to task log
+            ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+            status_label = "SUCCESS" if exit_code == 0 else "FAILED"
+            log_line = f"[{ts}] [auto_push] {status_label}: {output[:500]}\n"
+            try:
+                with open(task.log_file, "a") as f:
+                    f.write(log_line)
+            except OSError:
+                pass
+
+        except Exception as e:
+            logger.error("auto_push_error", task_id=task.id, error=str(e))
+            if task.result is None:
+                task.result = {}
+            task.result["auto_push"] = {"success": False, "error": str(e)}
+
+    # ------------------------------------------------------------------
     # Git helpers
     # ------------------------------------------------------------------
 
@@ -1180,6 +1258,10 @@ class ClaudeCodeTools:
             '#!/bin/sh\n'
             'set -e\n'
             'export HOME=/home/claude\n'
+            '# Set up HTTPS credential helper when GITHUB_TOKEN is available\n'
+            'if [ -n "$GITHUB_TOKEN" ]; then\n'
+            '    git config --global credential.helper "!f() { echo username=x-access-token; echo password=$GITHUB_TOKEN; }; f"\n'
+            'fi\n'
             'eval "$GIT_CMD"\n'
             'INNER\n'
             'chmod +x /tmp/git_run.sh\n'
@@ -1346,10 +1428,10 @@ class ClaudeCodeTools:
         """Push the task workspace's branch to a remote."""
         task = self._validate_git_workspace(task_id, user_id)
 
-        if not SSH_KEY_PATH:
+        if not SSH_KEY_PATH and not GITHUB_TOKEN:
             raise ValueError(
-                "SSH_KEY_PATH is not configured. Git push requires SSH keys "
-                "to be mounted for authentication."
+                "No git authentication configured. Git push requires either "
+                "SSH_KEY_PATH (for SSH repos) or GITHUB_TOKEN (for HTTPS repos)."
             )
 
         # Validate user-supplied values to prevent injection
@@ -1389,7 +1471,7 @@ class ClaudeCodeTools:
                     "Use force=true to force push (with lease), or rebase first."
                 )
             elif "permission denied" in error_lower or "publickey" in error_lower:
-                hint = "SSH authentication failed. Check that SSH_KEY_PATH credentials are valid."
+                hint = "Authentication failed. Check SSH_KEY_PATH or GITHUB_TOKEN credentials."
             elif "could not read from remote" in error_lower:
                 hint = "Cannot reach the remote repository. Check the remote URL and network access."
 
