@@ -1154,14 +1154,46 @@ class ClaudeCodeTools:
     async def _auto_push_branch(
         self, task: Task, user_mounts: dict[str, str] | None = None,
     ) -> None:
-        """Push the task branch to remote after successful completion.
+        """Commit any uncommitted changes, then push the task branch to remote.
+
+        The Claude Code agent may edit files without committing them to git.
+        This method stages all workspace changes and commits them (if any)
+        before pushing, so the remote branch reflects the agent's work.
 
         Uses ``gh auth`` (via GITHUB_TOKEN) for HTTPS repos or SSH keys
         for SSH repos.  Logs the result to the task log file and stores
         push status in ``task.result["auto_push"]``.
         """
         try:
-            # Determine the push command — use -u to set upstream for new branches
+            # Stage and commit any uncommitted changes left by the Claude agent.
+            # Uses `git diff --cached --quiet` to skip the commit when there is
+            # nothing new to commit (e.g. the agent already committed everything).
+            commit_cmd = (
+                "git add -A && "
+                "if ! git diff --cached --quiet; then "
+                f"git commit -m 'Changes from claude-code task {task.id}'; "
+                "fi"
+            )
+            c_stdout, c_stderr, c_exit = await self._run_git_in_workspace(
+                task, commit_cmd, user_mounts=user_mounts,
+            )
+            if c_exit != 0:
+                logger.warning(
+                    "auto_push_commit_failed",
+                    task_id=task.id,
+                    exit_code=c_exit,
+                    stderr=c_stderr[:500],
+                )
+            else:
+                commit_output = (c_stdout.strip() + "\n" + c_stderr.strip()).strip()
+                if commit_output:
+                    logger.info(
+                        "auto_push_commit",
+                        task_id=task.id,
+                        output=commit_output[:300],
+                    )
+
+            # Push the branch — use -u to set upstream for new branches
             push_cmd = "git push -u origin HEAD"
 
             stdout, stderr, exit_code = await self._run_git_in_workspace(
