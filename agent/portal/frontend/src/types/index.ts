@@ -152,6 +152,7 @@ export interface GitBranch {
   name: string;
   sha: string;
   protected: boolean;
+  updated_at: string | null;
 }
 
 export interface GitIssue {

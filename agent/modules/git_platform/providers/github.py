@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 
 import httpx
@@ -126,14 +127,24 @@ class GitHubProvider(GitProvider):
 
     async def list_branches(self, owner: str, repo: str, per_page: int = 30) -> dict:
         data = await self._get(f"/repos/{owner}/{repo}/branches", per_page=per_page)
-        branches = [
-            {
+
+        async def _enrich(b: dict) -> dict:
+            sha = b["commit"]["sha"]
+            date = None
+            try:
+                commit = await self._get(f"/repos/{owner}/{repo}/git/commits/{sha}")
+                date = commit.get("committer", {}).get("date")
+            except Exception:
+                pass
+            return {
                 "name": b["name"],
-                "sha": b["commit"]["sha"][:12],
+                "sha": sha[:12],
                 "protected": b.get("protected", False),
+                "updated_at": date,
             }
-            for b in data
-        ]
+
+        branches = list(await asyncio.gather(*[_enrich(b) for b in data]))
+        branches.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
         return {"count": len(branches), "branches": branches}
 
     async def delete_branch(self, owner: str, repo: str, branch: str) -> dict:
