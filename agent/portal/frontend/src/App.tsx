@@ -11,6 +11,8 @@ import DeploymentsPage from "@/pages/DeploymentsPage";
 import TaskDetailPage from "@/pages/TaskDetailPage";
 import ReposPage from "@/pages/ReposPage";
 import RepoDetailPage from "@/pages/RepoDetailPage";
+import PullRequestsPage from "@/pages/PullRequestsPage";
+import PullRequestDetailPage from "@/pages/PullRequestDetailPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsagePage from "@/pages/UsagePage";
 
@@ -222,6 +224,8 @@ export default function App() {
         <Route path="/files" element={<FilesPage />} />
         <Route path="/repos" element={<ReposPage />} />
         <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
+        <Route path="/pulls" element={<PullRequestsPage />} />
+        <Route path="/pulls/:owner/:repo/:number" element={<PullRequestDetailPage />} />
         <Route path="/code" element={<CodePage />} />
         <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/deployments" element={<DeploymentsPage />} />

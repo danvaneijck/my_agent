@@ -5,6 +5,7 @@ import {
   FolderOpen,
   Code2,
   GitBranch,
+  GitPullRequest,
   Clock,
   Rocket,
   BarChart3,
@@ -16,6 +17,7 @@ const NAV_ITEMS = [
   { to: "/chat", icon: MessageSquare, label: "Chat", badgeKey: "chat" },
   { to: "/", icon: LayoutDashboard, label: "Tasks" },
   { to: "/repos", icon: GitBranch, label: "Repos" },
+  { to: "/pulls", icon: GitPullRequest, label: "Pull Requests", badgeKey: "pulls" },
   { to: "/code", icon: Code2, label: "Code" },
   { to: "/deployments", icon: Rocket, label: "Deployments" },
   { to: "/files", icon: FolderOpen, label: "Files" },
@@ -28,9 +30,10 @@ interface SidebarProps {
   open: boolean;
   onClose: () => void;
   chatUnreadCount?: number;
+  openPrCount?: number;
 }
 
-export default function Sidebar({ open, onClose, chatUnreadCount = 0 }: SidebarProps) {
+export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCount = 0 }: SidebarProps) {
   return (
     <>
       {/* Mobile overlay */}
@@ -77,6 +80,11 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0 }: SidebarP
               {badgeKey === "chat" && chatUnreadCount > 0 && (
                 <span className="bg-accent text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
                   {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+                </span>
+              )}
+              {badgeKey === "pulls" && openPrCount > 0 && (
+                <span className="bg-accent text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
+                  {openPrCount > 99 ? "99+" : openPrCount}
                 </span>
               )}
             </NavLink>

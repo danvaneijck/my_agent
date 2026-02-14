@@ -166,6 +166,20 @@ export interface GitIssue {
   url: string;
 }
 
+export interface PRComment {
+  author: string;
+  body: string;
+  path: string | null;
+  created_at: string;
+}
+
+export interface PRFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+}
+
 export interface GitPullRequest {
   number: number;
   title: string;
@@ -176,6 +190,19 @@ export interface GitPullRequest {
   draft: boolean;
   created_at: string;
   url: string;
+  // Cross-repo list fields
+  owner?: string;
+  repo?: string;
+  // Detail fields (from get_pull_request)
+  body?: string;
+  mergeable?: boolean | null;
+  additions?: number;
+  deletions?: number;
+  changed_files?: number;
+  review_comments?: PRComment[];
+  files?: PRFile[];
+  merged_at?: string | null;
+  updated_at?: string;
 }
 
 // Deployment types (from deployer module)

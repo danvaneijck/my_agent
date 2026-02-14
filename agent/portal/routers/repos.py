@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import structlog
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from portal.auth import PortalUser, require_auth
 from portal.services.module_client import call_tool
@@ -54,6 +57,49 @@ async def list_repos(
     if err:
         return err
     return result
+
+
+@router.get("/pulls/all")
+async def list_all_pull_requests(
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """List open pull requests across all repos."""
+    repos_result, err = await _safe_call(
+        "git_platform", "git_platform.list_repos",
+        {"per_page": 20, "sort": "updated"},
+        str(user.user_id),
+    )
+    if err:
+        return err
+
+    repos = repos_result.get("repos", [])
+    if not repos:
+        return {"count": 0, "pull_requests": []}
+
+    async def _fetch_prs(repo: dict) -> list[dict]:
+        owner = repo.get("owner", "")
+        name = repo.get("repo", "")
+        try:
+            result = await call_tool(
+                module="git_platform",
+                tool_name="git_platform.list_pull_requests",
+                arguments={"owner": owner, "repo": name, "state": "open", "per_page": 50},
+                user_id=str(user.user_id),
+                timeout=10.0,
+            )
+            prs = result.get("result", {}).get("pull_requests", [])
+            for pr in prs:
+                pr["owner"] = owner
+                pr["repo"] = name
+            return prs
+        except Exception:
+            return []
+
+    all_prs_nested = await asyncio.gather(*[_fetch_prs(r) for r in repos])
+    all_prs = [pr for batch in all_prs_nested for pr in batch]
+    all_prs.sort(key=lambda p: p.get("created_at", ""), reverse=True)
+
+    return {"count": len(all_prs), "pull_requests": all_prs}
 
 
 @router.get("/{owner}/{repo}")
@@ -108,6 +154,70 @@ async def list_pull_requests(
 ) -> dict:
     """List pull requests in a repository."""
     result, err = await _safe_call("git_platform", "git_platform.list_pull_requests", {"owner": owner, "repo": repo, "state": state, "per_page": per_page}, str(user.user_id))
+    if err:
+        return err
+    return result
+
+
+@router.get("/{owner}/{repo}/pulls/{pr_number}")
+async def get_pull_request(
+    owner: str,
+    repo: str,
+    pr_number: int,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Get full pull request details."""
+    result, err = await _safe_call(
+        "git_platform", "git_platform.get_pull_request",
+        {"owner": owner, "repo": repo, "pr_number": pr_number},
+        str(user.user_id), timeout=20.0,
+    )
+    if err:
+        return err
+    return result
+
+
+class MergeBody(BaseModel):
+    merge_method: str = "squash"
+
+
+@router.post("/{owner}/{repo}/pulls/{pr_number}/merge")
+async def merge_pull_request(
+    owner: str,
+    repo: str,
+    pr_number: int,
+    body: MergeBody = MergeBody(),
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Merge a pull request."""
+    result, err = await _safe_call(
+        "git_platform", "git_platform.merge_pull_request",
+        {"owner": owner, "repo": repo, "pr_number": pr_number, "merge_method": body.merge_method},
+        str(user.user_id), timeout=20.0,
+    )
+    if err:
+        return err
+    return result
+
+
+class CommentBody(BaseModel):
+    body: str
+
+
+@router.post("/{owner}/{repo}/pulls/{pr_number}/comment")
+async def comment_on_pull_request(
+    owner: str,
+    repo: str,
+    pr_number: int,
+    body: CommentBody,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Add a comment to a pull request."""
+    result, err = await _safe_call(
+        "git_platform", "git_platform.comment_on_pull_request",
+        {"owner": owner, "repo": repo, "pr_number": pr_number, "body": body.body},
+        str(user.user_id),
+    )
     if err:
         return err
     return result

@@ -27,6 +27,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [openPrCount, setOpenPrCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -63,6 +64,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
   }, [fetchUnreadCount]);
+
+  // Fetch open PR count
+  const fetchPrCount = useCallback(() => {
+    api<{ count: number }>("/api/repos/pulls/all")
+      .then((data) => setOpenPrCount(data.count || 0))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchPrCount();
+    const interval = setInterval(fetchPrCount, 60000);
+    return () => clearInterval(interval);
+  }, [fetchPrCount]);
 
   // Listen for unread count updates from ChatPage
   useEffect(() => {
@@ -111,6 +125,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         chatUnreadCount={chatUnreadCount}
+        openPrCount={openPrCount}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Header
