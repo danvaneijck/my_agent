@@ -16,3 +16,5 @@ venv/
 data/claude_tasks/
 
 .env
+
+# node_modules/
