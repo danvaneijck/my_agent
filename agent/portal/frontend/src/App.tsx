@@ -10,6 +10,7 @@ import SchedulePage from "@/pages/SchedulePage";
 import DeploymentsPage from "@/pages/DeploymentsPage";
 import TaskDetailPage from "@/pages/TaskDetailPage";
 import SettingsPage from "@/pages/SettingsPage";
+import UsagePage from "@/pages/UsagePage";
 
 interface AuthProvider {
   name: string;
@@ -220,6 +221,7 @@ export default function App() {
         <Route path="/code" element={<CodePage />} />
         <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/deployments" element={<DeploymentsPage />} />
+        <Route path="/usage" element={<UsagePage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </Layout>

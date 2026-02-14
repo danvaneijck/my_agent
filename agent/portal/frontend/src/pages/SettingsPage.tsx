@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { ShieldOff } from "lucide-react";
 import { api } from "@/api/client";
 import CredentialCard from "@/components/settings/CredentialCard";
 import ConnectedAccounts from "@/components/settings/ConnectedAccounts";
@@ -42,23 +43,39 @@ export default function SettingsPage() {
   const [services, setServices] = useState<ServiceCredentialInfo[]>([]);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [credentialsError, setCredentialsError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    try {
-      const [profileData, credsData, accountsData] = await Promise.all([
-        api<ProfileData>("/api/settings/profile"),
-        api<{ services: ServiceCredentialInfo[] }>("/api/settings/credentials"),
-        api<{ accounts: ConnectedAccount[] }>("/api/settings/connected-accounts"),
-      ]);
-      setProfile(profileData);
-      setServices(credsData.services || []);
-      setAccounts(accountsData.accounts || []);
-    } catch {
-      // silently fail — individual sections show errors
-    } finally {
-      setLoading(false);
+    setCredentialsError(null);
+
+    const [profileResult, credsResult, accountsResult] = await Promise.allSettled([
+      api<ProfileData>("/api/settings/profile"),
+      api<{ services: ServiceCredentialInfo[] }>("/api/settings/credentials"),
+      api<{ accounts: ConnectedAccount[] }>("/api/settings/connected-accounts"),
+    ]);
+
+    if (profileResult.status === "fulfilled") {
+      setProfile(profileResult.value);
     }
+
+    if (credsResult.status === "fulfilled") {
+      setServices(credsResult.value.services || []);
+    } else {
+      setServices([]);
+      const errMsg = (credsResult.reason as Error)?.message || "";
+      setCredentialsError(
+        errMsg.includes("503")
+          ? "Credential storage not configured. Set CREDENTIAL_ENCRYPTION_KEY in your .env file."
+          : "Failed to load credentials."
+      );
+    }
+
+    if (accountsResult.status === "fulfilled") {
+      setAccounts(accountsResult.value.accounts || []);
+    }
+
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -73,19 +90,17 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <h1 className="text-xl font-bold text-white">Settings</h1>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-surface-light rounded-lg p-1 border border-border">
+      <div className="mt-4 flex gap-1 bg-surface-light rounded-lg p-1 border border-border">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-              tab === t.key
-                ? "bg-accent/15 text-accent-hover"
-                : "text-gray-400 hover:text-gray-200"
-            }`}
+            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${tab === t.key
+              ? "bg-accent/15 text-accent-hover"
+              : "text-gray-400 hover:text-gray-200"
+              }`}
           >
             {t.label}
           </button>
@@ -114,12 +129,29 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Token Budget</span>
-                  <p className="text-white mt-1">
-                    {profile.token_budget_monthly === null
-                      ? "Unlimited"
-                      : `${profile.tokens_used_this_month.toLocaleString()} / ${profile.token_budget_monthly.toLocaleString()}`}
-                  </p>
+                  <span className="text-gray-400">Token Usage</span>
+                  {profile.token_budget_monthly === null ? (
+                    <p className="text-white mt-1">Unlimited</p>
+                  ) : (
+                    <div className="mt-1">
+                      <p className="text-white">
+                        {profile.tokens_used_this_month.toLocaleString()} / {profile.token_budget_monthly.toLocaleString()}
+                      </p>
+                      <div className="w-full bg-surface rounded-full h-1.5 mt-1.5">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${profile.tokens_used_this_month / profile.token_budget_monthly > 0.9
+                            ? "bg-red-500"
+                            : profile.tokens_used_this_month / profile.token_budget_monthly > 0.7
+                              ? "bg-yellow-500"
+                              : "bg-green-500"
+                            }`}
+                          style={{
+                            width: `${Math.min(100, (profile.tokens_used_this_month / profile.token_budget_monthly) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <span className="text-gray-400">Member Since</span>
@@ -130,6 +162,26 @@ export default function SettingsPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Connected platforms summary */}
+              {accounts.length > 0 && (
+                <div className="pt-4 border-t border-border">
+                  <span className="text-sm text-gray-400">Connected Platforms</span>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {accounts.map((account) => (
+                      <span
+                        key={`${account.platform}-${account.platform_user_id}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-accent/10 text-accent-hover border border-accent/20"
+                      >
+                        {account.platform.charAt(0).toUpperCase() + account.platform.slice(1)}
+                        {account.username && (
+                          <span className="text-gray-400">({account.username})</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -141,10 +193,24 @@ export default function SettingsPage() {
           {/* Credentials tab */}
           {tab === "credentials" && (
             <div className="space-y-4">
-              <p className="text-sm text-gray-400">
-                Configure credentials for each service. Values are encrypted at
-                rest and never displayed after saving.
-              </p>
+              {credentialsError ? (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 flex items-start gap-3">
+                  <ShieldOff size={18} className="text-yellow-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm text-yellow-300 font-medium">
+                      Credential storage unavailable
+                    </p>
+                    <p className="text-sm text-yellow-400/70 mt-1">
+                      {credentialsError}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">
+                  Configure credentials for each service. Values are encrypted at
+                  rest and never displayed after saving.
+                </p>
+              )}
               {services.map((svc) => (
                 <CredentialCard
                   key={svc.service}

@@ -6,6 +6,7 @@ import {
   Code2,
   Clock,
   Rocket,
+  BarChart3,
   Settings,
   X,
 } from "lucide-react";
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { to: "/deployments", icon: Rocket, label: "Deployments" },
   { to: "/files", icon: FolderOpen, label: "Files" },
   { to: "/schedule", icon: Clock, label: "Schedule" },
+  { to: "/usage", icon: BarChart3, label: "Usage" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from portal.auth import verify_ws_auth
-from portal.routers import auth, chat, deployments, files, schedule, settings, system, tasks
+from portal.routers import auth, chat, deployments, files, schedule, settings, system, tasks, usage
 from shared.config import get_settings
 from shared.database import get_session_factory
 from shared.models.conversation import Conversation
@@ -33,6 +33,7 @@ app.include_router(files.router)
 app.include_router(schedule.router)
 app.include_router(deployments.router)
 app.include_router(settings.router)
+app.include_router(usage.router)
 
 # --------------- Notification WebSocket ---------------
 

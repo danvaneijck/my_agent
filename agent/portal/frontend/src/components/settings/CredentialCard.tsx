@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "@/api/client";
-import { Check, Edit3, Trash2, X, Shield, ShieldOff } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Edit3, HelpCircle, Trash2, X, Shield, ShieldOff } from "lucide-react";
 
 interface KeyDefinition {
   key: string;
@@ -23,12 +23,61 @@ interface CredentialCardProps {
   onUpdate: () => void;
 }
 
+interface SetupStep {
+  instruction: string;
+  code?: string;
+}
+
+interface SetupGuide {
+  title: string;
+  steps: SetupStep[];
+  note?: string;
+}
+
+const SETUP_GUIDES: Record<string, SetupGuide> = {
+  claude_code: {
+    title: "Finding your Claude CLI credentials",
+    steps: [
+      {
+        instruction: "Open a terminal and print your credentials file:",
+        code: "cat ~/.claude/.credentials.json",
+      },
+      {
+        instruction: "Copy the entire JSON output (it looks like this):",
+        code: '{"claudeAiOauth": {"token_type": "Bearer", "access_token": "...", ...}}',
+      },
+      {
+        instruction: "Paste the full JSON into the field below and save.",
+      },
+    ],
+    note: "Your token is encrypted before storage and injected into Claude Code containers at runtime. It is never logged or exposed.",
+  },
+  github: {
+    title: "Setting up GitHub credentials",
+    steps: [
+      {
+        instruction: "GitHub Token (PAT): Create a fine-grained personal access token at GitHub Settings > Developer settings > Personal access tokens. Grant repo access for the repositories you want the agent to work with.",
+      },
+      {
+        instruction: "SSH Private Key (optional): Paste the contents of your private key file. Used for git clone/push over SSH.",
+        code: "cat ~/.ssh/id_ed25519",
+      },
+      {
+        instruction: "Git Author Name/Email: Set the identity used for commits made by the agent on your behalf.",
+      },
+    ],
+  },
+};
+
 export default function CredentialCard({ service, onUpdate }: CredentialCardProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
+  const [showGuide, setShowGuide] = useState(false);
+
+  const guide = SETUP_GUIDES[service.service];
 
   const handleSave = async () => {
     const nonEmpty = Object.fromEntries(
@@ -127,6 +176,48 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
       {/* Edit form */}
       {editing && (
         <div className="space-y-3 mt-3">
+          {/* Setup guide */}
+          {guide && (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowGuide(!showGuide)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                <HelpCircle size={14} className="shrink-0" />
+                <span>{guide.title}</span>
+                {showGuide
+                  ? <ChevronDown size={14} className="ml-auto shrink-0" />
+                  : <ChevronRight size={14} className="ml-auto shrink-0" />
+                }
+              </button>
+              {showGuide && (
+                <div className="px-3 pb-3 space-y-3">
+                  <ol className="space-y-2.5">
+                    {guide.steps.map((step, i) => (
+                      <li key={i} className="flex gap-2.5 text-sm">
+                        <span className="text-accent font-medium shrink-0">{i + 1}.</span>
+                        <div className="min-w-0">
+                          <p className="text-gray-300">{step.instruction}</p>
+                          {step.code && (
+                            <pre className="mt-1.5 px-3 py-2 bg-surface rounded-md text-xs text-gray-400 font-mono overflow-x-auto whitespace-pre-wrap break-all">
+                              {step.code}
+                            </pre>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                  {guide.note && (
+                    <p className="text-xs text-gray-500 border-t border-border pt-2">
+                      {guide.note}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {service.key_definitions.map((keyDef) => (
             <div key={keyDef.key}>
               <label className="block text-sm text-gray-400 mb-1">
@@ -179,6 +270,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
                 setEditing(false);
                 setValues({});
                 setError("");
+                setShowGuide(false);
               }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm transition-colors"
             >

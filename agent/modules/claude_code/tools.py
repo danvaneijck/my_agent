@@ -25,7 +25,6 @@ SSH_KEY_PATH = os.environ.get("SSH_KEY_PATH", "")
 GH_CONFIG_PATH = os.environ.get("GH_CONFIG_PATH", "")
 GIT_CONFIG_PATH = os.environ.get("GIT_CONFIG_PATH", "")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 TASK_VOLUME = os.environ.get("CLAUDE_TASK_VOLUME", "")  # absolute host path to bind-mount
 
 # Bot git identity — overrides any mounted .gitconfig for commits
@@ -945,9 +944,7 @@ class ClaudeCodeTools:
             "-e", f"GIT_COMMITTER_EMAIL={git_author_email}",
         ])
 
-        # Pass API keys / tokens — per-user GitHub token overrides global
-        if ANTHROPIC_API_KEY:
-            cmd.extend(["-e", f"ANTHROPIC_API_KEY={ANTHROPIC_API_KEY}"])
+        # Pass tokens — per-user GitHub token overrides global
         github_token = um.get("_github_token") or GITHUB_TOKEN
         if github_token:
             cmd.extend(["-e", f"GITHUB_TOKEN={github_token}"])
