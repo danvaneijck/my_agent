@@ -9,10 +9,12 @@ import {
   RefreshCw,
   ExternalLink,
   Shield,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import { useRepoDetail } from "@/hooks/useRepoDetail";
 import NewTaskModal from "@/components/tasks/NewTaskModal";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { GitRepo } from "@/types";
 
 type Tab = "branches" | "pulls" | "issues";
@@ -40,6 +42,38 @@ export default function RepoDetailPage() {
   const [modalRepoUrl, setModalRepoUrl] = useState("");
   const [modalBranch, setModalBranch] = useState("");
   const [modalPrompt, setModalPrompt] = useState("");
+
+  // Delete branch state
+  const [deleteBranch, setDeleteBranch] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteBranch = useCallback(async () => {
+    if (!deleteBranch) return;
+    setDeleting(true);
+    try {
+      await api(`/api/repos/${owner}/${repo}/branches/${encodeURIComponent(deleteBranch)}`, {
+        method: "DELETE",
+      });
+      setDeleteBranch(null);
+      refetch();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to delete branch";
+      // Try to extract a user-friendly error from the JSON response
+      const jsonMatch = msg.match(/\d+:\s*(\{.*\})/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[1]);
+          alert(parsed.error || msg);
+        } catch {
+          alert(msg);
+        }
+      } else {
+        alert(msg);
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteBranch, owner, repo, refetch]);
 
   // Fetch repo metadata
   useEffect(() => {
@@ -188,13 +222,24 @@ export default function RepoDetailPage() {
                           <Shield size={14} className="text-yellow-500 shrink-0" />
                         )}
                       </div>
-                      <button
-                        onClick={() => openNewTask(branch.name)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors shrink-0"
-                      >
-                        <Play size={12} />
-                        New Task
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => openNewTask(branch.name)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+                        >
+                          <Play size={12} />
+                          New Task
+                        </button>
+                        {!branch.protected && branch.name !== repoMeta?.default_branch && (
+                          <button
+                            onClick={() => setDeleteBranch(branch.name)}
+                            className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            title={`Delete branch ${branch.name}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}
@@ -331,6 +376,16 @@ export default function RepoDetailPage() {
         defaultRepoUrl={modalRepoUrl}
         defaultBranch={modalBranch}
         defaultPrompt={modalPrompt}
+      />
+
+      {/* Delete Branch Confirmation */}
+      <ConfirmDialog
+        open={!!deleteBranch}
+        title="Delete branch"
+        message={`Are you sure you want to delete the branch "${deleteBranch}"? This action cannot be undone.`}
+        confirmLabel={deleting ? "Deleting\u2026" : "Delete"}
+        onConfirm={handleDeleteBranch}
+        onCancel={() => setDeleteBranch(null)}
       />
     </div>
   );

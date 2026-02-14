@@ -129,6 +129,25 @@ async def list_branches(
     return result
 
 
+@router.delete("/{owner}/{repo}/branches/{branch_name:path}")
+async def delete_branch(
+    owner: str,
+    repo: str,
+    branch_name: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Delete a branch from a repository."""
+    result, err = await _safe_call(
+        "git_platform",
+        "git_platform.delete_branch",
+        {"owner": owner, "repo": repo, "branch": branch_name},
+        str(user.user_id),
+    )
+    if err:
+        return err
+    return result
+
+
 @router.get("/{owner}/{repo}/issues")
 async def list_issues(
     owner: str,

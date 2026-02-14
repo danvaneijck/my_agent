@@ -25,6 +25,10 @@ class GitProvider(ABC):
         """List branches in a repository."""
 
     @abstractmethod
+    async def delete_branch(self, owner: str, repo: str, branch: str) -> dict:
+        """Delete a branch from a repository."""
+
+    @abstractmethod
     async def get_file(self, owner: str, repo: str, path: str, ref: str | None = None) -> dict:
         """Read a file from a repository."""
 

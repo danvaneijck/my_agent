@@ -82,6 +82,9 @@ class BitbucketProvider(GitProvider):
     async def _put(self, path: str, json: dict | None = None) -> dict:
         return await self._request("PUT", path, json=json or {})
 
+    async def _delete(self, path: str) -> dict | list | str:
+        return await self._request("DELETE", path)
+
     def _repo_path(self, owner: str, repo: str) -> str:
         return f"/repositories/{owner}/{repo}"
 
@@ -152,6 +155,10 @@ class BitbucketProvider(GitProvider):
             for b in data.get("values", [])
         ]
         return {"count": len(branches), "branches": branches}
+
+    async def delete_branch(self, owner: str, repo: str, branch: str) -> dict:
+        await self._delete(f"{self._repo_path(owner, repo)}/refs/branches/{branch}")
+        return {"deleted": True, "branch": branch}
 
     async def get_file(self, owner: str, repo: str, path: str, ref: str | None = None) -> dict:
         # Default to the repo's main branch if no ref given
