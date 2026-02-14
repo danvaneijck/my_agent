@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, Search, RefreshCw, Lock, Star } from "lucide-react";
 import { useRepos } from "@/hooks/useRepos";
+import { ReposGridSkeleton } from "@/components/common/Skeleton";
 
 const LANG_COLORS: Record<string, string> = {
   Python: "bg-blue-500",
@@ -103,9 +104,7 @@ export default function ReposPage() {
 
       {/* Repo grid */}
       {loading && repos.length === 0 ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        </div>
+        <ReposGridSkeleton />
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-500 text-sm">
           {search ? "No repositories match your search" : "No repositories found"}

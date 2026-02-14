@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { GitPullRequest, RefreshCw } from "lucide-react";
 import { usePullRequests } from "@/hooks/usePullRequests";
+import { PullRequestsListSkeleton } from "@/components/common/Skeleton";
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return "";
@@ -50,9 +51,7 @@ export default function PullRequestsPage() {
 
       {/* PR list */}
       {loading && pullRequests.length === 0 ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-        </div>
+        <PullRequestsListSkeleton />
       ) : pullRequests.length === 0 ? (
         <div className="text-center py-16 text-gray-500 text-sm">
           No open pull requests across your repositories
