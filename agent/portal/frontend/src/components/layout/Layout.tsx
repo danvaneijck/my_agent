@@ -56,7 +56,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         );
         setChatUnreadCount(total);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -69,13 +69,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const fetchPrCount = useCallback(() => {
     api<{ count: number }>("/api/repos/pulls/all")
       .then((data) => setOpenPrCount(data.count || 0))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
     fetchPrCount();
     const interval = setInterval(fetchPrCount, 60000);
     return () => clearInterval(interval);
+  }, [fetchPrCount]);
+
+  // Re-fetch PR count when a PR is merged
+  useEffect(() => {
+    const handler = () => fetchPrCount();
+    window.addEventListener("pr-count-update", handler);
+    return () => window.removeEventListener("pr-count-update", handler);
   }, [fetchPrCount]);
 
   // Listen for unread count updates from ChatPage

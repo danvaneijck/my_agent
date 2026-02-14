@@ -108,6 +108,7 @@ export default function PullRequestDetailPage() {
         }
       );
       setMergeResult(result.message || "Pull request merged successfully");
+      window.dispatchEvent(new CustomEvent("pr-count-update"));
       fetchPr();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Merge failed");
@@ -155,13 +156,12 @@ export default function PullRequestDetailPage() {
             </span>
             {pr?.state && (
               <span
-                className={`text-xs px-1.5 py-0.5 rounded-full ${
-                  pr.state === "open"
+                className={`text-xs px-1.5 py-0.5 rounded-full ${pr.state === "open"
                     ? "bg-green-500/20 text-green-400"
                     : pr.merged_at
-                    ? "bg-purple-500/20 text-purple-400"
-                    : "bg-red-500/20 text-red-400"
-                }`}
+                      ? "bg-purple-500/20 text-purple-400"
+                      : "bg-red-500/20 text-red-400"
+                  }`}
               >
                 {pr.merged_at ? "Merged" : pr.state}
               </span>
@@ -240,9 +240,8 @@ export default function PullRequestDetailPage() {
             )}
             {pr.mergeable !== undefined && pr.mergeable !== null && (
               <span
-                className={`flex items-center gap-1 ${
-                  pr.mergeable ? "text-green-400" : "text-red-400"
-                }`}
+                className={`flex items-center gap-1 ${pr.mergeable ? "text-green-400" : "text-red-400"
+                  }`}
               >
                 <GitMerge size={14} />
                 {pr.mergeable ? "Mergeable" : "Conflicts"}
@@ -281,19 +280,18 @@ export default function PullRequestDetailPage() {
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
-                          file.status === "added"
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${file.status === "added"
                             ? "bg-green-500/20 text-green-400"
                             : file.status === "deleted" || file.status === "removed"
-                            ? "bg-red-500/20 text-red-400"
-                            : "bg-yellow-500/20 text-yellow-400"
-                        }`}
+                              ? "bg-red-500/20 text-red-400"
+                              : "bg-yellow-500/20 text-yellow-400"
+                          }`}
                       >
                         {file.status === "added"
                           ? "A"
                           : file.status === "deleted" || file.status === "removed"
-                          ? "D"
-                          : "M"}
+                            ? "D"
+                            : "M"}
                       </span>
                       <span className="text-sm text-gray-300 font-mono truncate">
                         {file.filename}
@@ -430,11 +428,10 @@ export default function PullRequestDetailPage() {
                                 setMergeMethod(method);
                                 setShowMergeDropdown(false);
                               }}
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-surface-lighter transition-colors flex items-center gap-2 ${
-                                mergeMethod === method
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-surface-lighter transition-colors flex items-center gap-2 ${mergeMethod === method
                                   ? "text-accent"
                                   : "text-gray-300"
-                              }`}
+                                }`}
                             >
                               {mergeMethod === method && (
                                 <Check size={14} />
