@@ -38,6 +38,7 @@ TOOL_MAP = {
     "list_repos",
     "get_repo",
     "list_branches",
+    "delete_branch",
     "get_file",
     "list_issues",
     "get_issue",

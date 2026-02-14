@@ -56,7 +56,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         );
         setChatUnreadCount(total);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const fetchPrCount = useCallback(() => {
     api<{ count: number }>("/api/repos/pulls/all")
       .then((data) => setOpenPrCount(data.count || 0))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {

@@ -16,7 +16,9 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/api/repos", tags=["repos"])
 
 
-async def _safe_call(module: str, tool_name: str, arguments: dict, user_id: str, timeout: float = 15.0):
+async def _safe_call(
+    module: str, tool_name: str, arguments: dict, user_id: str, timeout: float = 15.0
+):
     """Call a module tool and return (result, error_response)."""
     try:
         result = await call_tool(
@@ -31,7 +33,12 @@ async def _safe_call(module: str, tool_name: str, arguments: dict, user_id: str,
         msg = str(e)
         logger.warning("repos_proxy_error", tool=tool_name, error=msg)
         # Detect common credential / config issues
-        if "no provider configured" in msg.lower() or "token" in msg.lower() or "credential" in msg.lower() or "auth" in msg.lower():
+        if (
+            "no provider configured" in msg.lower()
+            or "token" in msg.lower()
+            or "credential" in msg.lower()
+            or "auth" in msg.lower()
+        ):
             detail = "Git platform credentials are not configured. Add a GitHub or Bitbucket token to use this feature."
         elif "Unknown module" in msg:
             detail = "Git platform module is not available."
@@ -53,7 +60,9 @@ async def list_repos(
     args: dict = {"per_page": per_page, "sort": sort}
     if search:
         args["search"] = search
-    result, err = await _safe_call("git_platform", "git_platform.list_repos", args, str(user.user_id))
+    result, err = await _safe_call(
+        "git_platform", "git_platform.list_repos", args, str(user.user_id)
+    )
     if err:
         return err
     return result
@@ -65,7 +74,8 @@ async def list_all_pull_requests(
 ) -> dict:
     """List open pull requests across all repos."""
     repos_result, err = await _safe_call(
-        "git_platform", "git_platform.list_repos",
+        "git_platform",
+        "git_platform.list_repos",
         {"per_page": 20, "sort": "updated"},
         str(user.user_id),
     )
@@ -83,7 +93,12 @@ async def list_all_pull_requests(
             result = await call_tool(
                 module="git_platform",
                 tool_name="git_platform.list_pull_requests",
-                arguments={"owner": owner, "repo": name, "state": "open", "per_page": 50},
+                arguments={
+                    "owner": owner,
+                    "repo": name,
+                    "state": "open",
+                    "per_page": 50,
+                },
                 user_id=str(user.user_id),
                 timeout=10.0,
             )
@@ -109,7 +124,12 @@ async def get_repo(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Get repository metadata."""
-    result, err = await _safe_call("git_platform", "git_platform.get_repo", {"owner": owner, "repo": repo}, str(user.user_id))
+    result, err = await _safe_call(
+        "git_platform",
+        "git_platform.get_repo",
+        {"owner": owner, "repo": repo},
+        str(user.user_id),
+    )
     if err:
         return err
     return result
@@ -123,7 +143,31 @@ async def list_branches(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """List branches in a repository."""
-    result, err = await _safe_call("git_platform", "git_platform.list_branches", {"owner": owner, "repo": repo, "per_page": per_page}, str(user.user_id))
+    result, err = await _safe_call(
+        "git_platform",
+        "git_platform.list_branches",
+        {"owner": owner, "repo": repo, "per_page": per_page},
+        str(user.user_id),
+    )
+    if err:
+        return err
+    return result
+
+
+@router.delete("/{owner}/{repo}/branches/{branch_name:path}")
+async def delete_branch(
+    owner: str,
+    repo: str,
+    branch_name: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Delete a branch from a repository."""
+    result, err = await _safe_call(
+        "git_platform",
+        "git_platform.delete_branch",
+        {"owner": owner, "repo": repo, "branch": branch_name},
+        str(user.user_id),
+    )
     if err:
         return err
     return result
@@ -138,7 +182,12 @@ async def list_issues(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """List issues in a repository."""
-    result, err = await _safe_call("git_platform", "git_platform.list_issues", {"owner": owner, "repo": repo, "state": state, "per_page": per_page}, str(user.user_id))
+    result, err = await _safe_call(
+        "git_platform",
+        "git_platform.list_issues",
+        {"owner": owner, "repo": repo, "state": state, "per_page": per_page},
+        str(user.user_id),
+    )
     if err:
         return err
     return result
@@ -153,7 +202,12 @@ async def list_pull_requests(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """List pull requests in a repository."""
-    result, err = await _safe_call("git_platform", "git_platform.list_pull_requests", {"owner": owner, "repo": repo, "state": state, "per_page": per_page}, str(user.user_id))
+    result, err = await _safe_call(
+        "git_platform",
+        "git_platform.list_pull_requests",
+        {"owner": owner, "repo": repo, "state": state, "per_page": per_page},
+        str(user.user_id),
+    )
     if err:
         return err
     return result
@@ -168,9 +222,11 @@ async def get_pull_request(
 ) -> dict:
     """Get full pull request details."""
     result, err = await _safe_call(
-        "git_platform", "git_platform.get_pull_request",
+        "git_platform",
+        "git_platform.get_pull_request",
         {"owner": owner, "repo": repo, "pr_number": pr_number},
-        str(user.user_id), timeout=20.0,
+        str(user.user_id),
+        timeout=20.0,
     )
     if err:
         return err
@@ -191,9 +247,16 @@ async def merge_pull_request(
 ) -> dict:
     """Merge a pull request."""
     result, err = await _safe_call(
-        "git_platform", "git_platform.merge_pull_request",
-        {"owner": owner, "repo": repo, "pr_number": pr_number, "merge_method": body.merge_method},
-        str(user.user_id), timeout=20.0,
+        "git_platform",
+        "git_platform.merge_pull_request",
+        {
+            "owner": owner,
+            "repo": repo,
+            "pr_number": pr_number,
+            "merge_method": body.merge_method,
+        },
+        str(user.user_id),
+        timeout=20.0,
     )
     if err:
         return err
@@ -214,7 +277,8 @@ async def comment_on_pull_request(
 ) -> dict:
     """Add a comment to a pull request."""
     result, err = await _safe_call(
-        "git_platform", "git_platform.comment_on_pull_request",
+        "git_platform",
+        "git_platform.comment_on_pull_request",
         {"owner": owner, "repo": repo, "pr_number": pr_number, "body": body.body},
         str(user.user_id),
     )

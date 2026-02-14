@@ -29,6 +29,9 @@ class GitPlatformTools:
     async def list_branches(self, owner: str, repo: str, per_page: int = 30) -> dict:
         return await self.provider.list_branches(owner, repo, per_page=per_page)
 
+    async def delete_branch(self, owner: str, repo: str, branch: str) -> dict:
+        return await self.provider.delete_branch(owner, repo, branch)
+
     async def get_file(self, owner: str, repo: str, path: str, ref: str | None = None) -> dict:
         return await self.provider.get_file(owner, repo, path, ref=ref)
 

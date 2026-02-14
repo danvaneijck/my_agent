@@ -42,6 +42,16 @@ MANIFEST = ModuleManifest(
             required_permission="guest",
         ),
         ToolDefinition(
+            name="git_platform.delete_branch",
+            description="Delete a branch from a repository. Cannot delete protected or default branches.",
+            parameters=[
+                _OWNER,
+                _REPO,
+                ToolParameter(name="branch", type="string", description="Branch name to delete."),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
             name="git_platform.get_file",
             description="Read a file (or list a directory) from a repository without cloning. Returns the decoded text content for files or a listing for directories.",
             parameters=[

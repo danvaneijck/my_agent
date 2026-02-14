@@ -9,10 +9,12 @@ import {
   RefreshCw,
   ExternalLink,
   Shield,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import { useRepoDetail } from "@/hooks/useRepoDetail";
 import NewTaskModal from "@/components/tasks/NewTaskModal";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { GitRepo } from "@/types";
 
 type Tab = "branches" | "pulls" | "issues";
@@ -41,12 +43,44 @@ export default function RepoDetailPage() {
   const [modalBranch, setModalBranch] = useState("");
   const [modalPrompt, setModalPrompt] = useState("");
 
+  // Delete branch state
+  const [deleteBranch, setDeleteBranch] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteBranch = useCallback(async () => {
+    if (!deleteBranch) return;
+    setDeleting(true);
+    try {
+      await api(`/api/repos/${owner}/${repo}/branches/${encodeURIComponent(deleteBranch)}`, {
+        method: "DELETE",
+      });
+      setDeleteBranch(null);
+      refetch();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to delete branch";
+      // Try to extract a user-friendly error from the JSON response
+      const jsonMatch = msg.match(/\d+:\s*(\{.*\})/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[1]);
+          alert(parsed.error || msg);
+        } catch {
+          alert(msg);
+        }
+      } else {
+        alert(msg);
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteBranch, owner, repo, refetch]);
+
   // Fetch repo metadata
   useEffect(() => {
     if (!owner || !repo) return;
     api<GitRepo>(`/api/repos/${owner}/${repo}`)
       .then(setRepoMeta)
-      .catch(() => {});
+      .catch(() => { });
   }, [owner, repo]);
 
   const cloneUrl = repoMeta?.clone_url || `https://github.com/${owner}/${repo}.git`;
@@ -132,20 +166,18 @@ export default function RepoDetailPage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              tab === key
-                ? "border-accent text-accent-hover"
-                : "border-transparent text-gray-400 hover:text-gray-200"
-            }`}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === key
+              ? "border-accent text-accent-hover"
+              : "border-transparent text-gray-400 hover:text-gray-200"
+              }`}
           >
             <Icon size={16} />
             {label}
             <span
-              className={`text-xs px-1.5 py-0.5 rounded-full ${
-                tab === key
-                  ? "bg-accent/15 text-accent"
-                  : "bg-surface-lighter text-gray-500"
-              }`}
+              className={`text-xs px-1.5 py-0.5 rounded-full ${tab === key
+                ? "bg-accent/15 text-accent"
+                : "bg-surface-lighter text-gray-500"
+                }`}
             >
               {count}
             </span>
@@ -195,143 +227,175 @@ export default function RepoDetailPage() {
                         <Play size={12} />
                         New Task
                       </button>
-                    </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => openNewTask(branch.name)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+                        >
+                          <Play size={12} />
+                          New Task
+                        </button>
+                        {!branch.protected && branch.name !== repoMeta?.default_branch && (
+                          <button
+                            onClick={() => setDeleteBranch(branch.name)}
+                            className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            title={`Delete branch ${branch.name}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div >
                   ))
-                )}
-              </div>
+                )
+                }
+              </div >
             )}
 
             {/* Pull Requests */}
-            {tab === "pulls" && (
-              <div className="divide-y divide-border/50">
-                {pullRequests.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500 text-sm">
-                    No open pull requests
-                  </div>
-                ) : (
-                  pullRequests.map((pr) => (
-                    <div
-                      key={pr.number}
-                      className="flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <GitPullRequest
-                            size={16}
-                            className={`shrink-0 ${
-                              pr.draft ? "text-gray-500" : "text-green-400"
-                            }`}
-                          />
-                          <span className="text-sm text-gray-200 truncate">
-                            {pr.title}
-                          </span>
-                          <span className="text-xs text-gray-500 shrink-0">
-                            #{pr.number}
-                          </span>
-                          {pr.draft && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 shrink-0">
-                              Draft
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-500 ml-6">
-                          <span className="font-mono">{pr.head}</span>
-                          <span>&rarr;</span>
-                          <span className="font-mono">{pr.base}</span>
-                          {pr.author && <span>by {pr.author}</span>}
-                          {pr.created_at && (
-                            <span>{formatDate(pr.created_at)}</span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() =>
-                          openNewTask(
-                            pr.head,
-                            `Review/continue PR #${pr.number}: ${pr.title}`
-                          )
-                        }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors shrink-0 ml-3"
-                      >
-                        <Play size={12} />
-                        New Task
-                      </button>
+            {
+              tab === "pulls" && (
+                <div className="divide-y divide-border/50">
+                  {pullRequests.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500 text-sm">
+                      No open pull requests
                     </div>
-                  ))
-                )}
-              </div>
-            )}
+                  ) : (
+                    pullRequests.map((pr) => (
+                      <div
+                        key={pr.number}
+                        className="flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <GitPullRequest
+                              size={16}
+                              className={`shrink-0 ${pr.draft ? "text-gray-500" : "text-green-400"
+                                }`}
+                            />
+                            <span className="text-sm text-gray-200 truncate">
+                              {pr.title}
+                            </span>
+                            <span className="text-xs text-gray-500 shrink-0">
+                              #{pr.number}
+                            </span>
+                            {pr.draft && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 shrink-0">
+                                Draft
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-gray-500 ml-6">
+                            <span className="font-mono">{pr.head}</span>
+                            <span>&rarr;</span>
+                            <span className="font-mono">{pr.base}</span>
+                            {pr.author && <span>by {pr.author}</span>}
+                            {pr.created_at && (
+                              <span>{formatDate(pr.created_at)}</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() =>
+                            openNewTask(
+                              pr.head,
+                              `Review/continue PR #${pr.number}: ${pr.title}`
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors shrink-0 ml-3"
+                        >
+                          <Play size={12} />
+                          New Task
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )
+            }
 
             {/* Issues */}
-            {tab === "issues" && (
-              <div className="divide-y divide-border/50">
-                {issues.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500 text-sm">
-                    No open issues
-                  </div>
-                ) : (
-                  issues.map((issue) => (
-                    <div
-                      key={issue.number}
-                      className="flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <CircleDot size={16} className="text-green-400 shrink-0" />
-                          <span className="text-sm text-gray-200 truncate">
-                            {issue.title}
-                          </span>
-                          <span className="text-xs text-gray-500 shrink-0">
-                            #{issue.number}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-500 ml-6">
-                          {issue.labels.map((label) => (
-                            <span
-                              key={label}
-                              className="px-1.5 py-0.5 rounded bg-surface-lighter text-gray-400"
-                            >
-                              {label}
-                            </span>
-                          ))}
-                          {issue.author && <span>by {issue.author}</span>}
-                          {issue.created_at && (
-                            <span>{formatDate(issue.created_at)}</span>
-                          )}
-                          {issue.comments > 0 && (
-                            <span>{issue.comments} comments</span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() =>
-                          openNewTask(
-                            repoMeta?.default_branch,
-                            `Fix issue #${issue.number}: ${issue.title}`
-                          )
-                        }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors shrink-0 ml-3"
-                      >
-                        <Play size={12} />
-                        New Task
-                      </button>
+            {
+              tab === "issues" && (
+                <div className="divide-y divide-border/50">
+                  {issues.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500 text-sm">
+                      No open issues
                     </div>
-                  ))
-                )}
-              </div>
-            )}
+                  ) : (
+                    issues.map((issue) => (
+                      <div
+                        key={issue.number}
+                        className="flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <CircleDot size={16} className="text-green-400 shrink-0" />
+                            <span className="text-sm text-gray-200 truncate">
+                              {issue.title}
+                            </span>
+                            <span className="text-xs text-gray-500 shrink-0">
+                              #{issue.number}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-gray-500 ml-6">
+                            {issue.labels.map((label) => (
+                              <span
+                                key={label}
+                                className="px-1.5 py-0.5 rounded bg-surface-lighter text-gray-400"
+                              >
+                                {label}
+                              </span>
+                            ))}
+                            {issue.author && <span>by {issue.author}</span>}
+                            {issue.created_at && (
+                              <span>{formatDate(issue.created_at)}</span>
+                            )}
+                            {issue.comments > 0 && (
+                              <span>{issue.comments} comments</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() =>
+                            openNewTask(
+                              repoMeta?.default_branch,
+                              `Fix issue #${issue.number}: ${issue.title}`
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors shrink-0 ml-3"
+                        >
+                          <Play size={12} />
+                          New Task
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )
+            }
           </>
         )}
-      </div>
+      </div >
 
       {/* New Task Modal */}
-      <NewTaskModal
+      < NewTaskModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         defaultRepoUrl={modalRepoUrl}
         defaultBranch={modalBranch}
         defaultPrompt={modalPrompt}
       />
-    </div>
+
+      {/* Delete Branch Confirmation */}
+      <ConfirmDialog
+        open={!!deleteBranch}
+        title="Delete branch"
+        message={`Are you sure you want to delete the branch "${deleteBranch}"? This action cannot be undone.`}
+        confirmLabel={deleting ? "Deleting\u2026" : "Delete"}
+        onConfirm={handleDeleteBranch}
+        onCancel={() => setDeleteBranch(null)}
+      />
+    </div >
   );
 }
