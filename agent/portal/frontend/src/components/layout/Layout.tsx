@@ -78,6 +78,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, [fetchPrCount]);
 
+  // Re-fetch PR count when a PR is merged
+  useEffect(() => {
+    const handler = () => fetchPrCount();
+    window.addEventListener("pr-count-update", handler);
+    return () => window.removeEventListener("pr-count-update", handler);
+  }, [fetchPrCount]);
+
   // Listen for unread count updates from ChatPage
   useEffect(() => {
     const handler = (e: Event) => {

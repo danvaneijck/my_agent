@@ -108,6 +108,7 @@ export default function PullRequestDetailPage() {
         }
       );
       setMergeResult(result.message || "Pull request merged successfully");
+      window.dispatchEvent(new CustomEvent("pr-count-update"));
       fetchPr();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Merge failed");
