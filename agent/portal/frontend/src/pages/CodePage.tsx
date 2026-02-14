@@ -7,7 +7,6 @@ import {
   RefreshCw,
   Search,
   Code2,
-  GitBranch,
   ExternalLink,
   Copy,
   Check,
@@ -19,6 +18,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { api } from "@/api/client";
 import StatusBadge from "@/components/common/StatusBadge";
+import RepoLabel from "@/components/common/RepoLabel";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { Task, WorkspaceEntry, WorkspaceFileContent } from "@/types";
 import { mapTask } from "@/types";
@@ -269,13 +269,15 @@ export default function CodePage() {
                     </span>
                     <StatusBadge status={task.status} />
                   </div>
-                <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-500">
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-[10px] text-gray-500">
                   <CopyableId id={task.id} truncate />
                   <span>{timeAgo(task.created_at)}</span>
-                  {task.repo_url && (
-                    <GitBranch size={10} className="text-gray-600" />
-                  )}
                 </div>
+                {task.repo_url && (
+                  <div className="mt-1">
+                    <RepoLabel repoUrl={task.repo_url} branch={task.branch} />
+                  </div>
+                )}
                 </button>
                 <button
                   onClick={(e) => {
@@ -302,6 +304,9 @@ export default function CodePage() {
               <span className="text-xs shrink-0">
                 <CopyableId id={selectedTask.id} />
               </span>
+              {selectedTask.repo_url && (
+                <RepoLabel repoUrl={selectedTask.repo_url} branch={selectedTask.branch} className="shrink-0" />
+              )}
               <span className="text-xs text-gray-300 truncate">
                 {selectedTask.prompt}
               </span>

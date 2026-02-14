@@ -4,6 +4,7 @@ import {
   MessageSquare,
   FolderOpen,
   Code2,
+  GitBranch,
   Clock,
   Rocket,
   BarChart3,
@@ -14,6 +15,7 @@ import {
 const NAV_ITEMS = [
   { to: "/chat", icon: MessageSquare, label: "Chat", badgeKey: "chat" },
   { to: "/", icon: LayoutDashboard, label: "Tasks" },
+  { to: "/repos", icon: GitBranch, label: "Repos" },
   { to: "/code", icon: Code2, label: "Code" },
   { to: "/deployments", icon: Rocket, label: "Deployments" },
   { to: "/files", icon: FolderOpen, label: "Files" },

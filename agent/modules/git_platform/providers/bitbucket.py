@@ -92,6 +92,33 @@ class BitbucketProvider(GitProvider):
     # Repository
     # ------------------------------------------------------------------
 
+    async def list_repos(self, per_page: int = 30, sort: str = "updated", search: str | None = None) -> dict:
+        params: dict = {"pagelen": min(per_page, 100), "role": "member"}
+        if search:
+            params["q"] = f'name ~ "{search}"'
+        # Bitbucket sorts by -updated_on by default for /repositories endpoint
+        data = await self._get("/repositories", **params)
+        repos = [
+            {
+                "owner": (r.get("owner") or {}).get("username", r.get("workspace", {}).get("slug", "")),
+                "repo": r.get("slug", ""),
+                "full_name": r.get("full_name"),
+                "description": r.get("description"),
+                "url": r.get("links", {}).get("html", {}).get("href"),
+                "clone_url": next(
+                    (l["href"] for l in r.get("links", {}).get("clone", []) if l.get("name") == "https"),
+                    None,
+                ),
+                "default_branch": (r.get("mainbranch") or {}).get("name"),
+                "language": r.get("language"),
+                "private": r.get("is_private"),
+                "stars": None,
+                "updated_at": r.get("updated_on"),
+            }
+            for r in data.get("values", [])
+        ]
+        return {"count": len(repos), "repos": repos}
+
     async def get_repo(self, owner: str, repo: str) -> dict:
         data = await self._get(self._repo_path(owner, repo))
         mainbranch = data.get("mainbranch") or {}

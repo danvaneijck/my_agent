@@ -57,11 +57,13 @@ class Task:
     prompt: str
     repo_url: str | None = None
     branch: str | None = None
+    source_branch: str | None = None
     workspace: str = ""
     status: str = "queued"  # queued | running | completed | failed | timed_out | cancelled | awaiting_input
     mode: str = "execute"  # "execute" or "plan"
     parent_task_id: str | None = None  # links tasks in a planning chain (points to chain root)
     continue_session: bool = False  # whether to use --continue for CLI session resumption
+    user_id: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -84,11 +86,13 @@ class Task:
             "prompt": self.prompt,
             "repo_url": self.repo_url,
             "branch": self.branch,
+            "source_branch": self.source_branch,
             "workspace": self.workspace,
             "log_file": self.log_file,
             "status": self.status,
             "mode": self.mode,
             "parent_task_id": self.parent_task_id,
+            "user_id": self.user_id,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
@@ -119,10 +123,12 @@ class Task:
             prompt=data.get("prompt", ""),
             repo_url=data.get("repo_url"),
             branch=data.get("branch"),
+            source_branch=data.get("source_branch"),
             workspace=data.get("workspace", ""),
             status=data.get("status", "unknown"),
             mode=data.get("mode", "execute"),
             parent_task_id=data.get("parent_task_id"),
+            user_id=data.get("user_id"),
             created_at=_parse_dt(data.get("created_at")) or datetime.now(timezone.utc),
             started_at=_parse_dt(data.get("started_at")),
             completed_at=_parse_dt(data.get("completed_at")),
@@ -204,6 +210,19 @@ class ClaudeCodeTools:
             logger.info("loaded_persisted_tasks", count=loaded)
 
     # ------------------------------------------------------------------
+    # Ownership helper
+    # ------------------------------------------------------------------
+
+    def _get_task(self, task_id: str, user_id: str | None = None) -> Task:
+        """Look up a task, enforcing ownership when user_id is provided."""
+        task = self.tasks.get(task_id)
+        if not task:
+            raise ValueError(f"Task not found: {task_id}")
+        if user_id and task.user_id and task.user_id != user_id:
+            raise ValueError(f"Task not found: {task_id}")
+        return task
+
+    # ------------------------------------------------------------------
     # Public tools (called by orchestrator)
     # ------------------------------------------------------------------
 
@@ -212,6 +231,7 @@ class ClaudeCodeTools:
         prompt: str,
         repo_url: str | None = None,
         branch: str | None = None,
+        source_branch: str | None = None,
         timeout: int = DEFAULT_TIMEOUT,
         mode: str = "execute",
         user_id: str | None = None,
@@ -242,7 +262,8 @@ class ClaudeCodeTools:
 
         task = Task(
             id=task_id, prompt=prompt, repo_url=repo_url, branch=branch,
-            workspace=workspace, mode=mode,
+            source_branch=source_branch, workspace=workspace, mode=mode,
+            user_id=user_id,
         )
         self.tasks[task_id] = task
         task.save()
@@ -290,9 +311,7 @@ class ClaudeCodeTools:
         ``mode`` can be set to override the parent task's mode (e.g. switch
         from ``"plan"`` to ``"execute"`` when approving a plan).
         """
-        original = self.tasks.get(task_id)
-        if not original:
-            raise ValueError(f"Task not found: {task_id}")
+        original = self._get_task(task_id, user_id)
         if original.status in ("queued", "running"):
             raise ValueError(
                 f"Task {task_id} is still {original.status} — wait for it "
@@ -318,6 +337,7 @@ class ClaudeCodeTools:
             mode=effective_mode,
             parent_task_id=chain_root,
             continue_session=True,
+            user_id=user_id,
         )
         self.tasks[new_id] = task
 
@@ -366,9 +386,7 @@ class ClaudeCodeTools:
 
     async def task_status(self, task_id: str, user_id: str | None = None) -> dict:
         """Return the current status of a task."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+        task = self._get_task(task_id, user_id)
         return task.to_dict()
 
     async def task_logs(
@@ -379,9 +397,7 @@ class ClaudeCodeTools:
         user_id: str | None = None,
     ) -> dict:
         """Return recent lines from a task's live log file."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+        task = self._get_task(task_id, user_id)
 
         log_path = task.log_file
         if not os.path.exists(log_path):
@@ -414,9 +430,7 @@ class ClaudeCodeTools:
 
     async def cancel_task(self, task_id: str, user_id: str | None = None) -> dict:
         """Cancel a running or queued task by killing its Docker container."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+        task = self._get_task(task_id, user_id)
 
         if task.status in ("completed", "failed", "timed_out"):
             return {
@@ -449,8 +463,11 @@ class ClaudeCodeTools:
     async def list_tasks(
         self, status_filter: str | None = None, user_id: str | None = None
     ) -> dict:
-        """List all tasks, optionally filtered by status."""
-        tasks = list(self.tasks.values())
+        """List tasks for the given user, optionally filtered by status."""
+        if user_id:
+            tasks = [t for t in self.tasks.values() if t.user_id == user_id]
+        else:
+            tasks = list(self.tasks.values())
         if status_filter:
             tasks = [t for t in tasks if t.status == status_filter]
         return {
@@ -460,9 +477,7 @@ class ClaudeCodeTools:
 
     async def delete_workspace(self, task_id: str, user_id: str | None = None) -> dict:
         """Delete a task's workspace directory and remove all tasks in the chain from memory."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+        task = self._get_task(task_id, user_id)
 
         if task.status in ("queued", "running"):
             raise ValueError(f"Task {task_id} is still {task.status} — cancel it first.")
@@ -505,9 +520,7 @@ class ClaudeCodeTools:
 
     async def get_task_chain(self, task_id: str, user_id: str | None = None) -> dict:
         """Return all tasks in the same planning chain, sorted chronologically."""
-        root_task = self.tasks.get(task_id)
-        if not root_task:
-            raise ValueError(f"Task not found: {task_id}")
+        root_task = self._get_task(task_id, user_id)
 
         chain_root = root_task.parent_task_id or root_task.id
 
@@ -565,9 +578,7 @@ class ClaudeCodeTools:
         user_id: str | None = None,
     ) -> dict:
         """List files and directories in a task's workspace."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+        task = self._get_task(task_id, user_id)
 
         base = os.path.realpath(task.workspace)
         target = os.path.realpath(os.path.join(base, path))
@@ -615,9 +626,7 @@ class ClaudeCodeTools:
         user_id: str | None = None,
     ) -> dict:
         """Read a file from a task's workspace."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+        task = self._get_task(task_id, user_id)
 
         base = os.path.realpath(task.workspace)
         target = os.path.realpath(os.path.join(base, path))
@@ -909,6 +918,8 @@ class ClaudeCodeTools:
 
         if task.repo_url:
             cmd.extend(["-e", f"REPO_URL={task.repo_url}"])
+        if task.source_branch:
+            cmd.extend(["-e", f"SOURCE_BRANCH={task.source_branch}"])
         if task.branch:
             cmd.extend(["-e", f"BRANCH={task.branch}"])
         if task.continue_session:
@@ -961,7 +972,7 @@ class ClaudeCodeTools:
 
         Environment variables used:
         - ``PROMPT``: The prompt to send to Claude Code CLI.
-        - ``REPO_URL`` / ``BRANCH``: Optional git clone parameters.
+        - ``REPO_URL`` / ``SOURCE_BRANCH`` / ``BRANCH``: Optional git clone parameters.
         - ``CONTINUE_SESSION``: When set to ``1``, uses ``--continue`` to
           resume the most recent Claude CLI session in the workspace and
           restores persisted session data from ``.claude_sessions/``.
@@ -1015,6 +1026,9 @@ class ClaudeCodeTools:
             '\n'
             'if [ -n "$REPO_URL" ]; then\n'
             '    git clone "$REPO_URL" . 2>&1\n'
+            '    if [ -n "$SOURCE_BRANCH" ]; then\n'
+            '        git checkout "$SOURCE_BRANCH" 2>&1\n'
+            '    fi\n'
             '    if [ -n "$BRANCH" ]; then\n'
             '        git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH"\n'
             '    fi\n'
@@ -1112,11 +1126,9 @@ class ClaudeCodeTools:
     # Git helpers
     # ------------------------------------------------------------------
 
-    def _validate_git_workspace(self, task_id: str) -> Task:
-        """Validate task exists and has a git repository in its workspace."""
-        task = self.tasks.get(task_id)
-        if not task:
-            raise ValueError(f"Task not found: {task_id}")
+    def _validate_git_workspace(self, task_id: str, user_id: str | None = None) -> Task:
+        """Validate task exists, belongs to user, and has a git repository."""
+        task = self._get_task(task_id, user_id)
         if not os.path.isdir(task.workspace):
             raise ValueError(f"Workspace no longer exists: {task.workspace}")
         git_dir = os.path.join(task.workspace, ".git")
@@ -1227,7 +1239,7 @@ class ClaudeCodeTools:
 
     async def git_status(self, task_id: str, user_id: str | None = None) -> dict:
         """Return comprehensive git status for a task's workspace."""
-        task = self._validate_git_workspace(task_id)
+        task = self._validate_git_workspace(task_id, user_id)
 
         git_script = (
             'echo "===BRANCH==="\n'
@@ -1326,7 +1338,7 @@ class ClaudeCodeTools:
         user_id: str | None = None,
     ) -> dict:
         """Push the task workspace's branch to a remote."""
-        task = self._validate_git_workspace(task_id)
+        task = self._validate_git_workspace(task_id, user_id)
 
         if not SSH_KEY_PATH:
             raise ValueError(

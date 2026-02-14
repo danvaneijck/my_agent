@@ -9,6 +9,8 @@ import CodePage from "@/pages/CodePage";
 import SchedulePage from "@/pages/SchedulePage";
 import DeploymentsPage from "@/pages/DeploymentsPage";
 import TaskDetailPage from "@/pages/TaskDetailPage";
+import ReposPage from "@/pages/ReposPage";
+import RepoDetailPage from "@/pages/RepoDetailPage";
 import SettingsPage from "@/pages/SettingsPage";
 import UsagePage from "@/pages/UsagePage";
 
@@ -69,12 +71,12 @@ function LoginScreen() {
                 key={p.name}
                 onClick={() => handleLogin(p.name)}
                 disabled={loading}
-                className={`w-full py-3 rounded-lg text-white font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
+                className={`w-full py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
                   p.name === "discord"
-                    ? "bg-[#5865F2] hover:bg-[#4752C4]"
+                    ? "bg-[#5865F2] hover:bg-[#4752C4] text-white"
                     : p.name === "google"
                     ? "bg-white text-gray-800 hover:bg-gray-100 border border-gray-300"
-                    : "bg-accent hover:bg-accent-hover"
+                    : "bg-accent hover:bg-accent-hover text-white"
                 }`}
               >
                 {p.name === "discord" && (
@@ -218,6 +220,8 @@ export default function App() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/chat/:conversationId" element={<ChatPage />} />
         <Route path="/files" element={<FilesPage />} />
+        <Route path="/repos" element={<ReposPage />} />
+        <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
         <Route path="/code" element={<CodePage />} />
         <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/deployments" element={<DeploymentsPage />} />

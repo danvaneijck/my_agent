@@ -53,12 +53,15 @@ export default function ChatPage() {
 
   // Listen for notification events to refresh conversations
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handler = async (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.conversation_id && detail.conversation_id === conversationId) {
-        // Active conversation got a notification — ChatView will handle message refresh
+        // User is viewing this conversation — mark as read before refreshing
+        // so the refreshed list won't briefly show an unread badge
+        await api(`/api/chat/conversations/${conversationId}/read`, {
+          method: "POST",
+        }).catch(() => {});
       }
-      // Refresh conversation list to update unread counts
       fetchConversations();
     };
     window.addEventListener("chat-notification", handler);

@@ -35,6 +35,12 @@ MANIFEST = ModuleManifest(
                     required=False,
                 ),
                 ToolParameter(
+                    name="source_branch",
+                    type="string",
+                    description="Source branch to checkout before creating the new branch. Used when branch is a new branch name that should be based on a specific existing branch rather than the default.",
+                    required=False,
+                ),
+                ToolParameter(
                     name="timeout",
                     type="integer",
                     description="Max execution time in seconds (default 1800). Do not set a lower value unless specifically requested.",

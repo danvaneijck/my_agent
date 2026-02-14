@@ -101,9 +101,9 @@ function BudgetCard({ summary }: { summary: UsageSummary }) {
   const hasBudget = summary.token_budget_monthly !== null;
   const usagePct = hasBudget
     ? Math.min(
-        100,
-        (summary.tokens_used_this_month / summary.token_budget_monthly!) * 100
-      )
+      100,
+      (summary.tokens_used_this_month / summary.token_budget_monthly!) * 100
+    )
     : 0;
 
   return (
@@ -160,7 +160,7 @@ function ModelBreakdown({ models }: { models: ModelUsage[] }) {
   return (
     <div className="bg-surface-light border border-border rounded-xl p-6">
       <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
-        Usage by Model (Last 30 Days)
+        API Usage by Model (Last 30 Days)
       </h3>
       <div className="space-y-3">
         {models.map((m) => (
@@ -255,7 +255,7 @@ function AnthropicUsageSection({ data }: { data: AnthropicUsageData }) {
     return (
       <div className="bg-surface-light border border-border rounded-xl p-6">
         <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-3">
-          Claude API Usage
+          Claude Code Usage
         </h3>
         <p className="text-sm text-gray-500">
           Configure your Claude Code credentials in{" "}
@@ -271,7 +271,7 @@ function AnthropicUsageSection({ data }: { data: AnthropicUsageData }) {
   return (
     <div className="bg-surface-light border border-border rounded-xl p-6 space-y-5">
       <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
-        Claude API Usage
+        Claude Code Usage
       </h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

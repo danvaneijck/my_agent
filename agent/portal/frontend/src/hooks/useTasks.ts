@@ -14,7 +14,18 @@ export function useTasks(pollInterval = 10000) {
       setTasks((data.tasks || []).map(mapTask));
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch tasks");
+      const msg = e instanceof Error ? e.message : "Failed to fetch tasks";
+      const jsonMatch = msg.match(/\d+:\s*(\{.*\})/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[1]);
+          setError(parsed.error || msg);
+        } catch {
+          setError(msg);
+        }
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }

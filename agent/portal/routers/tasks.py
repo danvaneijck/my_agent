@@ -2,14 +2,46 @@
 
 from __future__ import annotations
 
+import structlog
 from fastapi import APIRouter, Depends, Query, WebSocket
 
 from portal.auth import PortalUser, require_auth, verify_ws_auth
 from portal.services.log_streamer import stream_task_logs
-from portal.services.module_client import call_tool
+from portal.services.module_client import call_tool, check_module_health
 from pydantic import BaseModel
+from shared.config import get_settings
+from shared.credential_store import CredentialStore
+from shared.database import get_session_factory
 
+logger = structlog.get_logger()
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+# --------------- Health (must be before /{task_id} routes) ---------------
+
+
+@router.get("/health")
+async def tasks_health(user: PortalUser = Depends(require_auth)) -> dict:
+    """Check if the claude_code module is reachable and the user has credentials."""
+    # 1. Check module is running
+    result = await check_module_health("claude_code")
+    if result.get("status") != "ok":
+        return {"available": False, "reason": "module_down", "error": "Claude Code service is not running."}
+
+    # 2. Check user has claude_code credentials configured
+    settings = get_settings()
+    if settings.credential_encryption_key:
+        try:
+            store = CredentialStore(settings.credential_encryption_key)
+            factory = get_session_factory()
+            async with factory() as session:
+                creds = await store.get_all(session, user.user_id, "claude_code")
+            if creds:
+                return {"available": True}
+        except Exception as e:
+            logger.warning("tasks_health_cred_check_failed", error=str(e))
+
+    return {"available": False, "reason": "no_credentials", "error": "Claude Code credentials are not configured for your account."}
 
 
 # --------------- Request schemas ---------------
@@ -19,6 +51,7 @@ class NewTaskRequest(BaseModel):
     prompt: str
     repo_url: str | None = None
     branch: str | None = None
+    source_branch: str | None = None
     timeout: int | None = None
     mode: str = "execute"  # "execute" or "plan"
 
@@ -45,6 +78,7 @@ async def list_tasks(
         module="claude_code",
         tool_name="claude_code.list_tasks",
         arguments=args,
+        user_id=str(user.user_id),
         timeout=15.0,
     )
     return result.get("result", {})
@@ -61,6 +95,8 @@ async def create_task(
         args["repo_url"] = body.repo_url
     if body.branch:
         args["branch"] = body.branch
+    if body.source_branch:
+        args["source_branch"] = body.source_branch
     if body.timeout is not None:
         args["timeout"] = body.timeout
     if body.mode:
@@ -69,6 +105,7 @@ async def create_task(
         module="claude_code",
         tool_name="claude_code.run_task",
         arguments=args,
+        user_id=str(user.user_id),
         timeout=30.0,
     )
     return result.get("result", {})
@@ -84,6 +121,7 @@ async def get_task(
         module="claude_code",
         tool_name="claude_code.task_status",
         arguments={"task_id": task_id},
+        user_id=str(user.user_id),
         timeout=15.0,
     )
     return result.get("result", {})
@@ -101,6 +139,7 @@ async def get_task_logs(
         module="claude_code",
         tool_name="claude_code.task_logs",
         arguments={"task_id": task_id, "tail": tail, "offset": offset},
+        user_id=str(user.user_id),
         timeout=15.0,
     )
     return result.get("result", {})
@@ -122,6 +161,7 @@ async def continue_task(
         module="claude_code",
         tool_name="claude_code.continue_task",
         arguments=args,
+        user_id=str(user.user_id),
         timeout=30.0,
     )
     return result.get("result", {})
@@ -137,6 +177,7 @@ async def get_task_chain(
         module="claude_code",
         tool_name="claude_code.get_task_chain",
         arguments={"task_id": task_id},
+        user_id=str(user.user_id),
         timeout=15.0,
     )
     return result.get("result", {})
@@ -153,6 +194,7 @@ async def browse_workspace(
         module="claude_code",
         tool_name="claude_code.browse_workspace",
         arguments={"task_id": task_id, "path": path},
+        user_id=str(user.user_id),
         timeout=15.0,
     )
     return result.get("result", {})
@@ -169,6 +211,7 @@ async def read_workspace_file(
         module="claude_code",
         tool_name="claude_code.read_workspace_file",
         arguments={"task_id": task_id, "path": path},
+        user_id=str(user.user_id),
         timeout=15.0,
     )
     return result.get("result", {})
@@ -184,6 +227,7 @@ async def cancel_task(
         module="claude_code",
         tool_name="claude_code.cancel_task",
         arguments={"task_id": task_id},
+        user_id=str(user.user_id),
         timeout=15.0,
     )
     return result.get("result", {})
@@ -199,6 +243,7 @@ async def delete_workspace(
         module="claude_code",
         tool_name="claude_code.delete_workspace",
         arguments={"task_id": task_id},
+        user_id=str(user.user_id),
         timeout=30.0,
     )
     return result.get("result", {})

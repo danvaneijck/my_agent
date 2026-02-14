@@ -94,6 +94,7 @@ async def get_file(
         module="file_manager",
         tool_name="file_manager.read_document",
         arguments={"file_id": file_id},
+        user_id=str(user.user_id),
         timeout=15.0,
     )
     return result.get("result", {})
@@ -120,14 +121,17 @@ async def download_file(
         jwt_token = token
     if not jwt_token:
         raise HTTPException(401, "Missing authentication")
-    _decode_token(jwt_token)  # validates; raises on failure
+    user = _decode_token(jwt_token)
 
     settings = get_settings()
     factory = get_session_factory()
 
     async with factory() as session:
         record = await session.execute(
-            select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
+            select(FileRecord).where(
+                FileRecord.id == uuid.UUID(file_id),
+                FileRecord.user_id == user.user_id,
+            )
         )
         file_record = record.scalar_one_or_none()
         if not file_record:

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, XCircle, Clock, GitBranch, FolderOpen, Trash2 } from "lucide-react";
+import { ArrowLeft, XCircle, Clock, FolderOpen, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import StatusBadge from "@/components/common/StatusBadge";
+import RepoLabel from "@/components/common/RepoLabel";
 import TaskLogViewer from "@/components/tasks/TaskLogViewer";
 import TaskOutputViewer from "@/components/tasks/TaskOutputViewer";
 import ContinueTaskForm from "@/components/tasks/ContinueTaskForm";
@@ -142,11 +143,7 @@ export default function TaskDetailPage() {
             {formatElapsed(task.elapsed_seconds)}
           </span>
           {task.repo_url && (
-            <span className="inline-flex items-center gap-1">
-              <GitBranch size={12} />
-              {task.repo_url}
-              {task.branch && ` @ ${task.branch}`}
-            </span>
+            <RepoLabel repoUrl={task.repo_url} branch={task.branch} size="md" />
           )}
           <span className="inline-flex items-center gap-1">
             <FolderOpen size={12} />

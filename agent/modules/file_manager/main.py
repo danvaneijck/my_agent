@@ -55,13 +55,13 @@ async def execute(call: ToolCall):
         elif tool_name == "upload_file":
             result = await tools.upload_file(user_id=call.user_id, **call.arguments)
         elif tool_name == "read_document":
-            result = await tools.read_document(**call.arguments)
+            result = await tools.read_document(user_id=call.user_id, **call.arguments)
         elif tool_name == "list_files":
-            result = await tools.list_files(**call.arguments)
+            result = await tools.list_files(user_id=call.user_id, **call.arguments)
         elif tool_name == "get_file_link":
-            result = await tools.get_file_link(**call.arguments)
+            result = await tools.get_file_link(user_id=call.user_id, **call.arguments)
         elif tool_name == "delete_file":
-            result = await tools.delete_file(**call.arguments)
+            result = await tools.delete_file(user_id=call.user_id, **call.arguments)
         else:
             return ToolResult(
                 tool_name=call.tool_name,

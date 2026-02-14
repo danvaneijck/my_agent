@@ -4,6 +4,7 @@ export interface Task {
   prompt: string;
   repo_url: string | null;
   branch: string | null;
+  source_branch: string | null;
   workspace: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled" | "awaiting_input" | "timed_out";
   mode: "execute" | "plan";
@@ -130,6 +131,51 @@ export interface WsNotification {
   conversation_id: string | null;
   job_id: string | null;
   platform_channel_id: string;
+}
+
+// Git platform types
+export interface GitRepo {
+  owner: string;
+  repo: string;
+  full_name: string;
+  description: string | null;
+  url: string;
+  clone_url: string;
+  default_branch: string;
+  language: string | null;
+  private: boolean;
+  stars: number;
+  updated_at: string;
+}
+
+export interface GitBranch {
+  name: string;
+  sha: string;
+  protected: boolean;
+}
+
+export interface GitIssue {
+  number: number;
+  title: string;
+  state: string;
+  author: string | null;
+  assignee: string | null;
+  labels: string[];
+  comments: number;
+  created_at: string;
+  url: string;
+}
+
+export interface GitPullRequest {
+  number: number;
+  title: string;
+  state: string;
+  author: string | null;
+  head: string;
+  base: string;
+  draft: boolean;
+  created_at: string;
+  url: string;
 }
 
 // Deployment types (from deployer module)

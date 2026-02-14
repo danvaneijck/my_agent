@@ -71,6 +71,38 @@ class GitHubProvider(GitProvider):
     # Repository
     # ------------------------------------------------------------------
 
+    async def list_repos(self, per_page: int = 30, sort: str = "updated", search: str | None = None) -> dict:
+        params = {"per_page": min(per_page, 100), "sort": sort, "direction": "desc"}
+        if search:
+            # Use the search API for filtering by name
+            data = await self._get(
+                "/search/repositories",
+                q=f"{search} in:name user:@me",
+                per_page=min(per_page, 100),
+                sort=sort,
+            )
+            items = data.get("items", [])
+        else:
+            items = await self._get("/user/repos", **params)
+
+        repos = [
+            {
+                "owner": (r.get("owner") or {}).get("login", ""),
+                "repo": r.get("name", ""),
+                "full_name": r.get("full_name"),
+                "description": r.get("description"),
+                "url": r.get("html_url"),
+                "clone_url": r.get("clone_url"),
+                "default_branch": r.get("default_branch"),
+                "language": r.get("language"),
+                "private": r.get("private"),
+                "stars": r.get("stargazers_count", 0),
+                "updated_at": r.get("updated_at"),
+            }
+            for r in items
+        ]
+        return {"count": len(repos), "repos": repos}
+
     async def get_repo(self, owner: str, repo: str) -> dict:
         data = await self._get(f"/repos/{owner}/{repo}")
         return {

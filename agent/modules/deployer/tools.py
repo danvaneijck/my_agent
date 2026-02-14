@@ -61,6 +61,7 @@ class Deployment:
     project_name: str
     project_type: str
     port: int
+    user_id: str | None = None
     container_id: str | None = None
     url: str = ""
     status: str = "building"  # building | running | failed | stopped
@@ -72,6 +73,7 @@ class Deployment:
             "project_name": self.project_name,
             "project_type": self.project_type,
             "port": self.port,
+            "user_id": self.user_id,
             "container_id": self.container_id,
             "url": self.url,
             "status": self.status,
@@ -419,6 +421,7 @@ class DeployerTools:
             project_name=project_name,
             project_type=project_type,
             port=port,
+            user_id=user_id,
         )
         self.deployments[deploy_id] = deployment
 
@@ -494,18 +497,29 @@ class DeployerTools:
             logger.error("deploy_failed", deploy_id=deploy_id, error=str(e))
             raise
 
+    def _get_deployment(self, deploy_id: str, user_id: str | None = None) -> Deployment:
+        """Look up a deployment, enforcing ownership when user_id is provided."""
+        deployment = self.deployments.get(deploy_id)
+        if not deployment:
+            raise ValueError(f"Deployment not found: {deploy_id}")
+        if user_id and deployment.user_id and deployment.user_id != user_id:
+            raise ValueError(f"Deployment not found: {deploy_id}")
+        return deployment
+
     async def list_deployments(self, user_id: str | None = None) -> dict:
-        """List all active deployments."""
+        """List active deployments for the given user."""
+        if user_id:
+            deploys = [d for d in self.deployments.values() if d.user_id == user_id]
+        else:
+            deploys = list(self.deployments.values())
         return {
-            "deployments": [d.to_dict() for d in self.deployments.values()],
-            "total": len(self.deployments),
+            "deployments": [d.to_dict() for d in deploys],
+            "total": len(deploys),
         }
 
     async def teardown(self, deploy_id: str, user_id: str | None = None) -> dict:
         """Stop and remove a single deployment."""
-        deployment = self.deployments.get(deploy_id)
-        if not deployment:
-            raise ValueError(f"Deployment not found: {deploy_id}")
+        deployment = self._get_deployment(deploy_id, user_id)
 
         container_name = f"deploy-{deploy_id}"
         await self._remove_container(container_name)
@@ -517,12 +531,15 @@ class DeployerTools:
         return {"deploy_id": deploy_id, "status": "removed"}
 
     async def teardown_all(self, user_id: str | None = None) -> dict:
-        """Stop and remove all deployments."""
-        ids = list(self.deployments.keys())
+        """Stop and remove all deployments for the given user."""
+        if user_id:
+            ids = [d.id for d in self.deployments.values() if d.user_id == user_id]
+        else:
+            ids = list(self.deployments.keys())
         results = []
         for did in ids:
             try:
-                results.append(await self.teardown(did))
+                results.append(await self.teardown(did, user_id=user_id))
             except Exception as e:
                 results.append({"deploy_id": did, "error": str(e)})
         return {"removed": results, "total": len(results)}
@@ -531,8 +548,7 @@ class DeployerTools:
         self, deploy_id: str, lines: int = 50, user_id: str | None = None
     ) -> dict:
         """Return recent logs from a deployment container."""
-        if deploy_id not in self.deployments:
-            raise ValueError(f"Deployment not found: {deploy_id}")
+        self._get_deployment(deploy_id, user_id)
 
         container_name = f"deploy-{deploy_id}"
         proc = await asyncio.create_subprocess_exec(

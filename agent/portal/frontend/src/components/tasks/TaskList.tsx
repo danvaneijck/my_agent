@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Clock, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers } from "lucide-react";
+import { Clock, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, Copy, Check } from "lucide-react";
 import StatusBadge from "@/components/common/StatusBadge";
+import RepoLabel from "@/components/common/RepoLabel";
 import type { Task } from "@/types";
 
 function isStale(task: Task): boolean {
@@ -99,6 +100,32 @@ function totalElapsed(chain: TaskChain): number | null {
   return total > 0 ? total : null;
 }
 
+function CopyableId({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="inline-flex items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-300 transition-colors group"
+      title={`Copy ${id}`}
+    >
+      <span className="truncate max-w-[120px]">{id}</span>
+      {copied ? (
+        <Check size={10} className="shrink-0 text-green-400" />
+      ) : (
+        <Copy size={10} className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+      )}
+    </button>
+  );
+}
+
 interface TaskListProps {
   tasks: Task[];
 }
@@ -165,6 +192,7 @@ export default function TaskList({ tasks }: TaskListProps) {
                 <SortIcon col="status" />
               </th>
               <th className="px-4 py-3 font-medium">ID</th>
+              <th className="px-4 py-3 font-medium">Repo</th>
               <th className="px-4 py-3 font-medium">Prompt</th>
               <th
                 className="px-4 py-3 font-medium cursor-pointer select-none hover:text-gray-300"
@@ -245,12 +273,15 @@ export default function TaskList({ tasks }: TaskListProps) {
                   )}
                   {chain.root.prompt}
                 </p>
-                <div className="flex items-center gap-4 text-xs text-gray-500">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                   <span>{formatTime(chain.root.created_at)}</span>
                   <span className="inline-flex items-center gap-1">
                     <Clock size={12} />
                     {formatElapsed(totalElapsed(chain))}
                   </span>
+                  {chain.root.repo_url && (
+                    <RepoLabel repoUrl={chain.root.repo_url} branch={chain.root.branch} />
+                  )}
                 </div>
               </div>
 
@@ -331,11 +362,20 @@ function ChainRows({
             )}
           </div>
         </td>
-        <td className="px-4 py-3 text-gray-200 max-w-md truncate">
-          {chain.root.mode === "plan" && (
-            <span className="text-purple-400 text-xs mr-1.5">[plan]</span>
+        <td className="px-4 py-3">
+          {chain.root.repo_url ? (
+            <RepoLabel repoUrl={chain.root.repo_url} branch={chain.root.branch} />
+          ) : (
+            <CopyableId id={chain.root.workspace} />
           )}
-          {chain.root.prompt}
+        </td>
+        <td className="px-4 py-3 text-gray-200 max-w-md">
+          <div className="flex items-center gap-2 min-w-0">
+            {chain.root.mode === "plan" && (
+              <span className="text-purple-400 text-xs shrink-0">[plan]</span>
+            )}
+            <span className="truncate">{chain.root.prompt}</span>
+          </div>
         </td>
         <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
           {formatTime(chain.root.created_at)}
@@ -362,6 +402,13 @@ function ChainRows({
             </td>
             <td className="px-4 py-2 font-mono text-xs text-gray-500">
               {task.id.slice(0, 8)}
+            </td>
+            <td className="px-4 py-2">
+              {task.repo_url ? (
+                <RepoLabel repoUrl={task.repo_url} branch={task.branch} />
+              ) : (
+                <CopyableId id={task.workspace} />
+              )}
             </td>
             <td className="px-4 py-2 text-gray-400 text-xs max-w-md truncate">
               {task.prompt}

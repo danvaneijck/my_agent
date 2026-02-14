@@ -169,6 +169,7 @@ services:
     env_file: .env
     depends_on:
       - core
+      - postgres
     networks:
       - agent-net
     restart: unless-stopped
@@ -180,6 +181,7 @@ services:
     env_file: .env
     depends_on:
       - core
+      - postgres
     networks:
       - agent-net
     restart: unless-stopped
@@ -202,6 +204,7 @@ services:
     env_file: .env
     depends_on:
       - core
+      - postgres
     networks:
       - agent-net
     restart: unless-stopped
@@ -281,6 +284,7 @@ services:
     env_file: .env
     depends_on:
       - core
+      - postgres
     networks:
       - agent-net
     restart: unless-stopped

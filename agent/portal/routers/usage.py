@@ -187,11 +187,12 @@ async def anthropic_usage(user: PortalUser = Depends(require_auth)) -> dict:
         logger.info("anthropic_usage_skip", reason="no_credentials_stored")
         return not_available
 
-    # Extract OAuth access token (supports both snake_case and camelCase keys)
+    # Extract OAuth tokens (supports both snake_case and camelCase keys)
     try:
         creds = json.loads(creds_raw)
         oauth = creds["claudeAiOauth"]
         access_token = oauth.get("accessToken") or oauth.get("access_token")
+        refresh_token = oauth.get("refreshToken") or oauth.get("refresh_token")
         if not access_token:
             raise KeyError(f"no access token found in keys: {list(oauth.keys())}")
     except (json.JSONDecodeError, KeyError, TypeError) as e:
@@ -202,17 +203,41 @@ async def anthropic_usage(user: PortalUser = Depends(require_auth)) -> dict:
         )
         return not_available
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
+    async def _fetch_usage(token: str) -> httpx.Response:
+        return await client.get(
+            "https://api.anthropic.com/api/oauth/usage",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "anthropic-beta": "oauth-2025-04-20",
+            },
+        )
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                "https://api.anthropic.com/api/oauth/usage",
-                headers=headers,
-            )
+            resp = await _fetch_usage(access_token)
+
+            # If 401 and we have a refresh token, try refreshing
+            if resp.status_code == 401 and refresh_token:
+                logger.info("anthropic_usage_refreshing_token", user_id=str(user.user_id))
+                new_token = await _refresh_oauth_token(client, refresh_token)
+                if new_token:
+                    # Update stored credentials with new tokens
+                    oauth["accessToken"] = new_token["access_token"]
+                    if new_token.get("refresh_token"):
+                        oauth["refreshToken"] = new_token["refresh_token"]
+                    async with factory() as session:
+                        await store.set(
+                            session,
+                            user.user_id,
+                            "claude_code",
+                            "credentials_json",
+                            json.dumps(creds),
+                        )
+                        await session.commit()
+
+                    resp = await _fetch_usage(new_token["access_token"])
+
             logger.info(
                 "anthropic_usage_response",
                 status=resp.status_code,
@@ -224,9 +249,55 @@ async def anthropic_usage(user: PortalUser = Depends(require_auth)) -> dict:
             data = resp.json()
             return {
                 "available": True,
-                "five_hour": data.get("five_hour"),
-                "seven_day": data.get("seven_day"),
+                "five_hour": _normalize_window(data.get("five_hour")),
+                "seven_day": _normalize_window(data.get("seven_day")),
             }
     except Exception as e:
         logger.error("anthropic_usage_exception", error=str(e))
         return not_available
+
+
+def _normalize_window(window: dict | None) -> dict | None:
+    """Map Anthropic API fields to what the frontend expects."""
+    if not window:
+        return None
+    reset_iso = window.get("resets_at")
+    reset_ts = 0
+    if reset_iso:
+        try:
+            reset_ts = int(
+                datetime.fromisoformat(reset_iso).timestamp() * 1000
+            )
+        except (ValueError, TypeError):
+            pass
+    return {
+        "utilization_percent": window.get("utilization", 0),
+        "reset_timestamp": reset_ts,
+    }
+
+
+_CLAUDE_CODE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+
+
+async def _refresh_oauth_token(
+    client: httpx.AsyncClient, refresh_token: str
+) -> dict | None:
+    """Exchange a refresh token for a new access token."""
+    try:
+        resp = await client.post(
+            "https://console.anthropic.com/api/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": _CLAUDE_CODE_CLIENT_ID,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            logger.info("anthropic_oauth_refresh_success")
+            return data
+        logger.warning("anthropic_oauth_refresh_failed", status=resp.status_code, body=resp.text[:300])
+    except Exception as e:
+        logger.error("anthropic_oauth_refresh_exception", error=str(e))
+    return None

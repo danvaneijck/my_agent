@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import { useTasks } from "@/hooks/useTasks";
 import TaskList from "@/components/tasks/TaskList";
@@ -5,6 +7,24 @@ import NewTaskForm from "@/components/tasks/NewTaskForm";
 
 export default function TasksPage() {
   const { tasks, loading, error, refetch } = useTasks();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Read URL params for pre-filling the new task modal
+  const urlDefaults = useMemo(() => {
+    const repoUrl = searchParams.get("repo_url") || undefined;
+    const branch = searchParams.get("branch") || undefined;
+    const prompt = searchParams.get("prompt") || undefined;
+    const autoOpen = !!(repoUrl || prompt);
+    return { repoUrl, branch, prompt, autoOpen };
+  }, [searchParams]);
+
+  const handleCreated = () => {
+    // Clear URL params after task created
+    if (searchParams.toString()) {
+      setSearchParams({});
+    }
+    refetch();
+  };
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -23,7 +43,13 @@ export default function TasksPage() {
             <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           )}
         </div>
-        <NewTaskForm onCreated={refetch} />
+        <NewTaskForm
+          onCreated={handleCreated}
+          defaultRepoUrl={urlDefaults.repoUrl}
+          defaultBranch={urlDefaults.branch}
+          defaultPrompt={urlDefaults.prompt}
+          autoOpen={urlDefaults.autoOpen}
+        />
       </div>
 
       {/* Error */}
