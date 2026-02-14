@@ -1043,7 +1043,7 @@ class ClaudeCodeTools:
             '    git config --global credential.helper "!f() { echo username=x-access-token; echo password=$GITHUB_TOKEN; }; f"\n'
             'fi\n'
             '\n'
-            'if [ -n "$REPO_URL" ]; then\n'
+            'if [ -n "$REPO_URL" ] && [ "$CONTINUE_SESSION" != "1" ]; then\n'
             '    # Move task metadata aside so git clone into . succeeds\n'
             '    mkdir -p /tmp/_task_meta\n'
             '    mv task_meta_* task_*.log /tmp/_task_meta/ 2>/dev/null || true\n'
