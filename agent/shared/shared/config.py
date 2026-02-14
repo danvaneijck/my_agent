@@ -82,6 +82,22 @@ class Settings(BaseSettings):
     # Admin portal
     admin_api_key: str = ""
 
+    # Web portal
+    portal_api_key: str = ""
+    portal_user_id: str = ""
+    # Discord OAuth2 (for portal login)
+    discord_client_id: str = ""
+    discord_client_secret: str = ""
+    portal_oauth_redirect_uri: str = "http://localhost:8080/auth/callback"
+    portal_jwt_secret: str = ""
+
+    # Google OAuth2 (for portal login)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
+    # Credential encryption (Fernet key for encrypting user credentials at rest)
+    credential_encryption_key: str = ""
+
     # Injective — provide EITHER private key (hex) OR mnemonic, not both
     injective_private_key: str = ""
     injective_mnemonic: str = ""

@@ -324,6 +324,72 @@ class DeployerTools:
         self._used_ports.discard(port)
 
     # ------------------------------------------------------------------
+    # Smart project directory detection
+    # ------------------------------------------------------------------
+
+    # Marker files whose presence indicates a project root, keyed by type.
+    _PROJECT_MARKERS: dict[str, list[str]] = {
+        "react": ["package.json"],
+        "nextjs": ["package.json", "next.config.js", "next.config.mjs", "next.config.ts"],
+        "node": ["package.json"],
+        "static": ["index.html"],
+        "docker": ["Dockerfile"],
+    }
+
+    _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".next"}
+
+    def _resolve_project_dir(self, project_path: str, project_type: str) -> str:
+        """Resolve the actual project directory within a workspace.
+
+        If *project_path* already contains the expected project markers for
+        *project_type*, return it as-is.  Otherwise scan immediate
+        subdirectories (1 level deep) for a subdirectory that contains the
+        markers and return the best match.
+        """
+        markers = self._PROJECT_MARKERS.get(project_type, [])
+        if not markers:
+            return project_path
+
+        # Already has a marker → use as-is
+        if any(os.path.exists(os.path.join(project_path, m)) for m in markers):
+            return project_path
+
+        # Scan immediate children
+        try:
+            entries = os.listdir(project_path)
+        except OSError:
+            return project_path
+
+        candidates: list[tuple[str, int]] = []
+        for entry in entries:
+            if entry in self._SKIP_DIRS or entry.startswith("."):
+                continue
+            subdir = os.path.join(project_path, entry)
+            if not os.path.isdir(subdir):
+                continue
+            hits = sum(
+                1 for m in markers
+                if os.path.exists(os.path.join(subdir, m))
+            )
+            if hits > 0:
+                candidates.append((subdir, hits))
+
+        if not candidates:
+            return project_path
+
+        # Pick the candidate with the most marker matches
+        candidates.sort(key=lambda c: c[1], reverse=True)
+        resolved = candidates[0][0]
+        logger.info(
+            "resolved_project_dir",
+            original=project_path,
+            resolved=resolved,
+            project_type=project_type,
+            candidates=len(candidates),
+        )
+        return resolved
+
+    # ------------------------------------------------------------------
     # Public tools
     # ------------------------------------------------------------------
 
@@ -337,6 +403,9 @@ class DeployerTools:
         user_id: str | None = None,
     ) -> dict:
         """Build and deploy a project. Returns a live URL."""
+        # Auto-detect project subdirectory if workspace root was given
+        project_path = self._resolve_project_dir(project_path, project_type)
+
         if not os.path.isdir(project_path):
             raise ValueError(f"Project path does not exist: {project_path}")
 

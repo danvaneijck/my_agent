@@ -74,10 +74,10 @@ async def execute(call: ToolCall):
         if call.user_id:
             args["user_id"] = call.user_id
 
-        # The orchestrator injects platform context for all scheduler.* tools,
-        # but only add_job uses it. Strip for other tools.
+        # The orchestrator injects platform/conversation context for all scheduler.*
+        # tools, but only add_job uses it. Strip for other tools.
         if tool_name != "add_job":
-            for k in ("platform", "platform_channel_id", "platform_thread_id"):
+            for k in ("platform", "platform_channel_id", "platform_thread_id", "conversation_id"):
                 args.pop(k, None)
 
         if tool_name == "add_job":
@@ -86,6 +86,8 @@ async def execute(call: ToolCall):
             result = await tools.list_jobs(**args)
         elif tool_name == "cancel_job":
             result = await tools.cancel_job(**args)
+        elif tool_name == "cancel_workflow":
+            result = await tools.cancel_workflow(**args)
         else:
             return ToolResult(
                 tool_name=call.tool_name,

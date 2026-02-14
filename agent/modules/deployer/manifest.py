@@ -15,6 +15,8 @@ MANIFEST = ModuleManifest(
             description=(
                 "Deploy a project from a local path to a running container with a live URL. "
                 "Supports project types: react, nextjs, static, node, docker. "
+                "If the path is a workspace root, the actual project subdirectory "
+                "is auto-detected. "
                 "Pass env_vars to inject environment variables (e.g. API URLs for "
                 "frontend-backend linking)."
             ),
@@ -24,7 +26,8 @@ MANIFEST = ModuleManifest(
                     type="string",
                     description=(
                         "Absolute path to the project directory "
-                        "(e.g. /tmp/claude_tasks/{task_id}/)."
+                        "(e.g. /tmp/claude_tasks/{task_id}/). If the project "
+                        "is in a subdirectory, it will be auto-detected."
                     ),
                     required=True,
                 ),

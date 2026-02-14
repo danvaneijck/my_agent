@@ -47,6 +47,8 @@ _CONTEXTUAL_PATTERNS = re.compile(
         | you\s+said | you\s+mentioned | as\s+before | like\s+before
         # cancel / modify previous action
         | cancel | undo | revert | change\s+it | update\s+it
+        # approval / continuation of a pending action
+        | approve | go\s+ahead | proceed | looks\s+good | lgtm | ship\s+it | do\s+it
     )\b
     """,
     re.IGNORECASE,
@@ -179,8 +181,22 @@ class ContextBuilder:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         scheduler_guidance = (
             "\n\nWhen you submit a long-running task (like claude_code.run_task), "
-            "use scheduler.add_job to monitor it so the user is notified when it "
-            "completes. Do not ask the user to check back manually."
+            "use scheduler.add_job to monitor it. For multi-step workflows "
+            "(e.g. build then deploy), use on_complete='resume_conversation' "
+            "so the conversation resumes automatically when the task completes "
+            "and you can call the next tool (like deployer.deploy). For simple "
+            "monitoring where just a notification is needed, use on_complete='notify' "
+            "(default). Do not ask the user to check back manually."
+        )
+
+        claude_code_guidance = (
+            "\n\nWhen a claude_code task was run in plan mode and finishes with "
+            "'awaiting_input' status, the user must approve the plan before "
+            "implementation begins. When the user approves (e.g. 'approve', "
+            "'go ahead', 'looks good', 'ship it'), use claude_code.continue_task "
+            "with the ORIGINAL task_id and mode='execute' to begin implementation. "
+            "Do NOT create a new task with run_task — always use continue_task "
+            "to preserve the workspace and conversation context."
         )
 
         if persona:
@@ -189,6 +205,7 @@ class ContextBuilder:
                 f"Current date and time: {now}\n"
                 f"You have access to tools. Use them when needed to accomplish tasks."
                 f"{scheduler_guidance}"
+                f"{claude_code_guidance}"
             )
         return (
             "You are a helpful AI assistant with access to various tools. "
@@ -196,6 +213,7 @@ class ContextBuilder:
             f"Current date and time: {now}\n"
             "You have access to tools. Use them when needed to accomplish tasks."
             f"{scheduler_guidance}"
+            f"{claude_code_guidance}"
         )
 
     async def _get_semantic_memories(

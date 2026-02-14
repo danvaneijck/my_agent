@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -137,7 +138,7 @@ async def _evaluate_job(
             attempt=job.attempts,
             error=str(e),
         )
-        await _mark_failed(job, now, redis)
+        await _mark_failed(job, now, redis, settings)
         return
     except Exception as e:
         # Transient error — don't fail the job, just schedule the next attempt
@@ -148,7 +149,7 @@ async def _evaluate_job(
             error=str(e),
         )
         if job.attempts >= job.max_attempts:
-            await _mark_failed(job, now, redis)
+            await _mark_failed(job, now, redis, settings)
         else:
             job.next_run_at = now + timedelta(seconds=job.interval_seconds)
         return
@@ -157,25 +158,84 @@ async def _evaluate_job(
         job.status = "completed"
         job.completed_at = now
 
-        # Build notification message
+        # Build message
         if task_failed and job.on_failure_message:
             message = job.on_failure_message
         else:
             message = job.on_success_message
 
-        # Interpolate {result} placeholder if present
-        if result_data is not None and "{result}" in message:
-            message = message.replace("{result}", str(result_data))
+        # Interpolate {result} and {result.field} placeholders
+        if result_data is not None:
+            message = _interpolate_result(message, result_data)
 
-        await _publish_notification(job, message, redis)
-        logger.info("job_completed", job_id=str(job.id), task_failed=task_failed)
+        # Decide completion action
+        if job.on_complete == "resume_conversation" and not task_failed:
+            await _resume_conversation(job, message, result_data, settings, redis)
+        else:
+            # For task failures or notify mode, just send a notification
+            await _publish_notification(job, message, redis)
+
+        logger.info(
+            "job_completed",
+            job_id=str(job.id),
+            task_failed=task_failed,
+            on_complete=job.on_complete,
+        )
 
     elif job.attempts >= job.max_attempts:
-        await _mark_failed(job, now, redis)
+        await _mark_failed(job, now, redis, settings)
 
     else:
         # Not done yet, schedule next check
         job.next_run_at = now + timedelta(seconds=job.interval_seconds)
+
+
+_RESULT_SUMMARY_KEYS = (
+    "task_id", "status", "workspace", "mode", "error",
+    "elapsed_seconds", "exit_code",
+)
+
+
+def _summarize_result(result_data: dict | None) -> str:
+    """Return a compact summary of result_data for chat display.
+
+    Strips bulky fields like json_output (which can contain an entire
+    Claude Code session transcript) and keeps only essential metadata.
+    """
+    if not isinstance(result_data, dict):
+        return str(result_data)
+
+    summary = {k: v for k, v in result_data.items() if k in _RESULT_SUMMARY_KEYS and v is not None}
+    if not summary:
+        # Fallback: include top-level scalar fields only (skip large nested objects/lists)
+        summary = {
+            k: v for k, v in result_data.items()
+            if isinstance(v, (str, int, float, bool)) and len(str(v)) < 500
+        }
+    return str(summary) if summary else "(completed)"
+
+
+_RESULT_PLACEHOLDER_RE = re.compile(r"\{result(?:\.(\w+))?\}")
+
+
+def _interpolate_result(message: str, result_data: dict | None) -> str:
+    """Replace {result} and {result.field} placeholders in a message.
+
+    - ``{result}``       → compact summary of the full result dict
+    - ``{result.status}`` → value of ``result_data["status"]``
+    """
+    if not isinstance(result_data, dict):
+        return message.replace("{result}", str(result_data) if result_data is not None else "(completed)")
+
+    def _replace(m: re.Match) -> str:
+        field = m.group(1)
+        if field is None:
+            # bare {result}
+            return _summarize_result(result_data)
+        value = result_data.get(field)
+        return str(value) if value is not None else m.group(0)
+
+    return _RESULT_PLACEHOLDER_RE.sub(_replace, message)
 
 
 async def _check_poll_module(
@@ -270,10 +330,64 @@ async def _check_poll_url(job: ScheduledJob) -> bool:
     return resp.status_code == expected_status
 
 
+async def _resume_conversation(
+    job: ScheduledJob,
+    message: str,
+    result_data: dict | None,
+    settings: Settings,
+    redis: aioredis.Redis,
+) -> None:
+    """Re-enter the agent loop via core /continue endpoint.
+
+    This allows the LLM to continue with follow-up actions (e.g. deploy
+    after a build completes) using the original conversation context.
+    """
+    payload = {
+        "platform": job.platform,
+        "platform_channel_id": job.platform_channel_id,
+        "platform_thread_id": job.platform_thread_id,
+        "user_id": str(job.user_id),
+        "content": message,
+        "job_id": str(job.id),
+        "workflow_id": str(job.workflow_id) if job.workflow_id else None,
+        "result_data": result_data,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(
+                f"{settings.orchestrator_url}/continue",
+                json=payload,
+            )
+            resp.raise_for_status()
+            response_data = resp.json()
+
+        # The agent loop response is sent as a notification so the user sees it
+        agent_content = response_data.get("content", "")
+        if agent_content:
+            await _publish_notification(job, agent_content, redis)
+
+        logger.info(
+            "conversation_resumed",
+            job_id=str(job.id),
+            response_length=len(agent_content),
+        )
+    except Exception as e:
+        logger.error(
+            "resume_conversation_failed",
+            job_id=str(job.id),
+            error=str(e),
+        )
+        # Fall back to a plain notification so the user isn't left hanging
+        fallback = f"{message}\n\n(Note: automatic follow-up failed — {e})"
+        await _publish_notification(job, fallback, redis)
+
+
 async def _mark_failed(
     job: ScheduledJob,
     now: datetime,
     redis: aioredis.Redis,
+    settings: Settings,
 ) -> None:
     """Mark a job as failed and send a failure notification."""
     job.status = "failed"
@@ -283,7 +397,14 @@ async def _mark_failed(
         f"Scheduled job timed out after {job.max_attempts} attempts "
         f"({job.max_attempts * job.interval_seconds // 60} minutes)."
     )
-    await _publish_notification(job, message, redis)
+
+    # For resume_conversation jobs, try to resume so the LLM can handle the failure
+    if job.on_complete == "resume_conversation":
+        fail_message = f"[WORKFLOW FAILED] {message}"
+        await _resume_conversation(job, fail_message, None, settings, redis)
+    else:
+        await _publish_notification(job, message, redis)
+
     logger.info("job_failed_max_attempts", job_id=str(job.id))
 
 

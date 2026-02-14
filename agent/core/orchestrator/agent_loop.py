@@ -75,6 +75,10 @@ class AgentLoop:
         # 4. Resolve conversation
         conversation = await self._resolve_conversation(session, user, incoming, persona)
 
+        # 4b. Commit so cross-container tool calls (scheduler, location)
+        # can reference the conversation via FK
+        await session.commit()
+
         # 5. Get available tools
         allowed_modules = json.loads(persona.allowed_modules) if persona else parse_list(self.settings.default_guest_modules)
         tools = self.tool_registry.get_tools_for_user(user.permission_level, allowed_modules)
@@ -235,6 +239,8 @@ class AgentLoop:
                     tool_call.arguments["platform"] = conversation.platform
                     tool_call.arguments["platform_channel_id"] = conversation.platform_channel_id
                     tool_call.arguments["platform_thread_id"] = conversation.platform_thread_id
+                    if tool_call.tool_name == "scheduler.add_job":
+                        tool_call.arguments["conversation_id"] = str(conversation.id)
 
                 # Execute tool
                 result = await self.tool_registry.execute_tool(tool_call)

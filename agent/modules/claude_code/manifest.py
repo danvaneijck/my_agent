@@ -37,7 +37,18 @@ MANIFEST = ModuleManifest(
                 ToolParameter(
                     name="timeout",
                     type="integer",
-                    description="Max execution time in seconds (default 600).",
+                    description="Max execution time in seconds (default 1800). Do not set a lower value unless specifically requested.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="mode",
+                    type="string",
+                    description=(
+                        "Task mode: 'execute' (default) runs the task immediately, "
+                        "'plan' creates a plan for review before execution. "
+                        "Plan-mode tasks finish with 'awaiting_input' status."
+                    ),
+                    enum=["execute", "plan"],
                     required=False,
                 ),
             ],
@@ -47,10 +58,10 @@ MANIFEST = ModuleManifest(
             name="claude_code.continue_task",
             description=(
                 "Run a follow-up prompt against an existing task's workspace to make edits "
-                "to a previously generated project. The original files are preserved and "
-                "Claude Code can read, modify, or add to them. Returns a new task_id for "
-                "tracking progress. Use this instead of run_task when you want to iterate "
-                "on an existing project rather than start from scratch."
+                "to a previously generated project. Uses --continue to resume the Claude CLI "
+                "session with full conversation context. Returns a new task_id for tracking. "
+                "Set mode='execute' to approve a plan and begin implementation. "
+                "Also use this to resume a timed_out task — the workspace files are preserved."
             ),
             parameters=[
                 ToolParameter(
@@ -68,7 +79,17 @@ MANIFEST = ModuleManifest(
                 ToolParameter(
                     name="timeout",
                     type="integer",
-                    description="Max execution time in seconds (default 600).",
+                    description="Max execution time in seconds (default 1800). Do not set a lower value unless specifically requested.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="mode",
+                    type="string",
+                    description=(
+                        "Override the mode for this continuation. Use 'execute' to approve "
+                        "a plan and begin implementation. Omit to inherit from parent task."
+                    ),
+                    enum=["execute", "plan"],
                     required=False,
                 ),
             ],
@@ -145,7 +166,123 @@ MANIFEST = ModuleManifest(
                     name="status_filter",
                     type="string",
                     description="Filter by status.",
-                    enum=["queued", "running", "completed", "failed"],
+                    enum=["queued", "running", "completed", "failed", "timed_out", "awaiting_input"],
+                    required=False,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
+            name="claude_code.get_task_chain",
+            description=(
+                "Get all tasks in a planning chain (plan -> feedback -> implementation). "
+                "Returns tasks sorted chronologically. Use any task ID in the chain."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="Any task ID in the chain.",
+                    required=True,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
+            name="claude_code.browse_workspace",
+            description=(
+                "List files and directories in a task's workspace. "
+                "Returns entries with name, type (file/directory), size, and modified time."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID whose workspace to browse.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="path",
+                    type="string",
+                    description="Relative path within the workspace (empty string for root).",
+                    required=False,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
+            name="claude_code.read_workspace_file",
+            description="Read the contents of a text file in a task's workspace.",
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID whose workspace contains the file.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="path",
+                    type="string",
+                    description="Relative file path within the workspace.",
+                    required=True,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
+            name="claude_code.git_status",
+            description=(
+                "Get the git status of a task's workspace. Returns the current branch, "
+                "tracking info, ahead/behind counts, staged/unstaged/untracked files, "
+                "and recent commits. Use this to inspect the state of a cloned repository "
+                "after a coding task completes."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID whose workspace git status to check.",
+                    required=True,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
+            name="claude_code.git_push",
+            description=(
+                "Push commits from a task workspace's branch to its remote. "
+                "Requires SSH keys to be configured. Returns success/failure with git output. "
+                "Use claude_code.git_status first to verify the workspace has commits to push."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID whose workspace branch to push.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="remote",
+                    type="string",
+                    description="Remote name to push to (default: 'origin').",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="branch",
+                    type="string",
+                    description=(
+                        "Branch to push. Defaults to the current branch. "
+                        "Use 'HEAD:refs/heads/<name>' syntax to push to a different remote branch."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="force",
+                    type="boolean",
+                    description=(
+                        "Force push using --force-with-lease (safe force push). "
+                        "Default false. Use when the remote branch has been rebased."
+                    ),
                     required=False,
                 ),
             ],

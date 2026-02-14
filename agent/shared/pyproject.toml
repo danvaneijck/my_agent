@@ -16,6 +16,7 @@ dependencies = [
     "httpx>=0.26",
     "structlog>=24.1",
     "tiktoken>=0.5",
+    "cryptography>=42.0",
 ]
 
 [tool.setuptools.packages.find]

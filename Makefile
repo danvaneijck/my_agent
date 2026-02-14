@@ -55,7 +55,7 @@ infra-down: ## Stop infrastructure services
 # Build
 # ──────────────────────────────────────────────
 
-.PHONY: build build-core build-module
+.PHONY: build build-core build-module build-worker
 
 build: ## Rebuild all Docker images
 	$(COMPOSE) build
@@ -71,17 +71,24 @@ ifndef M
 endif
 	$(COMPOSE) build $(M)
 
+build-worker: ## Build the Claude Code worker image (used by claude-code module)
+	$(COMPOSE) build claude-code-worker
+
 # ──────────────────────────────────────────────
 # Restart with rebuild
 # ──────────────────────────────────────────────
 
-.PHONY: restart-core restart-module restart-bots
+.PHONY: restart-core restart-module restart-portal restart-bots
 
 restart-core: build-core ## Rebuild and restart the core service
 	$(COMPOSE) up -d --no-deps core
 
 restart-module: build-module ## Rebuild and restart a module (usage: make restart-module M=research)
 	$(COMPOSE) up -d --no-deps $(M)
+
+restart-portal: ## Rebuild and restart the web portal
+	$(COMPOSE) build portal
+	$(COMPOSE) up -d --no-deps portal
 
 restart-bots: ## Restart all communication bots
 	$(COMPOSE) restart discord-bot telegram-bot slack-bot
@@ -90,7 +97,7 @@ restart-bots: ## Restart all communication bots
 # Logs
 # ──────────────────────────────────────────────
 
-.PHONY: logs logs-core logs-module logs-bots
+.PHONY: logs logs-core logs-module logs-portal logs-bots
 
 logs: ## Tail logs from all services
 	$(COMPOSE) logs -f --tail=100
@@ -104,6 +111,9 @@ ifndef M
 	@exit 1
 endif
 	$(COMPOSE) logs -f --tail=100 $(M)
+
+logs-portal: ## Tail logs from the web portal
+	$(COMPOSE) logs -f --tail=100 portal
 
 logs-bots: ## Tail logs from all communication bots
 	$(COMPOSE) logs -f --tail=100 discord-bot telegram-bot slack-bot

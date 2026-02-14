@@ -29,6 +29,10 @@ class Conversation(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     is_summarized: Mapped[bool] = mapped_column(default=False)
+    title: Mapped[str | None] = mapped_column(default=None)
+    last_read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
 
     messages: Mapped[list[Message]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"
