@@ -40,6 +40,7 @@ LOG_TAIL_DEFAULT = 100  # lines returned by task_logs when no limit given
 TASK_META_FILE = "task_meta.json"  # persisted in each task workspace
 GIT_CMD_TIMEOUT = 60  # seconds for git operations (push, status, etc.)
 USER_CREDS_DIR = os.path.join(TASK_BASE_DIR, ".user_creds")  # per-user credentials
+MAX_WORKSPACES_PER_USER = 10  # maximum number of workspaces a user can have
 
 _GIT_REF_PATTERN = re.compile(r"^[a-zA-Z0-9._/:\-]+$")
 
@@ -320,6 +321,22 @@ class ClaudeCodeTools:
             raise ValueError(f"Task not found: {task_id}")
         return task
 
+    def _count_user_workspaces(self, user_id: str) -> int:
+        """Count unique workspaces owned by a user.
+
+        Task chains (multiple tasks sharing the same workspace via parent_task_id)
+        count as a single workspace.
+        """
+        user_tasks = [t for t in self.tasks.values() if t.user_id == user_id]
+
+        # Group by chain root to count unique workspaces
+        unique_chain_roots = set()
+        for task in user_tasks:
+            chain_root = task.parent_task_id or task.id
+            unique_chain_roots.add(chain_root)
+
+        return len(unique_chain_roots)
+
     # ------------------------------------------------------------------
     # Public tools (called by orchestrator)
     # ------------------------------------------------------------------
@@ -344,6 +361,16 @@ class ClaudeCodeTools:
         """
         if mode not in ("execute", "plan"):
             raise ValueError(f"Invalid mode: {mode}. Must be 'execute' or 'plan'.")
+
+        # Check workspace limit for user
+        if user_id:
+            current_workspace_count = self._count_user_workspaces(user_id)
+            if current_workspace_count >= MAX_WORKSPACES_PER_USER:
+                raise ValueError(
+                    f"Workspace limit reached. You have {current_workspace_count} active workspaces "
+                    f"(limit: {MAX_WORKSPACES_PER_USER}). Please delete old workspaces using "
+                    f"claude_code.delete_workspace or claude_code.delete_all_workspaces before creating new ones."
+                )
 
         task_id = uuid.uuid4().hex[:12]
         workspace = os.path.join(TASK_BASE_DIR, task_id)
@@ -649,6 +676,73 @@ class ClaudeCodeTools:
         chain.sort(key=lambda t: t["created_at"])
 
         return {"chain_root": chain_root, "tasks": chain, "total": len(chain)}
+
+    async def delete_all_workspaces(self, user_id: str | None = None) -> dict:
+        """Delete all workspaces and tasks for a user.
+
+        This is a bulk cleanup operation that permanently removes all workspace
+        directories and associated task metadata for the specified user.
+        """
+        if not user_id:
+            raise ValueError("user_id is required for delete_all_workspaces (safety check)")
+
+        # Get all tasks for this user
+        user_tasks = [t for t in self.tasks.values() if t.user_id == user_id]
+
+        if not user_tasks:
+            return {
+                "deleted_workspaces": 0,
+                "deleted_tasks": 0,
+                "message": "No workspaces found for this user.",
+            }
+
+        # Group by workspace using chain root to avoid counting duplicates
+        workspaces: dict[str, dict] = {}
+        for task in user_tasks:
+            chain_root = task.parent_task_id or task.id
+            if chain_root not in workspaces:
+                workspaces[chain_root] = {
+                    "workspace": task.workspace,
+                    "task_ids": [],
+                }
+            workspaces[chain_root]["task_ids"].append(task.id)
+
+        # Delete each workspace
+        deleted_workspaces = 0
+        deleted_tasks = 0
+
+        for chain_root, info in workspaces.items():
+            # Cancel any running tasks first
+            for tid in info["task_ids"]:
+                t = self.tasks.get(tid)
+                if t and t.status in ("queued", "running"):
+                    if t._asyncio_task and not t._asyncio_task.done():
+                        t._asyncio_task.cancel()
+                    container_name = f"claude-task-{t.id}"
+                    await self._kill_container(container_name)
+
+            # Delete workspace directory
+            if info["workspace"] and os.path.isdir(info["workspace"]):
+                shutil.rmtree(info["workspace"], ignore_errors=True)
+                deleted_workspaces += 1
+
+            # Remove tasks from in-memory registry
+            for tid in info["task_ids"]:
+                self.tasks.pop(tid, None)
+                deleted_tasks += 1
+
+        logger.info(
+            "all_workspaces_deleted",
+            user_id=user_id,
+            workspaces=deleted_workspaces,
+            tasks=deleted_tasks,
+        )
+
+        return {
+            "deleted_workspaces": deleted_workspaces,
+            "deleted_tasks": deleted_tasks,
+            "message": f"Deleted {deleted_workspaces} workspace(s) and {deleted_tasks} task(s).",
+        }
 
     # ------------------------------------------------------------------
     # Workspace helpers
