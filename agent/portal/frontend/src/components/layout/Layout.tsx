@@ -165,7 +165,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Notification toasts */}
       {toasts.length > 0 && (
-        <div className="fixed inset-x-0 top-16 z-50 flex flex-col items-center gap-2 pointer-events-none">
+        <div className="fixed inset-x-0 top-16 z-50 flex flex-col items-center gap-2 pointer-events-none" role="region" aria-live="polite" aria-label="Notifications">
           {toasts.map((toast) => (
             <div
               key={toast.id}
