@@ -1,0 +1,55 @@
+# Standalone docker-compose for local development / testing of the weather module.
+#
+# Usage:
+#   cd agent/modules/weather
+#   docker compose up --build
+#
+# The weather service will be available at http://localhost:8001
+# Redis will be available at localhost:6379
+#
+# To test:
+#   curl http://localhost:8001/health
+#   curl http://localhost:8001/manifest
+
+networks:
+  weather-net:
+    driver: bridge
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - weather-net
+    healthcheck:
+      test: redis-cli ping
+      interval: 5s
+      retries: 5
+
+  weather:
+    build:
+      context: ../../          # agent/ root (so shared/ is accessible)
+      dockerfile: modules/weather/Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      LOG_LEVEL: "info"
+      # Dummy values so pydantic-settings doesn't complain about missing .env
+      DATABASE_URL: "postgresql+asyncpg://agent:changeme@localhost:5432/agent"
+      ANTHROPIC_API_KEY: ""
+      OPENAI_API_KEY: ""
+      GOOGLE_API_KEY: ""
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - weather-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
