@@ -8,11 +8,13 @@ import {
   GitPullRequest,
   Rocket,
   BarChart3,
+  Gauge,
   ExternalLink,
   ArrowRight,
   AlertCircle,
 } from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
+import type { AnthropicUsageData } from "@/hooks/useDashboard";
 import type {
   ProjectSummary,
   Task,
@@ -791,6 +793,123 @@ function UsageCard({
 }
 
 // ---------------------------------------------------------------------------
+// Claude Code Usage Card
+// ---------------------------------------------------------------------------
+
+function utilizationColor(pct: number): string {
+  if (pct > 90) return "bg-red-500";
+  if (pct > 70) return "bg-yellow-500";
+  return "bg-green-500";
+}
+
+function utilizationTextColor(pct: number): string {
+  if (pct > 90) return "text-red-400";
+  if (pct > 70) return "text-yellow-400";
+  return "text-green-400";
+}
+
+function formatResetTime(resetTimestamp: number): string {
+  const now = Date.now();
+  const diffMs = resetTimestamp - now;
+  if (diffMs <= 0) return "Reset time passed";
+  const diffMins = Math.round(diffMs / 60_000);
+  const hours = Math.floor(diffMins / 60);
+  const mins = diffMins % 60;
+  if (hours > 0) return `Resets in ${hours}h ${mins}m`;
+  return `Resets in ${mins}m`;
+}
+
+function ClaudeCodeUsageCard({
+  data,
+  loading,
+  error,
+}: {
+  data: AnthropicUsageData | null;
+  loading: boolean;
+  error?: string;
+}) {
+  const navigate = useNavigate();
+
+  if (!data && !loading && !error) return null;
+
+  return (
+    <DashboardCard
+      title="Claude Code Usage"
+      icon={Gauge}
+      loading={loading && !data}
+      error={error}
+      headerAction={
+        <button
+          onClick={() => navigate("/usage")}
+          className="text-xs text-accent hover:text-accent-hover flex items-center gap-1"
+          aria-label="View full usage details"
+        >
+          Details <ArrowRight size={12} />
+        </button>
+      }
+    >
+      {data && !data.available && (
+        <div className="p-4 text-sm text-gray-500">
+          Configure Claude Code credentials in{" "}
+          <a href="/settings" className="text-accent hover:underline">
+            Settings
+          </a>{" "}
+          to view usage limits.
+        </div>
+      )}
+      {data && data.available && (
+        <div className="p-4 space-y-4">
+          {data.five_hour && (
+            <div>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <span className="text-sm text-gray-300">5 Hour</span>
+                <span className={`text-lg font-bold ${utilizationTextColor(data.five_hour.utilization_percent)}`}>
+                  {Math.round(data.five_hour.utilization_percent)}%
+                </span>
+              </div>
+              <div className="w-full bg-surface rounded-full h-2.5">
+                <div
+                  className={`h-2.5 rounded-full transition-all ${utilizationColor(data.five_hour.utilization_percent)}`}
+                  style={{ width: `${Math.min(100, data.five_hour.utilization_percent)}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {formatResetTime(data.five_hour.reset_timestamp)}
+              </p>
+            </div>
+          )}
+          {data.seven_day && (
+            <div>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <span className="text-sm text-gray-300">7 Day</span>
+                <span className={`text-lg font-bold ${utilizationTextColor(data.seven_day.utilization_percent)}`}>
+                  {Math.round(data.seven_day.utilization_percent)}%
+                </span>
+              </div>
+              <div className="w-full bg-surface rounded-full h-2.5">
+                <div
+                  className={`h-2.5 rounded-full transition-all ${utilizationColor(data.seven_day.utilization_percent)}`}
+                  style={{ width: `${Math.min(100, data.seven_day.utilization_percent)}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {formatResetTime(data.seven_day.reset_timestamp)}
+              </p>
+            </div>
+          )}
+          {!data.five_hour && !data.seven_day && (
+            <p className="text-sm text-gray-500">
+              No usage data available. The token may need the{" "}
+              <code className="text-gray-400">user:profile</code> scope.
+            </p>
+          )}
+        </div>
+      )}
+    </DashboardCard>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Project Tasks Summary Card (aggregated across all projects)
 // ---------------------------------------------------------------------------
 
@@ -949,7 +1068,7 @@ function ProjectTasksCard({
 function DashboardSkeleton() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {Array.from({ length: 6 }).map((_, i) => (
+      {Array.from({ length: 7 }).map((_, i) => (
         <div
           key={i}
           className="bg-surface-light border border-border rounded-xl overflow-hidden"
@@ -1067,6 +1186,11 @@ export default function HomePage() {
             usage={dashboard.usage}
             loading={dashboard.loading}
             error={dashboard.errors.usage}
+          />
+          <ClaudeCodeUsageCard
+            data={dashboard.anthropicUsage}
+            loading={dashboard.loading}
+            error={dashboard.errors.anthropicUsage}
           />
         </div>
       )}
