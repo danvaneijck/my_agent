@@ -109,6 +109,15 @@ MANIFEST = ModuleManifest(
                     enum=["execute", "plan"],
                     required=False,
                 ),
+                ToolParameter(
+                    name="auto_push",
+                    type="boolean",
+                    description=(
+                        "Override auto_push for this continuation. Set to true to push "
+                        "the branch after completion. Inherits from the parent task if omitted."
+                    ),
+                    required=False,
+                ),
             ],
             required_permission="admin",
         ),

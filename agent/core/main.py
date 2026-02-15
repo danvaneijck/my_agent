@@ -291,11 +291,37 @@ async def continue_conversation(req: ContinueRequest) -> AgentResponse:
             context_parts.append(
                 f"\nTask result summary: {json.dumps(summary, default=str)}"
             )
-    context_parts.append(
-        "\nContinue with the next steps. If the task succeeded, proceed with "
-        "deployment or any other planned follow-up actions. If it failed, "
-        "explain what went wrong."
-    )
+    guidance = ""
+    if req.result_data and isinstance(req.result_data, dict):
+        task_status = req.result_data.get("status")
+        if task_status == "completed":
+            guidance = (
+                "\nThe claude_code task completed successfully. Next steps: "
+                "1) Update the project task status to 'done'. "
+                "2) Use get_next_task for the next todo task in the phase. "
+                "3) If there is one, update it to 'doing' and use "
+                "continue_task on the completed workspace (with "
+                "auto_push=true) to keep file context. "
+                "4) If no more tasks, update the phase status."
+            )
+        elif task_status == "awaiting_input":
+            guidance = (
+                "\nThe claude_code task finished in plan mode. Present "
+                "the plan to the user. When approved, use continue_task "
+                "with mode='execute' and auto_push=true."
+            )
+        elif task_status in ("failed", "timed_out"):
+            guidance = (
+                "\nThe task failed. Update the project task status to "
+                "'failed' with the error message and notify the user."
+            )
+    if not guidance:
+        guidance = (
+            "\nContinue with the next steps. If the task succeeded, "
+            "proceed with follow-up actions. If it failed, explain "
+            "what went wrong."
+        )
+    context_parts.append(guidance)
 
     incoming = IncomingMessage(
         platform=req.platform,

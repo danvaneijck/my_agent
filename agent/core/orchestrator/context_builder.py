@@ -17,6 +17,7 @@ from shared.models.user import User
 
 try:
     from shared.models.project import Project
+    from shared.models.project_phase import ProjectPhase
     from shared.models.project_task import ProjectTask
     _HAS_PROJECTS = True
 except ImportError:
@@ -202,13 +203,16 @@ class ContextBuilder:
         )
 
         claude_code_guidance = (
-            "\n\nWhen a claude_code task was run in plan mode and finishes with "
-            "'awaiting_input' status, the user must approve the plan before "
-            "implementation begins. When the user approves (e.g. 'approve', "
-            "'go ahead', 'looks good', 'ship it'), use claude_code.continue_task "
-            "with the ORIGINAL task_id and mode='execute' to begin implementation. "
-            "Do NOT create a new task with run_task — always use continue_task "
-            "to preserve the workspace and conversation context."
+            "\n\nClaude Code rules:"
+            "\n- ALWAYS pass repo_url, branch, and auto_push=true when running "
+            "project tasks with run_task."
+            "\n- When a task finishes with 'awaiting_input' (plan mode), and the "
+            "user approves, use continue_task with the ORIGINAL task_id, "
+            "mode='execute', and auto_push=true. Never create a new run_task."
+            "\n- Prefer continue_task over run_task for follow-up work in the "
+            "same project — it preserves the workspace files and conversation "
+            "context. Only start a fresh run_task when previous work has been "
+            "pushed and a clean workspace is needed."
         )
 
         if persona:
@@ -278,11 +282,38 @@ class ContextBuilder:
 
                 lines.append(f"- {', '.join(parts)}")
 
+                # Show in-progress tasks with claude_task_ids so LLM can
+                # use continue_task instead of creating new workspaces
+                if doing > 0:
+                    doing_result = await session.execute(
+                        select(ProjectTask)
+                        .where(
+                            ProjectTask.project_id == p.id,
+                            ProjectTask.status == "doing",
+                        )
+                        .order_by(ProjectTask.order_index)
+                        .limit(5)
+                    )
+                    doing_tasks = list(doing_result.scalars().all())
+                    for t in doing_tasks:
+                        task_info = f'  - Task "{t.title}" (branch: {t.branch_name})'
+                        if t.claude_task_id:
+                            task_info += f" [claude_task_id: {t.claude_task_id}]"
+                        lines.append(task_info)
+
             lines.append(
-                "\nUse project_planner tools to manage projects. "
-                "When implementing a phase, use get_next_task to pick tasks "
-                "sequentially, update_task to track status, and claude_code "
-                "with scheduler for async execution."
+                "\nProject execution workflow:"
+                "\n1. get_next_task(phase_id) to pick the next todo task."
+                "\n2. update_task(status='doing') BEFORE starting any claude_code work."
+                "\n3. claude_code.run_task with repo_url, branch (from task's "
+                "branch_name), and auto_push=true. Then scheduler.add_job with "
+                "on_complete='resume_conversation' to monitor it. Include the "
+                "project task_id in the on_success_message for tracking."
+                "\n4. On resume: update_task(status='done'), then get_next_task "
+                "for the next one. For subsequent tasks in the same phase, "
+                "prefer continue_task on the previous workspace over a fresh "
+                "run_task (keeps file context, only start fresh when previous "
+                "work is pushed and context is exhausted)."
             )
 
             return "\n".join(lines)

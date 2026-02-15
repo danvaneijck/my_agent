@@ -769,6 +769,9 @@ class ClaudeCodeTools:
 
             if proc.returncode == 0:
                 task.result = self._parse_output(stdout)
+                token_summary = self._compute_token_summary(task.result)
+                if token_summary:
+                    task.result["token_summary"] = token_summary
                 if task.mode == "plan":
                     task.status = "awaiting_input"
                     # Extract plan content from PLAN.md or CLI output
@@ -1101,6 +1104,52 @@ class ClaudeCodeTools:
         return {
             "json_output": json_objects if json_objects else None,
             "raw_text": "\n".join(raw_lines) if raw_lines else None,
+        }
+
+    @staticmethod
+    def _compute_token_summary(parsed: dict) -> dict | None:
+        """Aggregate token usage from Claude CLI stream-json output."""
+        json_output = parsed.get("json_output")
+        if not json_output:
+            return None
+
+        total_input = 0
+        total_output = 0
+        total_cache_read = 0
+        total_cache_creation = 0
+        latest_input = 0
+        num_turns = 0
+        model = None
+
+        for obj in json_output:
+            if obj.get("type") != "assistant":
+                continue
+            msg = obj.get("message", {})
+            usage = msg.get("usage")
+            if not usage:
+                continue
+
+            num_turns += 1
+            input_t = usage.get("input_tokens", 0)
+            total_input += input_t
+            total_output += usage.get("output_tokens", 0)
+            total_cache_read += usage.get("cache_read_input_tokens", 0)
+            total_cache_creation += usage.get("cache_creation_input_tokens", 0)
+            latest_input = input_t
+            if not model:
+                model = msg.get("model")
+
+        if num_turns == 0:
+            return None
+
+        return {
+            "total_input_tokens": total_input,
+            "total_output_tokens": total_output,
+            "total_cache_read_tokens": total_cache_read,
+            "total_cache_creation_tokens": total_cache_creation,
+            "latest_context_tokens": latest_input,
+            "num_turns": num_turns,
+            "model": model,
         }
 
     async def _heartbeat_loop(self, task: Task) -> None:

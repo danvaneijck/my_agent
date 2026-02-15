@@ -83,14 +83,23 @@ The LLM orchestrates using existing modules — the project planner only manages
 
 ### Sequential Flow (per phase)
 1. `get_next_task(phase_id)` → returns next `todo` task
-2. `update_task(status="doing")` → marks it in progress
-3. `git_platform.create_issue(title, body)` → creates GitHub issue
-4. `update_task(issue_number=N)` → tracks issue
-5. `claude_code.run_task(prompt, repo_url, branch, auto_push=true)` → starts coding
-6. `scheduler.add_job(poll task_status, on_complete="resume_conversation")` → monitors
-7. On resume: `git_platform.create_pull_request(head=branch, base=main)`
-8. `update_task(status="in_review", pr_number=N)` → tracks PR
-9. Repeat from step 1 until no more `todo` tasks
+2. `update_task(status="doing")` → marks it in progress BEFORE starting work
+3. `claude_code.run_task(prompt, repo_url, branch, auto_push=true)` → starts coding
+4. `scheduler.add_job(poll task_status, on_complete="resume_conversation")` → monitors
+5. On resume: `update_task(status="done")` → marks completion
+6. For subsequent tasks in the same phase: prefer `claude_code.continue_task` on the
+   previous workspace (preserves file context and conversation history) over a fresh
+   `run_task`. Only start fresh when previous work has been pushed and context is exhausted.
+7. Repeat from step 1 until no more `todo` tasks
+
+### Workspace Continuity
+
+- **Plan → Execute**: Always use `continue_task(mode="execute", auto_push=true)` on the
+  planning task's workspace. Never create a new `run_task` for implementation.
+- **Same phase, multiple tasks**: Use `continue_task` to keep working in the same workspace.
+  The prompt can instruct the agent to switch branches for the new task.
+- **New phase after push**: Safe to use fresh `run_task` since previous code is in the remote.
+- **`auto_push=true`**: Always set this so changes are pushed after each task completes.
 
 ### Error Handling
 - Task failure: mark as `failed` with error_message, notify user, skip to next

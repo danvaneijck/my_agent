@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, XCircle, Clock, FolderOpen, Trash2 } from "lucide-react";
+import { ArrowLeft, XCircle, Clock, FolderOpen, Trash2, Brain } from "lucide-react";
 import { api } from "@/api/client";
 import StatusBadge from "@/components/common/StatusBadge";
 import RepoLabel from "@/components/common/RepoLabel";
@@ -19,6 +19,30 @@ function formatElapsed(seconds: number | null): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+interface TokenSummary {
+  latest_context_tokens: number;
+  total_output_tokens: number;
+  num_turns: number;
+  model?: string;
+}
+
+function ContextUsageBadge({ summary }: { summary: TokenSummary }) {
+  const ctx = summary.latest_context_tokens;
+  const maxCtx = summary.model?.includes("gemini") ? 1000000 : 200000;
+  const pct = Math.round((ctx / maxCtx) * 100);
+  const color = pct > 80 ? "text-red-400" : pct > 50 ? "text-yellow-400" : "text-green-400";
+  const fmt = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}K` : `${n}`);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 ${color}`}
+      title={`${ctx.toLocaleString()} / ${maxCtx.toLocaleString()} context tokens | ${summary.total_output_tokens.toLocaleString()} output | ${summary.num_turns} turns`}
+    >
+      <Brain size={12} />
+      {fmt(ctx)} / {fmt(maxCtx)} ({pct}%)
+    </span>
+  );
 }
 
 export default function TaskDetailPage() {
@@ -164,6 +188,9 @@ export default function TaskDetailPage() {
             <FolderOpen size={12} />
             {task.workspace}
           </span>
+          {task.result?.token_summary != null ? (
+            <ContextUsageBadge summary={task.result.token_summary as TokenSummary} />
+          ) : null}
         </div>
 
         {task.error && (
