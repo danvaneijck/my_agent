@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play } from "lucide-react";
-import { useProjectDetail, executePhase } from "@/hooks/useProjects";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap } from "lucide-react";
+import { useProjectDetail, executePhase, startWorkflow } from "@/hooks/useProjects";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PlanningTaskPanel from "@/components/projects/PlanningTaskPanel";
@@ -110,6 +110,19 @@ export default function ProjectDetailPage() {
       // Start next phase
       await executePhase(projectId, { auto_push: true });
       refetch();
+    } catch {
+      // Error
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleStartWorkflow = async () => {
+    if (!projectId) return;
+    setStarting(true);
+    try {
+      await startWorkflow(projectId, { auto_push: true });
+      refetch(); // Refresh to show execution panel
     } catch {
       // Error
     } finally {
@@ -228,16 +241,28 @@ export default function ProjectDetailPage() {
               onPause={refetch}
             />
           ) : (
-            /* Show Start Implementation if there are incomplete phases */
+            /* Show Start buttons if there are incomplete phases */
             project.phases.some(p => p.status !== "completed") && (
-              <button
-                onClick={handleStartExecution}
-                disabled={starting}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
-              >
-                <Play size={16} />
-                {starting ? "Starting..." : "Start Implementation"}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleStartWorkflow}
+                  disabled={starting}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-accent to-purple-500 text-white text-sm font-medium hover:from-accent-hover hover:to-purple-600 transition-colors disabled:opacity-50 shadow-lg shadow-accent/20"
+                  title="Automatically execute all phases sequentially with PR creation"
+                >
+                  <Zap size={16} />
+                  {starting ? "Starting..." : "Start Automated Workflow"}
+                </button>
+                <button
+                  onClick={handleStartExecution}
+                  disabled={starting}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-lighter border border-border text-gray-300 text-sm font-medium hover:bg-surface hover:text-white transition-colors disabled:opacity-50"
+                  title="Manually execute one phase at a time"
+                >
+                  <Play size={16} />
+                  {starting ? "Starting..." : "Start Manual Phase"}
+                </button>
+              </div>
             )
           )}
         </>

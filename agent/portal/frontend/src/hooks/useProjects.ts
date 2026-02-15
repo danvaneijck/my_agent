@@ -110,3 +110,20 @@ export async function executePhase(
     body: JSON.stringify(options || {}),
   });
 }
+
+export async function startWorkflow(
+  projectId: string,
+  options?: { auto_push?: boolean; timeout?: number },
+): Promise<{
+  success: boolean;
+  workflow_id: string;
+  first_phase_id: string;
+  first_phase_name: string;
+  claude_task_id: string;
+  message: string;
+}> {
+  return api(`/api/projects/${projectId}/start-workflow`, {
+    method: "POST",
+    body: JSON.stringify(options || {}),
+  });
+}
