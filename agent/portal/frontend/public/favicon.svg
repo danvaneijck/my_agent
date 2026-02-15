@@ -1,0 +1,13 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="32" height="32" fill="#1a1b23"/>
+  <!-- Simplified icon for small sizes -->
+  <path d="M6 16L9 11L15 11L18 16L15 21L9 21L6 16Z" fill="#6366f1"/>
+  <path d="M14 16L17 11L23 11L26 16L23 21L17 21L14 16Z" fill="url(#favGradient)"/>
+  <line x1="15" y1="16" x2="17" y2="16" stroke="#818cf8" stroke-width="2"/>
+  <defs>
+    <linearGradient id="favGradient" x1="14" y1="11" x2="26" y2="21">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+</svg>

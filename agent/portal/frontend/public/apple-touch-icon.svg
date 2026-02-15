@@ -1,0 +1,22 @@
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="180" height="180" fill="#1a1b23" rx="40"/>
+
+  <!-- Larger, centered icon for Apple touch -->
+  <g transform="translate(30, 40)">
+    <!-- Left hexagon -->
+    <path d="M15 50L30 25L60 25L75 50L60 75L30 75L15 50Z" fill="#6366f1"/>
+
+    <!-- Right hexagon with gradient -->
+    <path d="M55 50L70 25L100 25L115 50L100 75L70 75L55 50Z" fill="url(#appleGradient)"/>
+
+    <!-- Connection -->
+    <line x1="60" y1="50" x2="70" y2="50" stroke="#818cf8" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <defs>
+    <linearGradient id="appleGradient" x1="55" y1="25" x2="115" y2="75" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+</svg>
