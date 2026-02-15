@@ -438,12 +438,14 @@ async def ws_chat(websocket: WebSocket) -> None:
                 if is_new and real_conv_id:
                     asyncio.create_task(_generate_title(real_conv_id))
 
+            except WebSocketDisconnect:
+                raise
             except Exception as e:
                 logger.error("chat_ws_error", error=str(e))
                 try:
                     await websocket.send_json({"type": "error", "message": str(e)})
-                except RuntimeError:
-                    pass  # WebSocket already closed
+                except Exception:
+                    break  # WebSocket already closed
             finally:
                 heartbeat_task.cancel()
 

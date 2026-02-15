@@ -204,6 +204,77 @@ MANIFEST = ModuleManifest(
             ],
             required_permission="user",
         ),
+        # ── Batch execution ──────────────────────────────────────────────
+        ToolDefinition(
+            name="project_planner.get_execution_plan",
+            description=(
+                "Get a batch execution plan for a project. Gathers all todo "
+                "tasks across specified phases (or all phases) and returns a "
+                "structured plan with the design document, tasks in order, "
+                "and a pre-built prompt for a single claude_code.run_task call. "
+                "Use this instead of get_next_task when implementing multiple "
+                "phases at once."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="project_id", type="string",
+                    description="UUID of the project.",
+                ),
+                ToolParameter(
+                    name="phase_ids", type="array",
+                    description=(
+                        "Optional list of phase UUIDs to include. "
+                        "If omitted, all phases with todo tasks are included."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="user_id", type="string",
+                    description="User ID (injected by orchestrator).",
+                    required=False,
+                ),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
+            name="project_planner.bulk_update_tasks",
+            description=(
+                "Update multiple tasks at once. Use with get_execution_plan "
+                "to mark all tasks as 'doing' before batch execution, then "
+                "'done' after completion. Pass the todo_task_ids from the "
+                "execution plan."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_ids", type="array",
+                    description="List of task UUID strings to update.",
+                ),
+                ToolParameter(
+                    name="status", type="string",
+                    description="New status for all tasks.",
+                    enum=["todo", "doing", "in_review", "done", "failed"],
+                ),
+                ToolParameter(
+                    name="claude_task_id", type="string",
+                    description=(
+                        "Claude Code task ID to set on all tasks "
+                        "(they share a single execution)."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="error_message", type="string",
+                    description="Error message to set on all tasks (for failed status).",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="user_id", type="string",
+                    description="User ID (injected by orchestrator).",
+                    required=False,
+                ),
+            ],
+            required_permission="user",
+        ),
         # ── Reporting ───────────────────────────────────────────────────
         ToolDefinition(
             name="project_planner.get_project_status",
