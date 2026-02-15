@@ -195,6 +195,12 @@ MANIFEST = ModuleManifest(
                     enum=["queued", "running", "completed", "failed", "timed_out", "awaiting_input"],
                     required=False,
                 ),
+                ToolParameter(
+                    name="latest_per_chain",
+                    type="boolean",
+                    description="When true, return only the latest task from each task chain instead of all chain members.",
+                    required=False,
+                ),
             ],
             required_permission="admin",
         ),
