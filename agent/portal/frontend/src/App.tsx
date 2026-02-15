@@ -22,6 +22,7 @@ import PhaseDetailPage from "@/pages/PhaseDetailPage";
 import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
 import HomePage from "@/pages/HomePage";
 import LandingPage from "@/pages/LandingPage";
+import NotFoundPage from "@/pages/NotFoundPage";
 
 interface AuthProvider {
   name: string;
@@ -284,6 +285,7 @@ export default function App() {
         <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
         <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Layout>
   );

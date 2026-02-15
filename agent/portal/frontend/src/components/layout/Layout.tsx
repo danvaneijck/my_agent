@@ -144,7 +144,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const title =
     PAGE_TITLES[location.pathname] ||
-    (location.pathname.startsWith("/tasks/") ? "Task Detail" : "Agent Portal");
+    (location.pathname.startsWith("/tasks/") ? "Task Detail" : "ModuFlow");
 
   return (
     <div className="h-full flex">

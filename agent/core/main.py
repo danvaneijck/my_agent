@@ -31,7 +31,11 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-app = FastAPI(title="AI Agent Orchestrator", version="1.0.0")
+app = FastAPI(
+    title="ModuFlow API - Core Orchestrator",
+    description="ModuFlow's core orchestrator service coordinates agent reasoning loops, LLM routing, and tool execution. Part of the modular AI agent framework.",
+    version="1.0.0"
+)
 
 # Global instances (initialized on startup)
 settings = get_settings()
