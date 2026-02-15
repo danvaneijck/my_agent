@@ -160,7 +160,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           title={title}
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
         />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="flex-1 overflow-auto page-transition">{children}</main>
       </div>
 
       {/* Notification toasts */}

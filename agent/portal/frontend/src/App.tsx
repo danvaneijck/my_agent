@@ -23,6 +23,7 @@ import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
 import HomePage from "@/pages/HomePage";
 import LandingPage from "@/pages/LandingPage";
 import NotFoundPage from "@/pages/NotFoundPage";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
 interface AuthProvider {
   name: string;
@@ -88,8 +89,8 @@ function LoginScreen() {
         )}
 
         {discovering ? (
-          <div className="flex justify-center py-8">
-            <div className="w-6 h-6 border-3 border-accent border-t-transparent rounded-full animate-spin" />
+          <div className="flex justify-center py-4">
+            <LoadingSpinner size="md" />
           </div>
         ) : providers.length === 0 ? (
           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
@@ -212,7 +213,7 @@ function AuthCallback() {
 
   return (
     <div className="h-full flex items-center justify-center">
-      <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      <LoadingSpinner size="lg" />
     </div>
   );
 }
@@ -254,7 +255,7 @@ export default function App() {
   if (authenticated === null) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <LoadingSpinner size="lg" />
       </div>
     );
   }
