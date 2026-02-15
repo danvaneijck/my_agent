@@ -320,5 +320,32 @@ MANIFEST = ModuleManifest(
             ],
             required_permission="admin",
         ),
+        ToolDefinition(
+            name="claude_code.delete_workspace",
+            description=(
+                "Delete a task's workspace directory and remove all tasks in the chain. "
+                "This permanently removes all files in the workspace. "
+                "Use this to clean up completed or failed tasks."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID whose workspace to delete.",
+                    required=True,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
+            name="claude_code.delete_all_workspaces",
+            description=(
+                "Delete ALL workspaces and tasks for the current user. "
+                "This is a bulk cleanup operation that permanently removes all files "
+                "from all your claude_code workspaces. Use with caution."
+            ),
+            parameters=[],  # user_id is injected automatically
+            required_permission="admin",
+        ),
     ],
 )

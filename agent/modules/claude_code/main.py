@@ -98,6 +98,8 @@ async def execute(call: ToolCall) -> ToolResult:
             result = await tools.get_task_chain(**args)
         elif tool_name == "delete_workspace":
             result = await tools.delete_workspace(**args)
+        elif tool_name == "delete_all_workspaces":
+            result = await tools.delete_all_workspaces(**args)
         elif tool_name == "browse_workspace":
             result = await tools.browse_workspace(**args)
         elif tool_name == "read_workspace_file":
