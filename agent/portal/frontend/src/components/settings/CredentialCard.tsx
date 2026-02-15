@@ -1,6 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "@/api/client";
-import { Check, ChevronDown, ChevronRight, Edit3, HelpCircle, Trash2, X, Shield, ShieldOff } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Edit3,
+  ExternalLink,
+  HelpCircle,
+  RefreshCw,
+  Shield,
+  ShieldOff,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
 
 interface KeyDefinition {
   key: string;
@@ -34,9 +47,21 @@ interface SetupGuide {
   note?: string;
 }
 
+interface ClaudeTokenStatus {
+  configured: boolean;
+  valid?: boolean;
+  expires_at?: string | null;
+  expires_in_seconds?: number | null;
+  needs_refresh?: boolean;
+  scopes?: string[];
+  subscription_type?: string | null;
+  rate_limit_tier?: string | null;
+  error?: string;
+}
+
 const SETUP_GUIDES: Record<string, SetupGuide> = {
   claude_code: {
-    title: "Finding your Claude CLI credentials",
+    title: "Paste credentials manually (from CLI)",
     steps: [
       {
         instruction: "Open a terminal and print your credentials file:",
@@ -56,18 +81,247 @@ const SETUP_GUIDES: Record<string, SetupGuide> = {
     title: "Setting up GitHub credentials",
     steps: [
       {
-        instruction: "GitHub Token (PAT): Create a fine-grained personal access token at GitHub Settings > Developer settings > Personal access tokens. Grant repo access for the repositories you want the agent to work with.",
+        instruction:
+          "GitHub Token (PAT): Create a fine-grained personal access token at GitHub Settings > Developer settings > Personal access tokens. Grant repo access for the repositories you want the agent to work with.",
       },
       {
-        instruction: "SSH Private Key (optional): Paste the contents of your private key file. Used for git clone/push over SSH.",
+        instruction:
+          "SSH Private Key (optional): Paste the contents of your private key file. Used for git clone/push over SSH.",
         code: "cat ~/.ssh/id_ed25519",
       },
       {
-        instruction: "Git Author Name/Email: Set the identity used for commits made by the agent on your behalf.",
+        instruction:
+          "Git Author Name/Email: Set the identity used for commits made by the agent on your behalf.",
       },
     ],
   },
 };
+
+function formatTimeRemaining(seconds: number): string {
+  if (seconds <= 0) return "Expired";
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${mins}m remaining`;
+  return `${mins}m remaining`;
+}
+
+// ---------------------------------------------------------------------------
+// Claude OAuth sub-component
+// ---------------------------------------------------------------------------
+
+function ClaudeOAuthFlow({
+  onSuccess,
+  onCancel,
+}: {
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const [step, setStep] = useState<"idle" | "authorizing" | "exchanging">("idle");
+  const [authCode, setAuthCode] = useState("");
+  const [error, setError] = useState("");
+
+  const startOAuth = async () => {
+    setError("");
+    setStep("authorizing");
+    try {
+      const data = await api("/api/settings/credentials/claude_code/oauth/start", {
+        method: "POST",
+      });
+      // Open the Anthropic authorize URL in a new tab
+      window.open(data.authorize_url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      setError(err.message);
+      setStep("idle");
+    }
+  };
+
+  const exchangeCode = async () => {
+    const code = authCode.trim();
+    if (!code) {
+      setError("Please paste the authorization code");
+      return;
+    }
+    setError("");
+    setStep("exchanging");
+    try {
+      await api("/api/settings/credentials/claude_code/oauth/exchange", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message);
+      setStep("authorizing");
+    }
+  };
+
+  if (step === "idle") {
+    return (
+      <button
+        onClick={startOAuth}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors w-full justify-center"
+      >
+        <Zap size={16} />
+        Connect Claude Account
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-accent/30 bg-accent/5 p-3">
+        <p className="text-sm text-gray-300 mb-2">
+          A new tab opened for Anthropic login. After you authorize:
+        </p>
+        <ol className="text-sm text-gray-400 space-y-1 ml-4 list-decimal">
+          <li>Copy the code shown on the Anthropic page</li>
+          <li>Paste it below</li>
+        </ol>
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-400 mb-1">
+          Authorization code
+        </label>
+        <input
+          type="text"
+          value={authCode}
+          onChange={(e) => setAuthCode(e.target.value)}
+          placeholder="Paste the code from Anthropic here..."
+          className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 font-mono focus:outline-none focus:border-accent"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") exchangeCode();
+          }}
+        />
+      </div>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      <div className="flex gap-2">
+        <button
+          onClick={exchangeCode}
+          disabled={step === "exchanging"}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+        >
+          <Check size={14} />
+          {step === "exchanging" ? "Connecting..." : "Connect"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm transition-colors"
+        >
+          <X size={14} />
+          Cancel
+        </button>
+        <button
+          onClick={startOAuth}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm transition-colors ml-auto"
+          title="Reopen Anthropic login"
+        >
+          <ExternalLink size={14} />
+          Reopen login
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Claude token status sub-component
+// ---------------------------------------------------------------------------
+
+function ClaudeTokenStatusBar({
+  onRefreshDone,
+}: {
+  onRefreshDone: () => void;
+}) {
+  const [status, setStatus] = useState<ClaudeTokenStatus | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const data = await api("/api/settings/credentials/claude_code/status");
+      setStatus(data);
+    } catch {
+      // Silently fail — status is optional enhancement
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshError("");
+    try {
+      await api("/api/settings/credentials/claude_code/oauth/refresh", {
+        method: "POST",
+      });
+      await fetchStatus();
+      onRefreshDone();
+    } catch (err: any) {
+      setRefreshError(err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  if (!status || !status.configured) return null;
+
+  const expirySeconds = status.expires_in_seconds ?? 0;
+  const isExpired = expirySeconds <= 0;
+  const isWarning = !isExpired && (status.needs_refresh ?? false);
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Token validity */}
+        {isExpired ? (
+          <span className="text-xs text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full">
+            Token expired
+          </span>
+        ) : isWarning ? (
+          <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded-full">
+            {formatTimeRemaining(expirySeconds)}
+          </span>
+        ) : (
+          <span className="text-xs text-green-400/70 bg-green-400/5 px-2 py-0.5 rounded-full">
+            {formatTimeRemaining(expirySeconds)}
+          </span>
+        )}
+
+        {/* Subscription type */}
+        {status.subscription_type && (
+          <span className="text-xs text-gray-500 bg-gray-500/10 px-2 py-0.5 rounded-full">
+            {status.subscription_type}
+          </span>
+        )}
+
+        {/* Refresh button */}
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors disabled:opacity-50 ml-auto"
+          title="Refresh token"
+        >
+          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
+          {refreshing ? "Refreshing..." : "Refresh token"}
+        </button>
+      </div>
+
+      {refreshError && (
+        <p className="text-xs text-red-400">{refreshError}</p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main CredentialCard
+// ---------------------------------------------------------------------------
 
 export default function CredentialCard({ service, onUpdate }: CredentialCardProps) {
   const [editing, setEditing] = useState(false);
@@ -78,6 +332,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
   const [showGuide, setShowGuide] = useState(false);
 
   const guide = SETUP_GUIDES[service.service];
+  const isClaude = service.service === "claude_code";
 
   const handleSave = async () => {
     const nonEmpty = Object.fromEntries(
@@ -122,6 +377,13 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
     }
   };
 
+  const cancelEditing = () => {
+    setEditing(false);
+    setValues({});
+    setError("");
+    setShowGuide(false);
+  };
+
   return (
     <div className="bg-surface-light border border-border rounded-xl p-5">
       {/* Header */}
@@ -163,19 +425,42 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
         </div>
       </div>
 
-      {/* Configured keys summary */}
+      {/* Configured keys summary + Claude token status */}
       {service.configured && !editing && (
-        <p className="text-xs text-gray-500">
-          Keys: {service.configured_keys.join(", ")}
-          {service.configured_at && (
-            <> &middot; Updated {new Date(service.configured_at).toLocaleDateString()}</>
-          )}
-        </p>
+        <>
+          <p className="text-xs text-gray-500">
+            Keys: {service.configured_keys.join(", ")}
+            {service.configured_at && (
+              <> &middot; Updated {new Date(service.configured_at).toLocaleDateString()}</>
+            )}
+          </p>
+          {isClaude && <ClaudeTokenStatusBar onRefreshDone={onUpdate} />}
+        </>
       )}
 
       {/* Edit form */}
       {editing && (
         <div className="space-y-3 mt-3">
+          {/* Claude OAuth connect button */}
+          {isClaude && (
+            <ClaudeOAuthFlow
+              onSuccess={() => {
+                setEditing(false);
+                onUpdate();
+              }}
+              onCancel={cancelEditing}
+            />
+          )}
+
+          {/* Divider between OAuth and manual paste for Claude */}
+          {isClaude && (
+            <div className="flex items-center gap-3 text-xs text-gray-600">
+              <div className="flex-1 border-t border-border" />
+              <span>or paste credentials manually</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+          )}
+
           {/* Setup guide */}
           {guide && (
             <div className="rounded-lg border border-border overflow-hidden">
@@ -186,17 +471,20 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
               >
                 <HelpCircle size={14} className="shrink-0" />
                 <span>{guide.title}</span>
-                {showGuide
-                  ? <ChevronDown size={14} className="ml-auto shrink-0" />
-                  : <ChevronRight size={14} className="ml-auto shrink-0" />
-                }
+                {showGuide ? (
+                  <ChevronDown size={14} className="ml-auto shrink-0" />
+                ) : (
+                  <ChevronRight size={14} className="ml-auto shrink-0" />
+                )}
               </button>
               {showGuide && (
                 <div className="px-3 pb-3 space-y-3">
                   <ol className="space-y-2.5">
                     {guide.steps.map((step, i) => (
                       <li key={i} className="flex gap-2.5 text-sm">
-                        <span className="text-accent font-medium shrink-0">{i + 1}.</span>
+                        <span className="text-accent font-medium shrink-0">
+                          {i + 1}.
+                        </span>
                         <div className="min-w-0">
                           <p className="text-gray-300">{step.instruction}</p>
                           {step.code && (
@@ -266,12 +554,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
               {saving ? "Saving..." : "Save"}
             </button>
             <button
-              onClick={() => {
-                setEditing(false);
-                setValues({});
-                setError("");
-                setShowGuide(false);
-              }}
+              onClick={cancelEditing}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm transition-colors"
             >
               <X size={14} />

@@ -7,10 +7,12 @@ import json
 import os
 import re
 import shutil
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+import httpx
 import structlog
 
 logger = structlog.get_logger()
@@ -41,11 +43,104 @@ USER_CREDS_DIR = os.path.join(TASK_BASE_DIR, ".user_creds")  # per-user credenti
 
 _GIT_REF_PATTERN = re.compile(r"^[a-zA-Z0-9._/:\-]+$")
 
+# Anthropic OAuth constants (same as Claude Code CLI uses)
+_CLAUDE_CODE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+_CLAUDE_OAUTH_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
+_TOKEN_REFRESH_THRESHOLD_MS = 30 * 60 * 1000  # refresh if < 30 min remaining
+
 
 def _validate_git_ref(value: str, label: str) -> None:
     """Reject values that could be used for command injection."""
     if not _GIT_REF_PATTERN.match(value):
         raise ValueError(f"Invalid {label}: {value!r}")
+
+
+async def _maybe_refresh_credentials(user_id: str, credentials_json: str) -> str:
+    """Proactively refresh Claude OAuth tokens if expiring within 30 minutes.
+
+    Returns the (possibly updated) credentials JSON string.  On refresh failure,
+    returns the original credentials so the task can still attempt to run.
+    Also persists refreshed tokens to the database for future tasks.
+    """
+    try:
+        creds = json.loads(credentials_json)
+        oauth = creds.get("claudeAiOauth", {})
+        if not oauth:
+            return credentials_json
+
+        expires_at_ms = oauth.get("expiresAt") or oauth.get("expires_at", 0)
+        now_ms = int(time.time() * 1000)
+
+        if expires_at_ms and (expires_at_ms - now_ms) > _TOKEN_REFRESH_THRESHOLD_MS:
+            # Token is still fresh — no refresh needed
+            return credentials_json
+
+        refresh_tok = oauth.get("refreshToken") or oauth.get("refresh_token")
+        if not refresh_tok:
+            logger.warning("token_expiring_no_refresh_token", user_id=user_id)
+            return credentials_json
+
+        logger.info(
+            "proactive_token_refresh",
+            user_id=user_id,
+            expires_in_ms=max(0, expires_at_ms - now_ms) if expires_at_ms else 0,
+        )
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                _CLAUDE_OAUTH_TOKEN_URL,
+                json={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_tok,
+                    "client_id": _CLAUDE_CODE_CLIENT_ID,
+                },
+                headers={"Content-Type": "application/json"},
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "proactive_token_refresh_failed",
+                    user_id=user_id,
+                    status=resp.status_code,
+                )
+                return credentials_json
+
+            new_tokens = resp.json()
+
+        # Update the credentials structure
+        new_now_ms = int(time.time() * 1000)
+        expires_in = new_tokens.get("expires_in", 28800)
+        oauth["accessToken"] = new_tokens["access_token"]
+        if new_tokens.get("refresh_token"):
+            oauth["refreshToken"] = new_tokens["refresh_token"]
+        oauth["expiresAt"] = new_now_ms + (expires_in * 1000)
+        creds["claudeAiOauth"] = oauth
+        updated_json = json.dumps(creds)
+
+        # Persist refreshed tokens to DB so future tasks use them
+        try:
+            from shared.config import get_settings
+            from shared.credential_store import CredentialStore
+            from shared.database import get_session_factory
+
+            settings = get_settings()
+            if settings.credential_encryption_key:
+                store = CredentialStore(settings.credential_encryption_key)
+                factory = get_session_factory()
+                async with factory() as session:
+                    await store.set(
+                        session, user_id, "claude_code", "credentials_json",
+                        updated_json,
+                    )
+                logger.info("proactive_token_refresh_persisted", user_id=user_id)
+        except Exception as e:
+            logger.warning("proactive_token_refresh_persist_failed", error=str(e))
+
+        logger.info("proactive_token_refresh_success", user_id=user_id)
+        return updated_json
+
+    except Exception as e:
+        logger.warning("proactive_token_refresh_error", user_id=user_id, error=str(e))
+        return credentials_json
 
 
 # ---------------------------------------------------------------------------
@@ -704,7 +799,7 @@ class ClaudeCodeTools:
         user_mounts: dict[str, str] | None = None
         if user_credentials and user_id:
             try:
-                user_mounts = self._prepare_user_credentials(user_id, user_credentials)
+                user_mounts = await self._prepare_user_credentials(user_id, user_credentials)
             except Exception as e:
                 logger.warning("user_credential_prep_failed", user_id=user_id, error=str(e))
 
@@ -858,7 +953,7 @@ class ClaudeCodeTools:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _prepare_user_credentials(
+    async def _prepare_user_credentials(
         user_id: str, user_credentials: dict[str, dict[str, str]],
     ) -> dict[str, str]:
         """Write decrypted per-user credentials to disk for Docker mounting.
@@ -870,6 +965,8 @@ class ClaudeCodeTools:
 
         Returns a dict of mount-type → host path for use in _build_docker_cmd.
         File permissions are set restrictively (0600 for keys, 0700 for dirs).
+
+        Proactively refreshes OAuth tokens if they expire within 30 minutes.
         """
         user_dir = os.path.join(USER_CREDS_DIR, user_id)
         os.makedirs(user_dir, exist_ok=True)
@@ -879,6 +976,10 @@ class ClaudeCodeTools:
         claude_creds = user_credentials.get("claude_code", {})
         credentials_json = claude_creds.get("credentials_json", "")
         if credentials_json:
+            # Proactively refresh if token is expiring soon
+            credentials_json = await _maybe_refresh_credentials(
+                user_id, credentials_json
+            )
             claude_dir = os.path.join(user_dir, ".claude")
             os.makedirs(claude_dir, exist_ok=True)
             creds_file = os.path.join(claude_dir, ".credentials.json")

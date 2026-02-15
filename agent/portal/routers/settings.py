@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import json
+import secrets
+
+import redis.asyncio as aioredis
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from portal.auth import PortalUser, require_auth
+from portal.claude_oauth import (
+    build_authorize_url,
+    build_credentials_json,
+    exchange_code as claude_exchange_code,
+    generate_pkce,
+    get_token_expiry_info,
+    parse_credentials_json,
+    refresh_access_token,
+)
 from shared.config import get_settings
 from shared.credential_store import CredentialStore
 from shared.database import get_session_factory
@@ -164,6 +177,169 @@ async def delete_credential_key(
     async with factory() as session:
         count = await store.delete(session, user.user_id, service, key)
     return {"status": "ok", "deleted": count}
+
+
+# ---------------------------------------------------------------------------
+# Claude OAuth (PKCE flow for in-portal credential setup)
+# ---------------------------------------------------------------------------
+
+_PKCE_TTL = 600  # 10 minutes
+
+
+async def _get_redis() -> aioredis.Redis:
+    settings = get_settings()
+    return aioredis.from_url(settings.redis_url)
+
+
+class OAuthCodeExchange(BaseModel):
+    code: str
+
+
+@router.post("/credentials/claude_code/oauth/start")
+async def claude_oauth_start(user: PortalUser = Depends(require_auth)) -> dict:
+    """Start the Anthropic OAuth PKCE flow.
+
+    Returns an authorize URL the frontend should open in a new tab.
+    The user authorizes on Anthropic's site, gets a code, and pastes it back.
+    """
+    verifier, challenge = generate_pkce()
+    state = secrets.token_urlsafe(32)
+
+    # Store PKCE state in Redis with a short TTL
+    r = await _get_redis()
+    try:
+        pkce_data = json.dumps({"verifier": verifier, "state": state})
+        await r.setex(f"claude_pkce:{user.user_id}", _PKCE_TTL, pkce_data)
+    finally:
+        await r.aclose()
+
+    authorize_url = build_authorize_url(challenge, state)
+
+    logger.info("claude_oauth_started", user_id=str(user.user_id))
+    return {"authorize_url": authorize_url, "state": state}
+
+
+@router.post("/credentials/claude_code/oauth/exchange")
+async def claude_oauth_exchange(
+    body: OAuthCodeExchange,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Exchange the authorization code from Anthropic for OAuth tokens.
+
+    The code may be in ``code#state`` format (as displayed by Anthropic's callback
+    page) or just the bare code.
+    """
+    # Retrieve PKCE state from Redis
+    r = await _get_redis()
+    try:
+        raw = await r.get(f"claude_pkce:{user.user_id}")
+        if not raw:
+            raise HTTPException(400, "OAuth session expired or not started. Please try again.")
+        pkce = json.loads(raw)
+        await r.delete(f"claude_pkce:{user.user_id}")
+    finally:
+        await r.aclose()
+
+    verifier = pkce["verifier"]
+
+    # Handle code#state format from Anthropic's callback page
+    code = body.code.strip()
+    if "#" in code:
+        code = code.split("#")[0]
+
+    # Exchange code for tokens
+    try:
+        token_data = await claude_exchange_code(code, verifier)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    if "access_token" not in token_data:
+        raise HTTPException(502, "Anthropic did not return an access token")
+
+    # Build and store credentials in Claude CLI format
+    creds_json = build_credentials_json(token_data)
+
+    store = _get_credential_store()
+    factory = get_session_factory()
+    async with factory() as session:
+        await store.set(session, user.user_id, "claude_code", "credentials_json", creds_json)
+
+    scopes = token_data.get("scope", "").split()
+    logger.info(
+        "claude_oauth_exchange_success",
+        user_id=str(user.user_id),
+        scopes=scopes,
+    )
+    return {
+        "status": "ok",
+        "scopes": scopes,
+        "expires_in": token_data.get("expires_in"),
+    }
+
+
+@router.post("/credentials/claude_code/oauth/refresh")
+async def claude_oauth_refresh(user: PortalUser = Depends(require_auth)) -> dict:
+    """Manually refresh the stored Claude OAuth access token."""
+    store = _get_credential_store()
+    factory = get_session_factory()
+
+    async with factory() as session:
+        creds_raw = await store.get(session, user.user_id, "claude_code", "credentials_json")
+
+    if not creds_raw:
+        raise HTTPException(404, "No Claude credentials stored")
+
+    oauth = parse_credentials_json(creds_raw)
+    if not oauth:
+        raise HTTPException(400, "Invalid stored credentials format")
+
+    refresh_tok = oauth.get("refreshToken") or oauth.get("refresh_token")
+    if not refresh_tok:
+        raise HTTPException(400, "No refresh token available — please reconnect via OAuth")
+
+    new_tokens = await refresh_access_token(refresh_tok)
+    if not new_tokens:
+        raise HTTPException(502, "Token refresh failed — Anthropic may be unavailable")
+
+    # Update stored credentials
+    creds_json = build_credentials_json(new_tokens)
+    async with factory() as session:
+        await store.set(session, user.user_id, "claude_code", "credentials_json", creds_json)
+
+    logger.info("claude_oauth_manual_refresh", user_id=str(user.user_id))
+    return {
+        "status": "ok",
+        "expires_in": new_tokens.get("expires_in"),
+    }
+
+
+@router.get("/credentials/claude_code/status")
+async def claude_credential_status(user: PortalUser = Depends(require_auth)) -> dict:
+    """Return status of stored Claude credentials (expiry, scopes, etc.)."""
+    store = _get_credential_store()
+    factory = get_session_factory()
+
+    async with factory() as session:
+        creds_raw = await store.get(session, user.user_id, "claude_code", "credentials_json")
+
+    if not creds_raw:
+        return {"configured": False}
+
+    oauth = parse_credentials_json(creds_raw)
+    if not oauth:
+        return {"configured": True, "valid": False, "error": "Invalid credentials format"}
+
+    expiry = get_token_expiry_info(oauth)
+    return {
+        "configured": True,
+        "valid": not expiry["is_expired"],
+        "expires_at": expiry["expires_at"],
+        "expires_in_seconds": expiry["expires_in_seconds"],
+        "needs_refresh": expiry["needs_refresh"],
+        "scopes": oauth.get("scopes", []),
+        "subscription_type": oauth.get("subscriptionType"),
+        "rate_limit_tier": oauth.get("rateLimitTier"),
+    }
 
 
 # ---------------------------------------------------------------------------
