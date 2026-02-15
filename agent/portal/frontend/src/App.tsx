@@ -21,6 +21,7 @@ import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import PhaseDetailPage from "@/pages/PhaseDetailPage";
 import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
 import HomePage from "@/pages/HomePage";
+import LandingPage from "@/pages/LandingPage";
 
 interface AuthProvider {
   name: string;
@@ -32,6 +33,7 @@ function LoginScreen() {
   const [error, setError] = useState("");
   const [providers, setProviders] = useState<AuthProvider[]>([]);
   const [discovering, setDiscovering] = useState(true);
+  const [showLanding, setShowLanding] = useState(true);
 
   useEffect(() => {
     fetch("/api/auth/providers")
@@ -54,6 +56,11 @@ function LoginScreen() {
       setLoading(false);
     }
   };
+
+  // Show landing page if enabled, otherwise show compact login
+  if (showLanding && !discovering) {
+    return <LandingPage providers={providers} onLogin={handleLogin} loading={loading} />;
+  }
 
   return (
     <div className="h-full flex items-center justify-center p-4 bg-gradient-to-br from-surface via-surface to-surface-lighter">
