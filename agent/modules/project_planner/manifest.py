@@ -289,5 +289,92 @@ MANIFEST = ModuleManifest(
             ],
             required_permission="user",
         ),
+        # ── Sequential Phase Execution ──────────────────────────────────
+        ToolDefinition(
+            name="project_planner.execute_next_phase",
+            description=(
+                "Execute the next phase in sequence. For phase 0, reuses planning task "
+                "context if available. Creates scheduler job for monitoring."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="project_id",
+                    type="string",
+                    description="Project ID",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="auto_push",
+                    type="boolean",
+                    description="Automatically push branch after completion",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="timeout",
+                    type="integer",
+                    description="Task timeout in seconds (default 1800)",
+                    required=False,
+                ),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
+            name="project_planner.complete_phase",
+            description=(
+                "Complete a phase after its claude_code task finishes. Creates PR, "
+                "updates all phase tasks to 'in_review', marks phase as completed. "
+                "Returns whether to trigger next phase."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="phase_id",
+                    type="string",
+                    description="Phase ID",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="claude_task_id",
+                    type="string",
+                    description="Claude Code task ID that executed this phase",
+                    required=True,
+                ),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
+            name="project_planner.start_project_workflow",
+            description=(
+                "Start fully automated sequential phase execution. Launches first phase "
+                "and creates scheduler workflow that auto-progresses through all phases, "
+                "creating PRs between each."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="project_id",
+                    type="string",
+                    description="Project ID",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="workflow_id",
+                    type="string",
+                    description="Optional workflow ID for grouping jobs (auto-generated if not provided)",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="auto_push",
+                    type="boolean",
+                    description="Automatically push branches after completion",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="timeout",
+                    type="integer",
+                    description="Per-phase timeout in seconds (default 1800)",
+                    required=False,
+                ),
+            ],
+            required_permission="user",
+        ),
     ],
 )

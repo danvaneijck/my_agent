@@ -33,6 +33,9 @@ class Project(Base):
     # Claude Code planning task tracking
     planning_task_id: Mapped[str | None] = mapped_column(String, default=None)
 
+    # Workflow tracking for automated sequential phase execution
+    workflow_id: Mapped[str | None] = mapped_column(String, default=None)
+
     # Lifecycle: planning → active → paused → completed → archived
     status: Mapped[str] = mapped_column(String, default="planning")
 

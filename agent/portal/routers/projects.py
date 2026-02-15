@@ -554,10 +554,57 @@ async def execute_phase(
     body: ExecutePhaseRequest,
     user: PortalUser = Depends(require_auth),
 ) -> dict:
-    """Start executing a phase by launching a Claude Code task."""
+    """Start executing the next phase using the new sequential execution system."""
     uid = str(user.user_id)
 
-    # 1. Get project
+    result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.execute_next_phase",
+        arguments={
+            "project_id": project_id,
+            "auto_push": body.auto_push,
+            "timeout": body.timeout,
+        },
+        user_id=uid,
+        timeout=30.0,
+    )
+
+    return result.get("result", {})
+
+
+@router.post("/{project_id}/start-workflow")
+async def start_workflow(
+    project_id: str,
+    body: ExecutePhaseRequest,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Start fully automated sequential phase execution workflow."""
+    uid = str(user.user_id)
+
+    result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.start_project_workflow",
+        arguments={
+            "project_id": project_id,
+            "auto_push": body.auto_push,
+            "timeout": body.timeout,
+        },
+        user_id=uid,
+        timeout=30.0,
+    )
+
+    return result.get("result", {})
+
+
+@router.post("/{project_id}/cancel-workflow")
+async def cancel_workflow(
+    project_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Cancel an active project workflow."""
+    uid = str(user.user_id)
+
+    # Get project to find workflow_id
     project_result = await call_tool(
         module="project_planner",
         tool_name="project_planner.get_project",
@@ -566,115 +613,36 @@ async def execute_phase(
         timeout=15.0,
     )
     project_data = project_result.get("result", {})
+    workflow_id = project_data.get("workflow_id")
 
-    # 2. Determine target phase
-    target_phase_id = body.phase_id
-    if not target_phase_id:
-        # Find first phase with todo tasks
-        for phase in project_data.get("phases", []):
-            if phase.get("status") in ("planned", "in_progress"):
-                task_counts = phase.get("task_counts", {})
-                if task_counts.get("todo", 0) > 0:
-                    target_phase_id = phase["phase_id"]
-                    break
+    if not workflow_id:
+        return {
+            "success": False,
+            "message": "No active workflow found for this project",
+        }
 
-    if not target_phase_id:
-        raise ValueError("No phase found with pending tasks to execute")
-
-    # 3. Get execution plan for this phase
-    exec_plan_result = await call_tool(
-        module="project_planner",
-        tool_name="project_planner.get_execution_plan",
-        arguments={
-            "project_id": project_id,
-            "phase_ids": [target_phase_id],
-        },
+    # Cancel scheduler workflow
+    result = await call_tool(
+        module="scheduler",
+        tool_name="scheduler.cancel_workflow",
+        arguments={"workflow_id": workflow_id},
         user_id=uid,
         timeout=15.0,
     )
-    exec_plan = exec_plan_result.get("result", {})
 
-    if not exec_plan.get("prompt"):
-        raise ValueError("No tasks to execute in the selected phase")
-
-    repo_url = exec_plan.get("repo_url")
-    prompt = exec_plan.get("prompt")
-    default_branch = project_data.get("default_branch", "main")
-
-    # Find the phase to get its branch name
-    target_phase = next(
-        (p for p in project_data.get("phases", []) if p["phase_id"] == target_phase_id),
-        None
-    )
-    if not target_phase:
-        raise ValueError(f"Phase not found: {target_phase_id}")
-
-    phase_branch = target_phase.get("branch_name")
-    source_branch = default_branch
-
-    # 4. Launch claude_code task
-    task_args = {
-        "prompt": prompt,
-        "mode": "execute",
-        "auto_push": body.auto_push,
-        "timeout": body.timeout,
-    }
-    if repo_url:
-        task_args["repo_url"] = repo_url
-        task_args["branch"] = phase_branch
-        task_args["source_branch"] = source_branch
-
-    task_result = await call_tool(
-        module="claude_code",
-        tool_name="claude_code.run_task",
-        arguments=task_args,
-        user_id=uid,
-        timeout=30.0,
-    )
-    claude_task = task_result.get("result", {})
-    claude_task_id = claude_task.get("task_id")
-
-    # 5. Mark tasks as "doing" with claude_task_id
-    todo_task_ids = exec_plan.get("todo_task_ids", [])
-    if todo_task_ids:
-        await call_tool(
-            module="project_planner",
-            tool_name="project_planner.bulk_update_tasks",
-            arguments={
-                "task_ids": todo_task_ids,
-                "status": "doing",
-                "claude_task_id": claude_task_id,
-            },
-            user_id=uid,
-            timeout=15.0,
-        )
-
-    # 6. Update phase status to in_progress
+    # Clear workflow_id from project
     await call_tool(
         module="project_planner",
-        tool_name="project_planner.update_phase",
+        tool_name="project_planner.update_project",
         arguments={
-            "phase_id": target_phase_id,
-            "status": "in_progress",
+            "project_id": project_id,
+            "workflow_id": None,
         },
         user_id=uid,
         timeout=15.0,
     )
 
-    logger.info(
-        "phase_execution_started",
-        project_id=project_id,
-        phase_id=target_phase_id,
-        claude_task_id=claude_task_id,
-        task_count=len(todo_task_ids),
-    )
-
-    return {
-        "phase_id": target_phase_id,
-        "claude_task_id": claude_task_id,
-        "task_count": len(todo_task_ids),
-        "message": f"Started executing {len(todo_task_ids)} tasks in phase '{target_phase.get('name')}'",
-    }
+    return result.get("result", {})
 
 
 @router.get("/{project_id}/execution-status")
