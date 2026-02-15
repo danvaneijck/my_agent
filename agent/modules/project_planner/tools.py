@@ -114,7 +114,9 @@ class ProjectPlannerTools:
             if phases:
                 for idx, phase_data in enumerate(phases):
                     phase_id = uuid.uuid4()
-                    phase_branch = f"phase/{idx}/{_slugify(phase_data['name'])}"
+                    # Prefix phase branch with project branch if it exists
+                    phase_suffix = f"phase/{idx}/{_slugify(phase_data['name'])}"
+                    phase_branch = f"{proj_branch}/{phase_suffix}" if proj_branch else phase_suffix
                     phase = ProjectPhase(
                         id=phase_id,
                         project_id=project_id,
@@ -370,11 +372,12 @@ class ProjectPlannerTools:
         now = datetime.now(timezone.utc)
 
         async with self.session_factory() as session:
-            # Verify project ownership
+            # Verify project ownership and get project
             proj_result = await session.execute(
                 select(Project).where(Project.id == pid, Project.user_id == uid)
             )
-            if not proj_result.scalar_one_or_none():
+            project = proj_result.scalar_one_or_none()
+            if not project:
                 raise ValueError(f"Project not found: {project_id}")
 
             # Get next order_index
@@ -386,7 +389,9 @@ class ProjectPlannerTools:
 
             phase_id = uuid.uuid4()
             order_idx = max_idx + 1
-            phase_branch = f"phase/{order_idx}/{_slugify(name)}"
+            # Prefix phase branch with project branch if it exists
+            phase_suffix = f"phase/{order_idx}/{_slugify(name)}"
+            phase_branch = f"{project.project_branch}/{phase_suffix}" if project.project_branch else phase_suffix
             phase = ProjectPhase(
                 id=phase_id,
                 project_id=pid,
