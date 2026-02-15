@@ -51,6 +51,18 @@ export interface TaskLogData {
 }
 
 // Chat types
+export interface ToolCallSummary {
+  name: string;
+  success: boolean;
+  tool_use_id: string;
+}
+
+export interface ToolCallsMetadata {
+  total_count: number;
+  unique_tools: number;
+  tools_sequence: ToolCallSummary[];
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -58,6 +70,7 @@ export interface ChatMessage {
   model_used?: string | null;
   created_at: string | null;
   files?: FileRef[];
+  tool_calls_metadata?: ToolCallsMetadata | null;
 }
 
 export interface Conversation {
@@ -122,6 +135,7 @@ export interface WsChatResponse {
   content: string;
   files: FileRef[];
   error: string | null;
+  tool_calls_metadata?: ToolCallsMetadata | null;
 }
 
 export type WsChatMessage = WsChatResponse | WsHeartbeat | WsError;

@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { User, Bot, Download, ChevronDown, ChevronRight, Workflow } from "lucide-react";
 import type { ChatMessage } from "@/types";
+import ToolCallsDisplay from "./ToolCallsDisplay";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -143,6 +144,11 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
               {message.content}
             </ReactMarkdown>
           </div>
+        )}
+
+        {/* Tool calls metadata */}
+        {!isUser && message.tool_calls_metadata && (
+          <ToolCallsDisplay metadata={message.tool_calls_metadata} />
         )}
 
         {/* File attachments */}

@@ -80,6 +80,7 @@ export default function ChatView({ conversationId, onConversationCreated, onWait
         content: msg.content,
         created_at: new Date().toISOString(),
         files: msg.files,
+        tool_calls_metadata: msg.tool_calls_metadata,
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
