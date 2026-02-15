@@ -21,7 +21,12 @@ from shared.models.file import FileRecord
 from shared.models.persona import Persona
 from shared.models.token_usage import TokenLog
 from shared.models.user import User, UserPlatformLink
-from shared.schemas.messages import AgentResponse, IncomingMessage
+from shared.schemas.messages import (
+    AgentResponse,
+    IncomingMessage,
+    ToolCallsMetadata,
+    ToolCallSummary,
+)
 
 logger = structlog.get_logger()
 
@@ -156,6 +161,7 @@ class AgentLoop:
         # 8. Agent loop
         final_content = ""
         files: list[dict] = []
+        tool_call_summaries: list[ToolCallSummary] = []
         iteration = 0
 
         while iteration < self.settings.max_agent_iterations:
@@ -254,6 +260,15 @@ class AgentLoop:
                     )
                     result = await self.tool_registry.execute_tool(tool_call)
 
+                # Track tool call for metadata
+                tool_call_summaries.append(
+                    ToolCallSummary(
+                        name=tool_call.tool_name,
+                        success=result.success,
+                        tool_use_id=tool_use_id,
+                    )
+                )
+
                 # Save tool result message
                 result_content = json.dumps({
                     "name": tool_call.tool_name,
@@ -320,7 +335,19 @@ class AgentLoop:
         conversation.last_active_at = datetime.now(timezone.utc)
         await session.commit()
 
-        return AgentResponse(content=final_content, files=files)
+        # Build tool calls metadata if any tools were called
+        tool_metadata = None
+        if tool_call_summaries:
+            unique_tool_names = set(tc.name for tc in tool_call_summaries)
+            tool_metadata = ToolCallsMetadata(
+                total_count=len(tool_call_summaries),
+                unique_tools=len(unique_tool_names),
+                tools_sequence=tool_call_summaries,
+            )
+
+        return AgentResponse(
+            content=final_content, files=files, tool_calls_metadata=tool_metadata
+        )
 
     async def _resolve_user(
         self,
