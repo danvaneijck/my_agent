@@ -697,6 +697,18 @@ class ClaudeCodeTools:
         # effective_prompt allows run_task to augment the prompt (e.g. plan
         # mode instructions) while keeping the original prompt in task metadata.
         prompt_for_cli = effective_prompt or task.prompt
+
+        # When auto_push is enabled, instruct Claude to commit and push with
+        # descriptive messages.  The _auto_push_branch fallback will catch any
+        # uncommitted/unpushed work if Claude doesn't handle it.
+        if task.auto_push and task.repo_url:
+            prompt_for_cli += (
+                "\n\nIMPORTANT — Git workflow:"
+                "\n- Commit your changes with descriptive commit messages as you work."
+                "\n- When you are done, push your branch: git push -u origin HEAD"
+                "\n- Do NOT leave uncommitted changes."
+            )
+
         cmd = self._build_docker_cmd(task, container_name, prompt_for_cli, user_mounts=user_mounts)
         logger.info("task_starting", task_id=task.id, container=container_name)
         logger.debug("task_docker_cmd", task_id=task.id, cmd=" ".join(cmd))
@@ -1062,15 +1074,15 @@ class ClaudeCodeTools:
             '    fi\n'
             'fi\n'
             '\n'
-            '# Build claude command with optional --continue\n'
-            'CLAUDE_CMD="claude -p \\"$PROMPT\\" --output-format stream-json --verbose --dangerously-skip-permissions"\n'
+            '# Build claude args with optional --continue\n'
+            'CLAUDE_ARGS="--output-format stream-json --verbose --dangerously-skip-permissions"\n'
             'if [ "$CONTINUE_SESSION" = "1" ]; then\n'
-            '    CLAUDE_CMD="claude --continue -p \\"$PROMPT\\" --output-format stream-json --verbose --dangerously-skip-permissions"\n'
+            '    CLAUDE_ARGS="--continue $CLAUDE_ARGS"\n'
             'fi\n'
             '\n'
             '# Run claude; capture exit code so we can persist session data even on failure\n'
             'set +e\n'
-            'eval $CLAUDE_CMD &\n'
+            'claude -p "$PROMPT" $CLAUDE_ARGS &\n'
             'CLAUDE_PID=$!\n'
             'wait $CLAUDE_PID\n'
             'EXIT_CODE=$?\n'
@@ -1203,21 +1215,45 @@ class ClaudeCodeTools:
     async def _auto_push_branch(
         self, task: Task, user_mounts: dict[str, str] | None = None,
     ) -> None:
-        """Commit any uncommitted changes, then push the task branch to remote.
+        """Fallback commit+push: only acts if the Claude agent left unpushed work.
 
-        The Claude Code agent may edit files without committing them to git.
-        This method stages all workspace changes and commits them (if any)
-        before pushing, so the remote branch reflects the agent's work.
+        The prompt instructs Claude to commit and push, but if it didn't
+        (or left uncommitted changes), this method catches the remainder.
 
         Uses ``gh auth`` (via GITHUB_TOKEN) for HTTPS repos or SSH keys
         for SSH repos.  Logs the result to the task log file and stores
         push status in ``task.result["auto_push"]``.
         """
         try:
+            # Check if Claude already pushed everything
+            check_cmd = (
+                "git fetch origin 2>/dev/null; "
+                "LOCAL=$(git rev-parse HEAD); "
+                "REMOTE=$(git rev-parse @{u} 2>/dev/null || echo 'none'); "
+                "DIRTY=$(git status --porcelain | head -1); "
+                "if [ -z \"$DIRTY\" ] && [ \"$LOCAL\" = \"$REMOTE\" ]; then "
+                "echo 'UP_TO_DATE'; else echo 'NEEDS_PUSH'; fi"
+            )
+            check_out, _, _ = await self._run_git_in_workspace(
+                task, check_cmd, user_mounts=user_mounts,
+            )
+            if "UP_TO_DATE" in check_out:
+                logger.info("auto_push_skipped_already_pushed", task_id=task.id)
+                if task.result is None:
+                    task.result = {}
+                task.result["auto_push"] = {
+                    "success": True, "skipped": True,
+                    "reason": "already pushed by agent",
+                }
+                return
+
             # Stage and commit any uncommitted changes left by the Claude agent.
             # Uses `git diff --cached --quiet` to skip the commit when there is
             # nothing new to commit (e.g. the agent already committed everything).
             commit_cmd = (
+                # Exclude task system files from git staging
+                "{ echo 'task_meta_*.json'; echo 'task_*.log'; echo '.claude_sessions/'; } "
+                ">> .git/info/exclude && "
                 "git add -A && "
                 "if ! git diff --cached --quiet; then "
                 f"git commit -m 'Changes from claude-code task {task.id}'; "

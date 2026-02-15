@@ -51,6 +51,7 @@ def _phase_to_dict(p: ProjectPhase, task_counts: dict | None = None) -> dict:
         "name": p.name,
         "description": p.description,
         "order_index": p.order_index,
+        "branch_name": p.branch_name,
         "status": p.status,
         "created_at": p.created_at.isoformat(),
     }
@@ -86,6 +87,9 @@ class ProjectPlannerTools:
         project_id = uuid.uuid4()
         now = datetime.now(timezone.utc)
 
+        # Auto-generate a project integration branch when repo info is provided
+        proj_branch = f"project/{_slugify(name)}" if repo_owner and repo_name else None
+
         async with self.session_factory() as session:
             project = Project(
                 id=project_id,
@@ -96,6 +100,7 @@ class ProjectPlannerTools:
                 repo_owner=repo_owner,
                 repo_name=repo_name,
                 default_branch=default_branch,
+                project_branch=proj_branch,
                 auto_merge=auto_merge,
                 status="planning",
                 created_at=now,
@@ -109,12 +114,14 @@ class ProjectPlannerTools:
             if phases:
                 for idx, phase_data in enumerate(phases):
                     phase_id = uuid.uuid4()
+                    phase_branch = f"phase/{idx}/{_slugify(phase_data['name'])}"
                     phase = ProjectPhase(
                         id=phase_id,
                         project_id=project_id,
                         name=phase_data["name"],
                         description=phase_data.get("description"),
                         order_index=idx,
+                        branch_name=phase_branch,
                         status="planned",
                         created_at=now,
                         updated_at=now,
@@ -124,8 +131,6 @@ class ProjectPlannerTools:
 
                     for tidx, task_data in enumerate(phase_data.get("tasks", [])):
                         task_id = uuid.uuid4()
-                        short_id = task_id.hex[:6]
-                        branch = f"feature/{short_id}/{_slugify(task_data['title'])}"
                         task = ProjectTask(
                             id=task_id,
                             phase_id=phase_id,
@@ -136,7 +141,6 @@ class ProjectPlannerTools:
                             acceptance_criteria=task_data.get("acceptance_criteria"),
                             order_index=tidx,
                             status="todo",
-                            branch_name=branch,
                             created_at=now,
                             updated_at=now,
                         )
@@ -156,6 +160,7 @@ class ProjectPlannerTools:
             "project_id": str(project_id),
             "name": name,
             "status": "planning",
+            "project_branch": proj_branch,
             "phases_created": phase_count,
             "tasks_created": task_count,
             "message": f"Project '{name}' created with {phase_count} phases and {task_count} tasks.",
@@ -259,6 +264,7 @@ class ProjectPlannerTools:
             "repo_owner": project.repo_owner,
             "repo_name": project.repo_name,
             "default_branch": project.default_branch,
+            "project_branch": project.project_branch,
             "auto_merge": project.auto_merge,
             "status": project.status,
             "created_at": project.created_at.isoformat(),
@@ -374,12 +380,15 @@ class ProjectPlannerTools:
             max_idx = max_result.scalar() or -1
 
             phase_id = uuid.uuid4()
+            order_idx = max_idx + 1
+            phase_branch = f"phase/{order_idx}/{_slugify(name)}"
             phase = ProjectPhase(
                 id=phase_id,
                 project_id=pid,
                 name=name,
                 description=description,
-                order_index=max_idx + 1,
+                order_index=order_idx,
+                branch_name=phase_branch,
                 status="planned",
                 created_at=now,
                 updated_at=now,
@@ -391,7 +400,8 @@ class ProjectPlannerTools:
             "phase_id": str(phase_id),
             "project_id": project_id,
             "name": name,
-            "order_index": max_idx + 1,
+            "order_index": order_idx,
+            "branch_name": phase_branch,
             "message": f"Phase '{name}' added.",
         }
 
@@ -471,8 +481,6 @@ class ProjectPlannerTools:
             max_idx = max_result.scalar() or -1
 
             task_id = uuid.uuid4()
-            short_id = task_id.hex[:6]
-            branch = f"feature/{short_id}/{_slugify(title)}"
 
             task = ProjectTask(
                 id=task_id,
@@ -484,7 +492,6 @@ class ProjectPlannerTools:
                 acceptance_criteria=acceptance_criteria,
                 order_index=max_idx + 1,
                 status="todo",
-                branch_name=branch,
                 created_at=now,
                 updated_at=now,
             )
@@ -527,8 +534,6 @@ class ProjectPlannerTools:
             created = []
             for idx, task_data in enumerate(tasks):
                 task_id = uuid.uuid4()
-                short_id = task_id.hex[:6]
-                branch = f"feature/{short_id}/{_slugify(task_data['title'])}"
 
                 task = ProjectTask(
                     id=task_id,
@@ -540,12 +545,11 @@ class ProjectPlannerTools:
                     acceptance_criteria=task_data.get("acceptance_criteria"),
                     order_index=max_idx + 1 + idx,
                     status="todo",
-                    branch_name=branch,
                     created_at=now,
                     updated_at=now,
                 )
                 session.add(task)
-                created.append({"task_id": str(task_id), "title": task_data["title"], "branch": branch})
+                created.append({"task_id": str(task_id), "title": task_data["title"]})
 
             await session.commit()
 
@@ -691,9 +695,44 @@ class ProjectPlannerTools:
             )
             task = result.scalar_one_or_none()
 
-        if task is None:
-            return None
-        return _task_to_dict(task)
+            if task is None:
+                return None
+
+            task_dict = _task_to_dict(task)
+
+            # Include branch context so the LLM knows which branches to use
+            phase = await session.get(ProjectPhase, phid)
+            project = await session.get(Project, phase.project_id)
+
+            # Phase branch — fall back to task's own branch_name for pre-migration projects
+            phase_branch = (
+                (phase.branch_name if phase else None)
+                or task.branch_name
+            )
+            task_dict["phase_branch"] = phase_branch
+            task_dict["project_branch"] = project.project_branch if project else None
+
+            # source_branch: previous phase's branch, or project/default branch for first phase
+            prev_result = await session.execute(
+                select(ProjectPhase)
+                .where(
+                    ProjectPhase.project_id == phase.project_id,
+                    ProjectPhase.order_index < phase.order_index,
+                )
+                .order_by(ProjectPhase.order_index.desc())
+                .limit(1)
+            )
+            prev_phase = prev_result.scalar_one_or_none()
+
+            if prev_phase and prev_phase.branch_name:
+                task_dict["source_branch"] = prev_phase.branch_name
+            else:
+                task_dict["source_branch"] = (
+                    project.project_branch or project.default_branch
+                    if project else "main"
+                )
+
+        return task_dict
 
     # ── Reporting ───────────────────────────────────────────────────────
 

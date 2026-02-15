@@ -21,6 +21,9 @@ class ProjectPhase(Base):
     description: Mapped[str | None] = mapped_column(Text, default=None)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Git branch for this phase (e.g. "phase/0/core-api-setup")
+    branch_name: Mapped[str | None] = mapped_column(String, default=None)
+
     # Lifecycle: planned → in_progress → completed
     status: Mapped[str] = mapped_column(String, default="planned")
 

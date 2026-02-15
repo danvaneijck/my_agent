@@ -297,12 +297,16 @@ async def continue_conversation(req: ContinueRequest) -> AgentResponse:
         if task_status == "completed":
             guidance = (
                 "\nThe claude_code task completed successfully. Next steps: "
-                "1) Update the project task status to 'done'. "
-                "2) Use get_next_task for the next todo task in the phase. "
-                "3) If there is one, update it to 'doing' and use "
-                "continue_task on the completed workspace (with "
-                "auto_push=true) to keep file context. "
-                "4) If no more tasks, update the phase status."
+                "1) Update the project task status to 'in_review'. "
+                "2) Create a PR from the phase branch into the project branch "
+                "using git_platform.create_pull_request. Store pr_number on the task. "
+                "3) If auto_merge is enabled on the project, merge the PR immediately "
+                "with git_platform.merge_pull_request and update status to 'done'. "
+                "Otherwise, notify the user the PR is ready for review. "
+                "4) Use get_next_task for the next todo task in the phase. "
+                "For subsequent tasks in the same phase, prefer continue_task on the "
+                "completed workspace (with auto_push=true) to keep file context. "
+                "5) If no more tasks, update the phase status."
             )
         elif task_status == "awaiting_input":
             guidance = (

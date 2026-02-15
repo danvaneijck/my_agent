@@ -25,6 +25,7 @@ class Project(Base):
     repo_owner: Mapped[str | None] = mapped_column(String, default=None)
     repo_name: Mapped[str | None] = mapped_column(String, default=None)
     default_branch: Mapped[str] = mapped_column(String, default="main")
+    project_branch: Mapped[str | None] = mapped_column(String, default=None)
 
     # Execution settings
     auto_merge: Mapped[bool] = mapped_column(Boolean, default=False)

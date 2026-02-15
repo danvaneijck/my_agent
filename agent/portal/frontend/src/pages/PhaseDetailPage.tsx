@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, GitBranch, GitPullRequest, ExternalLink, AlertCircle } from "lucide-react";
 import { useProjectDetail, usePhaseTasks } from "@/hooks/useProjects";
@@ -11,13 +12,7 @@ const COLUMNS = [
   { key: "done", label: "Done", color: "border-green-500" },
 ] as const;
 
-const STATUS_BADGE: Record<string, string> = {
-  todo: "bg-gray-500/20 text-gray-400",
-  doing: "bg-yellow-500/20 text-yellow-400",
-  in_review: "bg-blue-500/20 text-blue-400",
-  done: "bg-green-500/20 text-green-400",
-  failed: "bg-red-500/20 text-red-400",
-};
+type ColumnKey = (typeof COLUMNS)[number]["key"];
 
 function TaskCard({
   task,
@@ -34,8 +29,13 @@ function TaskCard({
 
   return (
     <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", task.task_id);
+        e.dataTransfer.effectAllowed = "move";
+      }}
       onClick={() => navigate(`/projects/${projectId}/tasks/${task.task_id}`)}
-      className="bg-surface border border-border rounded-lg p-3 cursor-pointer hover:border-border-light transition-colors"
+      className="bg-surface border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border-light transition-colors"
     >
       <p className="text-sm font-medium text-white mb-1">{task.title}</p>
 
@@ -99,6 +99,7 @@ export default function PhaseDetailPage() {
   const { project } = useProjectDetail(projectId);
   const { tasks, loading, error, refetch } = usePhaseTasks(projectId, phaseId);
   const navigate = useNavigate();
+  const [dragOver, setDragOver] = useState<string | null>(null);
 
   const phase = project?.phases.find((p) => p.phase_id === phaseId);
 
@@ -109,6 +110,26 @@ export default function PhaseDetailPage() {
 
   // Also collect failed tasks to show separately
   const failedTasks = tasks.filter((t) => t.status === "failed");
+
+  const handleDrop = async (e: React.DragEvent, targetStatus: ColumnKey) => {
+    e.preventDefault();
+    setDragOver(null);
+    const taskId = e.dataTransfer.getData("text/plain");
+    if (!taskId || !projectId) return;
+
+    const task = tasks.find((t) => t.task_id === taskId);
+    if (!task || task.status === targetStatus) return;
+
+    try {
+      await api(`/api/projects/${projectId}/tasks/${taskId}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: targetStatus }),
+      });
+      refetch();
+    } catch (err) {
+      console.error("Failed to update task status:", err);
+    }
+  };
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -138,7 +159,7 @@ export default function PhaseDetailPage() {
             <p className="text-sm text-gray-400 mt-1">{phase.description}</p>
           )}
           <p className="text-xs text-gray-500 mt-1">
-            {tasks.length} tasks total
+            {tasks.length} tasks total — drag cards between columns to update status
           </p>
         </div>
       </div>
@@ -166,7 +187,19 @@ export default function PhaseDetailPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {columns.map((col) => (
-            <div key={col.key} className={`bg-surface-light border-t-2 ${col.color} border border-border rounded-xl overflow-hidden`}>
+            <div
+              key={col.key}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setDragOver(col.key);
+              }}
+              onDragLeave={() => setDragOver(null)}
+              onDrop={(e) => handleDrop(e, col.key)}
+              className={`bg-surface-light border-t-2 ${col.color} border border-border rounded-xl overflow-hidden transition-colors ${
+                dragOver === col.key ? "ring-2 ring-accent/50 bg-accent/5" : ""
+              }`}
+            >
               <div className="px-3 py-2 border-b border-border flex items-center justify-between">
                 <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                   {col.label}

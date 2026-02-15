@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText } from "lucide-react";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2 } from "lucide-react";
 import { useProjectDetail } from "@/hooks/useProjects";
+import { api } from "@/api/client";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { ProjectPhase } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -64,6 +67,20 @@ export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { project, loading, error, refetch } = useProjectDetail(projectId);
   const navigate = useNavigate();
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!projectId) return;
+    setDeleting(true);
+    try {
+      await api(`/api/projects/${projectId}`, { method: "DELETE" });
+      navigate("/projects");
+    } catch {
+      setDeleting(false);
+      setShowDelete(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -122,6 +139,13 @@ export default function ProjectDetailPage() {
               className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
             >
               <RefreshCw size={16} />
+            </button>
+            <button
+              onClick={() => setShowDelete(true)}
+              className="p-1.5 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400"
+              title="Delete project"
+            >
+              <Trash2 size={16} />
             </button>
           </div>
           {project.description && (
@@ -188,6 +212,15 @@ export default function ProjectDetailPage() {
           </div>
         </details>
       )}
+
+      <ConfirmDialog
+        open={showDelete}
+        title="Delete Project"
+        message={`Delete "${project.name}" and all its phases and tasks? This cannot be undone.`}
+        confirmLabel={deleting ? "Deleting…" : "Delete"}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDelete(false)}
+      />
     </div>
   );
 }

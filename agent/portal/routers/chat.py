@@ -440,7 +440,10 @@ async def ws_chat(websocket: WebSocket) -> None:
 
             except Exception as e:
                 logger.error("chat_ws_error", error=str(e))
-                await websocket.send_json({"type": "error", "message": str(e)})
+                try:
+                    await websocket.send_json({"type": "error", "message": str(e)})
+                except RuntimeError:
+                    pass  # WebSocket already closed
             finally:
                 heartbeat_task.cancel()
 

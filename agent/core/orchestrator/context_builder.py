@@ -204,8 +204,8 @@ class ContextBuilder:
 
         claude_code_guidance = (
             "\n\nClaude Code rules:"
-            "\n- ALWAYS pass repo_url, branch, and auto_push=true when running "
-            "project tasks with run_task."
+            "\n- ALWAYS pass repo_url, branch (from phase_branch), source_branch, "
+            "and auto_push=true when running project tasks with run_task."
             "\n- When a task finishes with 'awaiting_input' (plan mode), and the "
             "user approves, use continue_task with the ORIGINAL task_id, "
             "mode='execute', and auto_push=true. Never create a new run_task."
@@ -279,6 +279,8 @@ class ContextBuilder:
                         parts.append(f"{review} in review")
                 if p.repo_owner and p.repo_name:
                     parts.append(f"repo: {p.repo_owner}/{p.repo_name}")
+                if p.project_branch:
+                    parts.append(f"project_branch: {p.project_branch}")
 
                 lines.append(f"- {', '.join(parts)}")
 
@@ -296,24 +298,30 @@ class ContextBuilder:
                     )
                     doing_tasks = list(doing_result.scalars().all())
                     for t in doing_tasks:
-                        task_info = f'  - Task "{t.title}" (branch: {t.branch_name})'
+                        task_info = f'  - Task "{t.title}"'
                         if t.claude_task_id:
                             task_info += f" [claude_task_id: {t.claude_task_id}]"
                         lines.append(task_info)
 
             lines.append(
                 "\nProject execution workflow:"
-                "\n1. get_next_task(phase_id) to pick the next todo task."
+                "\n1. get_next_task(phase_id) — returns the next todo task with "
+                "phase_branch, source_branch, and project_branch."
                 "\n2. update_task(status='doing') BEFORE starting any claude_code work."
-                "\n3. claude_code.run_task with repo_url, branch (from task's "
-                "branch_name), and auto_push=true. Then scheduler.add_job with "
-                "on_complete='resume_conversation' to monitor it. Include the "
-                "project task_id in the on_success_message for tracking."
-                "\n4. On resume: update_task(status='done'), then get_next_task "
-                "for the next one. For subsequent tasks in the same phase, "
-                "prefer continue_task on the previous workspace over a fresh "
-                "run_task (keeps file context, only start fresh when previous "
-                "work is pushed and context is exhausted)."
+                "\n3. claude_code.run_task with repo_url, branch=phase_branch, "
+                "source_branch=source_branch, and auto_push=true. In the prompt, "
+                "reference relevant docs from the repo (e.g. CLAUDE.md, docs/) so "
+                "the task agent follows project conventions. Then scheduler.add_job "
+                "with on_complete='resume_conversation' to monitor it. Include "
+                "the project task_id in the on_success_message for tracking."
+                "\n4. On task completion: update_task(status='in_review'). Create a PR "
+                "from phase_branch into project_branch using git_platform.create_pull_request. "
+                "Store the pr_number on the task with update_task(pr_number=...)."
+                "\n5. If auto_merge is enabled, merge the PR with git_platform.merge_pull_request "
+                "and update_task(status='done'). Otherwise notify the user the PR is ready."
+                "\n6. For subsequent tasks in the same phase, prefer continue_task on the "
+                "previous workspace (keeps file context). Only start a fresh run_task when "
+                "previous work is pushed and a clean workspace is needed."
             )
 
             return "\n".join(lines)
