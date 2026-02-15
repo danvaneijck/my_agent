@@ -6,13 +6,17 @@ import re
 import uuid
 from datetime import datetime, timezone
 
+import httpx
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shared.config import get_settings
 from shared.models.project import Project
 from shared.models.project_phase import ProjectPhase
 from shared.models.project_task import ProjectTask
+
+settings = get_settings()
 
 logger = structlog.get_logger()
 
@@ -906,6 +910,458 @@ class ProjectPlannerTools:
             "todo_task_ids": all_todo_ids,
             "phases": phase_dicts,
             "prompt": prompt,
+        }
+
+    async def execute_next_phase(
+        self,
+        project_id: str,
+        auto_push: bool = True,
+        timeout: int = 1800,
+        user_id: str | None = None,
+    ) -> dict:
+        """Execute the next phase in sequence. Reuses planning task context for phase 0."""
+        if not user_id:
+            raise ValueError("user_id is required")
+
+        uid = uuid.UUID(user_id)
+        pid = uuid.UUID(project_id)
+
+        async with self.session_factory() as session:
+            # Get project
+            result = await session.execute(
+                select(Project).where(Project.id == pid, Project.user_id == uid)
+            )
+            project = result.scalar_one_or_none()
+            if not project:
+                raise ValueError(f"Project not found: {project_id}")
+
+            # Find next phase to execute (first with status="planned" or "in_progress" with todos)
+            phases_result = await session.execute(
+                select(ProjectPhase)
+                .where(ProjectPhase.project_id == pid)
+                .order_by(ProjectPhase.order_index)
+            )
+            phases = list(phases_result.scalars().all())
+
+            target_phase = None
+            for phase in phases:
+                if phase.status == "planned" or (phase.status == "in_progress"):
+                    # Check if it has todo tasks
+                    tasks_result = await session.execute(
+                        select(ProjectTask)
+                        .where(
+                            ProjectTask.phase_id == phase.id,
+                            ProjectTask.status == "todo",
+                        )
+                        .limit(1)
+                    )
+                    if tasks_result.scalar_one_or_none():
+                        target_phase = phase
+                        break
+
+            if not target_phase:
+                return {
+                    "message": "No phases left to execute. All phases are complete or have no todo tasks.",
+                    "project_status": project.status,
+                }
+
+            # Get execution plan for this phase
+            exec_plan = await self.get_execution_plan(
+                project_id=project_id,
+                phase_ids=[str(target_phase.id)],
+                user_id=user_id,
+            )
+
+            if not exec_plan.get("prompt"):
+                return {
+                    "message": f"Phase '{target_phase.name}' has no todo tasks to execute.",
+                    "phase_id": str(target_phase.id),
+                }
+
+            todo_task_ids = exec_plan.get("todo_task_ids", [])
+            prompt = exec_plan.get("prompt")
+            repo_url = exec_plan.get("repo_url")
+            phase_branch = target_phase.branch_name
+            source_branch = project.default_branch
+
+            # Determine if we should reuse planning task (phase 0 + planning_task_id exists + awaiting_input)
+            use_continue_task = False
+            claude_task_id = None
+
+            if target_phase.order_index == 0 and project.planning_task_id:
+                # Check planning task status via HTTP call to claude_code
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(
+                        f"{settings.module_services['claude_code']}/execute",
+                        json={
+                            "tool_name": "claude_code.task_status",
+                            "arguments": {"task_id": project.planning_task_id},
+                            "user_id": user_id,
+                        }
+                    )
+                    if resp.status_code == 200:
+                        task_data = resp.json()
+                        if task_data.get("success") and task_data.get("result", {}).get("status") == "awaiting_input":
+                            use_continue_task = True
+
+            # Launch claude_code task
+            if use_continue_task:
+                # Continue from planning task
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        f"{settings.module_services['claude_code']}/execute",
+                        json={
+                            "tool_name": "claude_code.continue_task",
+                            "arguments": {
+                                "task_id": project.planning_task_id,
+                                "prompt": prompt,
+                                "mode": "execute",
+                                "auto_push": auto_push,
+                                "timeout": timeout,
+                            },
+                            "user_id": user_id,
+                        }
+                    )
+                    if resp.status_code != 200:
+                        raise ValueError(f"Failed to continue planning task: {resp.text}")
+                    result_data = resp.json()
+                    if not result_data.get("success"):
+                        raise ValueError(f"Failed to continue planning task: {result_data.get('error')}")
+                    claude_task_id = result_data.get("result", {}).get("task_id")
+            else:
+                # New task for this phase
+                task_args = {
+                    "prompt": prompt,
+                    "mode": "execute",
+                    "auto_push": auto_push,
+                    "timeout": timeout,
+                }
+                if repo_url:
+                    task_args["repo_url"] = repo_url
+                    task_args["branch"] = phase_branch
+                    task_args["source_branch"] = source_branch
+
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        f"{settings.module_services['claude_code']}/execute",
+                        json={
+                            "tool_name": "claude_code.run_task",
+                            "arguments": task_args,
+                            "user_id": user_id,
+                        }
+                    )
+                    if resp.status_code != 200:
+                        raise ValueError(f"Failed to start claude_code task: {resp.text}")
+                    result_data = resp.json()
+                    if not result_data.get("success"):
+                        raise ValueError(f"Failed to start claude_code task: {result_data.get('error')}")
+                    claude_task_id = result_data.get("result", {}).get("task_id")
+
+            # Update tasks to "doing" status
+            await self.bulk_update_tasks(
+                task_ids=todo_task_ids,
+                status="doing",
+                claude_task_id=claude_task_id,
+                user_id=user_id,
+            )
+
+            # Update phase to "in_progress"
+            target_phase.status = "in_progress"
+            target_phase.updated_at = datetime.now(timezone.utc)
+            await session.commit()
+
+            logger.info(
+                "phase_execution_started",
+                project_id=project_id,
+                phase_id=str(target_phase.id),
+                phase_name=target_phase.name,
+                phase_index=target_phase.order_index,
+                claude_task_id=claude_task_id,
+                task_count=len(todo_task_ids),
+                reused_planning_context=use_continue_task,
+            )
+
+            return {
+                "phase_id": str(target_phase.id),
+                "phase_name": target_phase.name,
+                "phase_index": target_phase.order_index,
+                "claude_task_id": claude_task_id,
+                "task_count": len(todo_task_ids),
+                "reused_planning_context": use_continue_task,
+                "message": f"Started executing {len(todo_task_ids)} tasks in phase '{target_phase.name}'",
+            }
+
+    async def complete_phase(
+        self,
+        phase_id: str,
+        claude_task_id: str,
+        user_id: str | None = None,
+    ) -> dict:
+        """Complete a phase: create PR, update task statuses, mark phase complete."""
+        if not user_id:
+            raise ValueError("user_id is required")
+
+        uid = uuid.UUID(user_id)
+        phid = uuid.UUID(phase_id)
+
+        async with self.session_factory() as session:
+            # Get phase and project
+            result = await session.execute(
+                select(ProjectPhase).where(ProjectPhase.id == phid)
+            )
+            phase = result.scalar_one_or_none()
+            if not phase:
+                raise ValueError(f"Phase not found: {phase_id}")
+
+            result = await session.execute(
+                select(Project).where(Project.id == phase.project_id, Project.user_id == uid)
+            )
+            project = result.scalar_one_or_none()
+            if not project:
+                raise ValueError("Project not found or access denied")
+
+            # Get all tasks for this phase with matching claude_task_id
+            tasks_result = await session.execute(
+                select(ProjectTask).where(
+                    ProjectTask.phase_id == phid,
+                    ProjectTask.claude_task_id == claude_task_id,
+                )
+            )
+            tasks = list(tasks_result.scalars().all())
+
+            if not tasks:
+                return {
+                    "success": False,
+                    "message": f"No tasks found for phase {phase_id} with claude_task_id {claude_task_id}",
+                }
+
+            # Check claude_code task status
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    f"{settings.module_services['claude_code']}/execute",
+                    json={
+                        "tool_name": "claude_code.task_status",
+                        "arguments": {"task_id": claude_task_id},
+                        "user_id": user_id,
+                    }
+                )
+                if resp.status_code != 200:
+                    raise ValueError(f"Failed to get task status: {resp.text}")
+                task_data = resp.json()
+                if not task_data.get("success"):
+                    raise ValueError(f"Failed to get task status: {task_data.get('error')}")
+
+                task_status_result = task_data.get("result", {})
+                status = task_status_result.get("status")
+
+            # Handle failure
+            if status in ("failed", "timed_out", "cancelled"):
+                error_msg = task_status_result.get("error") or f"Task {status}"
+                for task in tasks:
+                    task.status = "failed"
+                    task.error_message = error_msg
+                    task.completed_at = datetime.now(timezone.utc)
+                    task.updated_at = datetime.now(timezone.utc)
+
+                phase.status = "completed"
+                phase.updated_at = datetime.now(timezone.utc)
+                await session.commit()
+
+                logger.warning(
+                    "phase_failed",
+                    project_id=str(project.id),
+                    phase_id=phase_id,
+                    claude_task_id=claude_task_id,
+                    error=error_msg,
+                )
+
+                return {
+                    "success": False,
+                    "trigger_next": False,
+                    "message": f"Phase '{phase.name}' failed: {error_msg}",
+                    "phase_status": "failed",
+                }
+
+            # Handle success - create PR and update tasks
+            pr_number = None
+            pr_url = None
+
+            if project.repo_owner and project.repo_name and phase.branch_name:
+                # Create PR via git_platform
+                pr_title = f"{project.name}: {phase.name}"
+                pr_body = f"## Phase: {phase.name}\n\n{phase.description or ''}\n\n### Tasks Completed:\n"
+                for task in tasks:
+                    pr_body += f"- {task.title}\n"
+
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        f"{settings.module_services['git_platform']}/execute",
+                        json={
+                            "tool_name": "git_platform.create_pull_request",
+                            "arguments": {
+                                "owner": project.repo_owner,
+                                "repo": project.repo_name,
+                                "title": pr_title,
+                                "head": phase.branch_name,
+                                "base": project.default_branch,
+                                "body": pr_body,
+                                "draft": False,
+                            },
+                            "user_id": user_id,
+                        }
+                    )
+                    if resp.status_code == 200:
+                        pr_data = resp.json()
+                        if pr_data.get("success"):
+                            pr_result = pr_data.get("result", {})
+                            pr_number = pr_result.get("pr_number")
+                            pr_url = pr_result.get("url")
+                    else:
+                        logger.error("pr_creation_failed", status=resp.status_code, response=resp.text)
+
+            # Update all tasks to "in_review"
+            now = datetime.now(timezone.utc)
+            for task in tasks:
+                task.status = "in_review"
+                task.completed_at = now
+                task.updated_at = now
+                if pr_number:
+                    task.pr_number = pr_number
+
+            # Mark phase as complete
+            phase.status = "completed"
+            phase.updated_at = now
+            await session.commit()
+
+            logger.info(
+                "phase_completed",
+                project_id=str(project.id),
+                phase_id=phase_id,
+                phase_name=phase.name,
+                pr_number=pr_number,
+                pr_url=pr_url,
+                task_count=len(tasks),
+            )
+
+            return {
+                "success": True,
+                "trigger_next": True,
+                "phase_id": phase_id,
+                "phase_name": phase.name,
+                "pr_number": pr_number,
+                "pr_url": pr_url,
+                "task_count": len(tasks),
+                "message": f"Phase '{phase.name}' completed successfully. PR #{pr_number} created." if pr_number else f"Phase '{phase.name}' completed successfully.",
+            }
+
+    async def start_project_workflow(
+        self,
+        project_id: str,
+        workflow_id: str | None = None,
+        auto_push: bool = True,
+        timeout: int = 1800,
+        user_id: str | None = None,
+    ) -> dict:
+        """Start automated sequential phase execution with scheduler workflow chaining."""
+        if not user_id:
+            raise ValueError("user_id is required")
+
+        uid = uuid.UUID(user_id)
+        pid = uuid.UUID(project_id)
+
+        # Generate workflow_id if not provided
+        if not workflow_id:
+            workflow_id = str(uuid.uuid4())
+
+        async with self.session_factory() as session:
+            # Get project
+            result = await session.execute(
+                select(Project).where(Project.id == pid, Project.user_id == uid)
+            )
+            project = result.scalar_one_or_none()
+            if not project:
+                raise ValueError(f"Project not found: {project_id}")
+
+            # Store workflow_id in project
+            project.workflow_id = workflow_id
+            await session.commit()
+
+        # Execute first phase
+        phase_result = await self.execute_next_phase(
+            project_id=project_id,
+            auto_push=auto_push,
+            timeout=timeout,
+            user_id=user_id,
+        )
+
+        if "claude_task_id" not in phase_result:
+            return {
+                "success": False,
+                "message": phase_result.get("message", "Failed to start first phase"),
+            }
+
+        claude_task_id = phase_result["claude_task_id"]
+        phase_id = phase_result["phase_id"]
+        phase_name = phase_result["phase_name"]
+
+        # Create scheduler job to monitor this phase
+        on_success_message = (
+            f"Project '{project.name}' phase '{phase_name}' (phase_id: {phase_id}) "
+            f"with claude_code task {claude_task_id} has completed. "
+            f"Use project_planner.complete_phase(phase_id='{phase_id}', claude_task_id='{claude_task_id}') "
+            f"to create the PR and update task statuses. Then check if there are more phases to execute "
+            f"by calling project_planner.execute_next_phase(project_id='{project_id}'). "
+            f"If another phase starts, create a new scheduler job to monitor it. "
+            f"Continue until all phases are complete. Workflow ID: {workflow_id}"
+        )
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{settings.module_services['scheduler']}/execute",
+                json={
+                    "tool_name": "scheduler.add_job",
+                    "arguments": {
+                        "job_type": "poll_module",
+                        "check_config": {
+                            "module": "claude_code",
+                            "tool": "claude_code.task_status",
+                            "args": {"task_id": claude_task_id},
+                            "success_field": "status",
+                            "success_values": ["completed", "failed", "timed_out", "cancelled"],
+                        },
+                        "interval_seconds": 30,
+                        "max_attempts": 240,  # 2 hours max
+                        "on_success_message": on_success_message,
+                        "on_complete": "resume_conversation",
+                        "workflow_id": workflow_id,
+                    },
+                    "user_id": user_id,
+                }
+            )
+            if resp.status_code != 200:
+                raise ValueError(f"Failed to create scheduler job: {resp.text}")
+            scheduler_data = resp.json()
+            if not scheduler_data.get("success"):
+                raise ValueError(f"Failed to create scheduler job: {scheduler_data.get('error')}")
+
+        logger.info(
+            "project_workflow_started",
+            project_id=project_id,
+            workflow_id=workflow_id,
+            first_phase_id=phase_id,
+            first_phase_name=phase_name,
+            claude_task_id=claude_task_id,
+        )
+
+        return {
+            "success": True,
+            "workflow_id": workflow_id,
+            "project_id": project_id,
+            "project_name": project.name,
+            "first_phase_id": phase_id,
+            "first_phase_name": phase_name,
+            "claude_task_id": claude_task_id,
+            "message": f"Workflow started. Executing first phase '{phase_name}'. Scheduler will auto-progress through remaining phases.",
         }
 
     async def bulk_update_tasks(
