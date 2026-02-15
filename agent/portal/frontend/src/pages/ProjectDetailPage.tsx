@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2 } from "lucide-react";
-import { useProjectDetail } from "@/hooks/useProjects";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play } from "lucide-react";
+import { useProjectDetail, executePhase } from "@/hooks/useProjects";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import PlanningTaskPanel from "@/components/projects/PlanningTaskPanel";
+import ProjectExecutionPanel from "@/components/projects/ProjectExecutionPanel";
 import type { ProjectPhase } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -69,6 +71,7 @@ export default function ProjectDetailPage() {
   const navigate = useNavigate();
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   const handleDelete = async () => {
     if (!projectId) return;
@@ -79,6 +82,38 @@ export default function ProjectDetailPage() {
     } catch {
       setDeleting(false);
       setShowDelete(false);
+    }
+  };
+
+  const handleStartExecution = async () => {
+    if (!projectId) return;
+    setStarting(true);
+    try {
+      await executePhase(projectId, { auto_push: true });
+      refetch(); // Refresh to show execution panel
+    } catch {
+      // Error
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const handleResume = async () => {
+    if (!projectId) return;
+    setStarting(true);
+    try {
+      // Update status to active
+      await api(`/api/projects/${projectId}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: "active" }),
+      });
+      // Start next phase
+      await executePhase(projectId, { auto_push: true });
+      refetch();
+    } catch {
+      // Error
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -171,6 +206,53 @@ export default function ProjectDetailPage() {
             <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${overallPct}%` }} />
           </div>
         </div>
+      )}
+
+      {/* Planning Task Panel */}
+      {project.planning_task_id && project.phases.length === 0 && (
+        <PlanningTaskPanel
+          planningTaskId={project.planning_task_id}
+          projectId={project.project_id}
+          onPlanApplied={refetch}
+        />
+      )}
+
+      {/* Execution Controls */}
+      {project.status === "active" && project.phases.length > 0 && (
+        <>
+          {/* Check if execution is running */}
+          {project.phases.some(p => p.status === "in_progress") ? (
+            <ProjectExecutionPanel
+              projectId={project.project_id}
+              onExecutionComplete={refetch}
+              onPause={refetch}
+            />
+          ) : (
+            /* Show Start Implementation if there are incomplete phases */
+            project.phases.some(p => p.status !== "completed") && (
+              <button
+                onClick={handleStartExecution}
+                disabled={starting}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+              >
+                <Play size={16} />
+                {starting ? "Starting..." : "Start Implementation"}
+              </button>
+            )
+          )}
+        </>
+      )}
+
+      {/* Resume button for paused projects */}
+      {project.status === "paused" && (
+        <button
+          onClick={handleResume}
+          disabled={starting}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+        >
+          <Play size={16} />
+          {starting ? "Resuming..." : "Resume Implementation"}
+        </button>
       )}
 
       {/* Phases */}

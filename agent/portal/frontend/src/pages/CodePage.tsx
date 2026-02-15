@@ -102,25 +102,27 @@ export default function CodePage() {
         "/api/tasks"
       );
       const mapped = (data.tasks || []).map(mapTask);
-      // Only show root tasks — child tasks share the same workspace.
-      // Use the latest child's status so the badge stays current.
-      const roots = mapped.filter((t) => !t.parent_task_id);
-      for (const root of roots) {
-        const children = mapped
-          .filter((t) => t.parent_task_id === root.id)
-          .sort(
-            (a, b) =>
-              new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          );
-        if (children.length > 0) {
-          root.status = children[0].status;
+
+      // Group tasks by workspace to show unique workspaces
+      // For each workspace, show the most recent task
+      const workspaceMap = new Map<string, Task>();
+
+      for (const task of mapped) {
+        const workspace = task.workspace;
+        if (!workspace) continue;
+
+        const existing = workspaceMap.get(workspace);
+        if (!existing || new Date(task.created_at) > new Date(existing.created_at)) {
+          workspaceMap.set(workspace, task);
         }
       }
-      roots.sort(
+
+      const uniqueWorkspaces = Array.from(workspaceMap.values()).sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
-      setTasks(roots);
+
+      setTasks(uniqueWorkspaces);
     } catch {
       // ignore
     } finally {
@@ -248,8 +250,14 @@ export default function CodePage() {
               <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-8 text-gray-600 text-sm">
-              No tasks found
+            <div className="text-center py-8 px-4">
+              <Code2 size={32} className="mx-auto text-gray-700 mb-2" />
+              <p className="text-gray-500 text-sm">
+                {search ? "No matching workspaces" : "No code workspaces yet"}
+              </p>
+              <p className="text-gray-600 text-xs mt-1">
+                Run a claude_code task to create a workspace
+              </p>
             </div>
           ) : (
             filtered.map((task) => (
