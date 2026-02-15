@@ -13,7 +13,7 @@ import {
   ArrowRight,
   Check,
 } from "lucide-react";
-import Logo from "@/components/common/Logo";
+import { Logo } from "@/components/brand/Logo";
 
 interface AuthProvider {
   name: string;
@@ -96,7 +96,9 @@ export default function LandingPage({ providers, onLogin, loading }: LandingPage
       {/* Hero Section */}
       <div className="max-w-7xl mx-auto px-4 py-16 md:py-24">
         <div className="text-center mb-16">
-          <Logo size="xl" showText={true} className="justify-center mb-8" />
+          <div className="flex justify-center mb-8">
+            <Logo size="xl" variant="full" />
+          </div>
           <h1 className="text-4xl md:text-6xl font-bold text-white mb-6">
             Your Modular AI Agent Framework
           </h1>
@@ -249,7 +251,7 @@ export default function LandingPage({ providers, onLogin, loading }: LandingPage
         <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-2">
-              <Logo size="sm" showText={false} />
+              <Logo size="sm" variant="icon" />
               <span className="text-gray-400 text-sm">© 2026 ModuFlow. All rights reserved.</span>
             </div>
             <div className="text-gray-500 text-xs">

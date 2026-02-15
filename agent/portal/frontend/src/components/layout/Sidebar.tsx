@@ -14,7 +14,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import Logo from "@/components/common/Logo";
+import { Logo } from "@/components/brand/Logo";
 
 const NAV_ITEMS = [
   { to: "/", icon: Home, label: "Home", end: true },
@@ -58,9 +58,8 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        <div className="flex items-center justify-between h-14 px-3 border-b border-border">
-          <Logo size="sm" withText={false} className="flex-shrink-0" />
-          <span className="text-sm font-bold text-white flex-1 ml-2">ModuFlow</span>
+        <div className="flex items-center justify-between h-14 px-4 border-b border-border bg-gradient-to-r from-surface-light to-surface">
+          <Logo size="sm" variant="full" />
           <button
             onClick={onClose}
             className="md:hidden p-1 rounded hover:bg-surface-lighter text-gray-400"

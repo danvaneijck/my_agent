@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { getToken, setToken, setUser, clearAuth, api } from "@/api/client";
 import Layout from "@/components/layout/Layout";
-import Logo from "@/components/common/Logo";
+import { Logo } from "@/components/brand/Logo";
 import TasksPage from "@/pages/TasksPage";
 import ChatPage from "@/pages/ChatPage";
 import FilesPage from "@/pages/FilesPage";
@@ -67,7 +67,7 @@ function LoginScreen() {
       <div className="bg-surface-light/80 backdrop-blur-sm border border-border rounded-2xl p-10 w-full max-w-md space-y-8 shadow-2xl">
         {/* Logo and Tagline */}
         <div className="flex flex-col items-center text-center space-y-3">
-          <Logo size="lg" withText={false} />
+          <Logo size="lg" variant="icon" />
           <div>
             <h1 className="text-3xl font-bold text-white tracking-tight">ModuFlow</h1>
             <p className="text-sm text-gray-400 mt-1">Your Modular AI Agent Framework</p>

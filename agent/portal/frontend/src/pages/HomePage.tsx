@@ -28,7 +28,7 @@ import type {
   Deployment,
 } from "@/types";
 import { Skeleton } from "@/components/common/Skeleton";
-import Logo from "@/components/common/Logo";
+import { Logo } from "@/components/brand/Logo";
 import { getUser } from "@/api/client";
 
 // ---------------------------------------------------------------------------
@@ -1193,7 +1193,7 @@ function WelcomeSection({ username }: { username?: string }) {
   return (
     <div className="bg-gradient-to-br from-surface-light via-surface to-surface-light border border-border rounded-2xl p-6 md:p-8 shadow-2xl">
       <div className="flex flex-col md:flex-row items-center gap-6 mb-8">
-        <Logo size="lg" showText={true} />
+        <Logo size="lg" variant="full" />
         <div className="flex-1 text-center md:text-left">
           <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
             Welcome{username ? `, ${username}` : ""}!
