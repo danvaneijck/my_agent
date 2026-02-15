@@ -81,6 +81,13 @@ class GitProvider(ABC):
         """Merge a pull request."""
 
     @abstractmethod
+    async def create_repo(
+        self, name: str, description: str | None = None,
+        private: bool = True, auto_init: bool = True,
+    ) -> dict:
+        """Create a new repository."""
+
+    @abstractmethod
     async def get_ci_status(self, owner: str, repo: str, ref: str) -> dict:
         """Get CI/check status for a commit or branch."""
 
