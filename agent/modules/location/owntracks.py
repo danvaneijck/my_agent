@@ -290,7 +290,7 @@ async def handle_owntracks_publish(
                 logger.info(
                     "stale_transition_ignored",
                     rid=rid,
-                    event=event,
+                    transition_event=event,
                     event_age_seconds=event_age,
                     user_id=user_id,
                 )
@@ -308,7 +308,7 @@ async def handle_owntracks_publish(
                 logger.info(
                     "reminder_triggered",
                     rid=rid,
-                    event=event,
+                    transition_event=event,
                     user_id=user_id,
                     platform=notification.platform,
                 )

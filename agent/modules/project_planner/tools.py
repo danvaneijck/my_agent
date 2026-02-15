@@ -671,29 +671,50 @@ class ProjectPlannerTools:
 
     async def get_next_task(
         self,
-        phase_id: str,
+        phase_id: str | None = None,
+        project_id: str | None = None,
         user_id: str | None = None,
     ) -> dict | None:
         if not user_id:
             raise ValueError("user_id is required")
+        if not phase_id and not project_id:
+            raise ValueError("Either phase_id or project_id is required")
 
         uid = uuid.UUID(user_id)
-        phid = uuid.UUID(phase_id)
 
         async with self.session_factory() as session:
-            result = await session.execute(
-                select(ProjectTask)
-                .join(ProjectPhase, ProjectPhase.id == ProjectTask.phase_id)
-                .join(Project, Project.id == ProjectPhase.project_id)
-                .where(
-                    ProjectTask.phase_id == phid,
-                    ProjectTask.status == "todo",
-                    Project.user_id == uid,
+            if phase_id:
+                # Specific phase requested
+                phid = uuid.UUID(phase_id)
+                result = await session.execute(
+                    select(ProjectTask)
+                    .join(ProjectPhase, ProjectPhase.id == ProjectTask.phase_id)
+                    .join(Project, Project.id == ProjectPhase.project_id)
+                    .where(
+                        ProjectTask.phase_id == phid,
+                        ProjectTask.status == "todo",
+                        Project.user_id == uid,
+                    )
+                    .order_by(ProjectTask.order_index)
+                    .limit(1)
                 )
-                .order_by(ProjectTask.order_index)
-                .limit(1)
-            )
-            task = result.scalar_one_or_none()
+                task = result.scalar_one_or_none()
+            else:
+                # Find earliest phase with a todo task
+                pid = uuid.UUID(project_id)
+                result = await session.execute(
+                    select(ProjectTask)
+                    .join(ProjectPhase, ProjectPhase.id == ProjectTask.phase_id)
+                    .join(Project, Project.id == ProjectPhase.project_id)
+                    .where(
+                        ProjectTask.project_id == pid,
+                        ProjectTask.status == "todo",
+                        Project.user_id == uid,
+                    )
+                    .order_by(ProjectPhase.order_index, ProjectTask.order_index)
+                    .limit(1)
+                )
+                task = result.scalar_one_or_none()
 
             if task is None:
                 return None
@@ -701,7 +722,7 @@ class ProjectPlannerTools:
             task_dict = _task_to_dict(task)
 
             # Include branch context so the LLM knows which branches to use
-            phase = await session.get(ProjectPhase, phid)
+            phase = await session.get(ProjectPhase, task.phase_id)
             project = await session.get(Project, phase.project_id)
 
             # Phase branch — fall back to task's own branch_name for pre-migration projects
