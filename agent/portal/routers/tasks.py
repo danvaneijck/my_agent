@@ -69,12 +69,15 @@ class ContinueTaskRequest(BaseModel):
 @router.get("")
 async def list_tasks(
     status: str | None = Query(None, alias="status"),
+    latest_per_chain: bool = Query(True),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """List all Claude Code tasks, optionally filtered by status."""
     args: dict = {}
     if status:
         args["status_filter"] = status
+    if latest_per_chain:
+        args["latest_per_chain"] = True
     result = await call_tool(
         module="claude_code",
         tool_name="claude_code.list_tasks",

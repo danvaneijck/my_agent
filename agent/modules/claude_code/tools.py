@@ -470,7 +470,10 @@ class ClaudeCodeTools:
         }
 
     async def list_tasks(
-        self, status_filter: str | None = None, user_id: str | None = None
+        self,
+        status_filter: str | None = None,
+        latest_per_chain: bool = False,
+        user_id: str | None = None,
     ) -> dict:
         """List tasks for the given user, optionally filtered by status."""
         if user_id:
@@ -479,6 +482,17 @@ class ClaudeCodeTools:
             tasks = list(self.tasks.values())
         if status_filter:
             tasks = [t for t in tasks if t.status == status_filter]
+
+        if latest_per_chain:
+            # Group by chain root, keep only the most recent task per chain
+            chains: dict[str, Task] = {}
+            for t in tasks:
+                chain_key = t.parent_task_id or t.id
+                existing = chains.get(chain_key)
+                if existing is None or t.created_at > existing.created_at:
+                    chains[chain_key] = t
+            tasks = list(chains.values())
+
         return {
             "tasks": [t.to_dict() for t in tasks],
             "total": len(tasks),
