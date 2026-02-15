@@ -30,6 +30,7 @@ import type {
 import { Skeleton } from "@/components/common/Skeleton";
 import { Logo } from "@/components/brand/Logo";
 import { getUser } from "@/api/client";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1374,9 +1375,7 @@ export default function HomePage() {
               className={dashboard.loading ? "animate-spin" : ""}
             />
           </button>
-          {dashboard.loading && (
-            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          )}
+          {dashboard.loading && <LoadingSpinner size="sm" />}
         </div>
       </div>
 

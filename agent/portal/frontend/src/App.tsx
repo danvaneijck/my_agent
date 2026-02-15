@@ -23,6 +23,7 @@ import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
 import HomePage from "@/pages/HomePage";
 import LandingPage from "@/pages/LandingPage";
 import NotFoundPage from "@/pages/NotFoundPage";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
 interface AuthProvider {
   name: string;
@@ -88,8 +89,8 @@ function LoginScreen() {
         )}
 
         {discovering ? (
-          <div className="flex justify-center py-8">
-            <div className="w-6 h-6 border-3 border-accent border-t-transparent rounded-full animate-spin" />
+          <div className="flex justify-center py-4">
+            <LoadingSpinner size="md" />
           </div>
         ) : providers.length === 0 ? (
           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
@@ -104,12 +105,12 @@ function LoginScreen() {
                 key={p.name}
                 onClick={() => handleLogin(p.name)}
                 disabled={loading}
-                className={`w-full py-3.5 px-4 rounded-lg font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] ${
+                className={`w-full py-3.5 px-4 rounded-lg font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface-light ${
                   p.name === "discord"
-                    ? "bg-[#5865F2] hover:bg-[#4752C4] text-white"
+                    ? "bg-[#5865F2] hover:bg-[#4752C4] text-white focus:ring-[#5865F2]"
                     : p.name === "google"
-                    ? "bg-white text-gray-800 hover:bg-gray-50 border border-gray-200"
-                    : "bg-gradient-to-r from-accent to-accent-hover text-white"
+                    ? "bg-white text-gray-800 hover:bg-gray-50 border border-gray-200 focus:ring-gray-400"
+                    : "bg-gradient-to-r from-accent to-accent-hover text-white focus:ring-accent"
                 }`}
               >
                 {p.name === "discord" && (
@@ -212,7 +213,7 @@ function AuthCallback() {
 
   return (
     <div className="h-full flex items-center justify-center">
-      <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      <LoadingSpinner size="lg" />
     </div>
   );
 }
@@ -254,7 +255,7 @@ export default function App() {
   if (authenticated === null) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <LoadingSpinner size="lg" />
       </div>
     );
   }

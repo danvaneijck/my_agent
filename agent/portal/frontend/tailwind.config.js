@@ -63,9 +63,10 @@ export default {
         "gradient-brand": "linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)",
         "gradient-hero": "linear-gradient(135deg, #1a1b23 0%, #2a2b37 50%, #1a1b23 100%)",
       },
-      // Font family (Inter will be added via Google Fonts)
+      // Font families
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
+        mono: ['JetBrains Mono', 'Fira Code', 'Cascadia Code', 'monospace'],
       },
     },
   },
