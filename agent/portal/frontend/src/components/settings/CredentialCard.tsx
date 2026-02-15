@@ -124,9 +124,10 @@ function ClaudeOAuthFlow({
     setError("");
     setStep("authorizing");
     try {
-      const data = await api("/api/settings/credentials/claude_code/oauth/start", {
-        method: "POST",
-      });
+      const data = await api<{ authorize_url: string; state: string }>(
+        "/api/settings/credentials/claude_code/oauth/start",
+        { method: "POST" },
+      );
       // Open the Anthropic authorize URL in a new tab
       window.open(data.authorize_url, "_blank", "noopener,noreferrer");
     } catch (err: any) {
@@ -242,7 +243,7 @@ function ClaudeTokenStatusBar({
 
   const fetchStatus = useCallback(async () => {
     try {
-      const data = await api("/api/settings/credentials/claude_code/status");
+      const data = await api<ClaudeTokenStatus>("/api/settings/credentials/claude_code/status");
       setStatus(data);
     } catch {
       // Silently fail — status is optional enhancement
