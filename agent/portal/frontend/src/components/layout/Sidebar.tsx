@@ -14,6 +14,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
 
 const NAV_ITEMS = [
   { to: "/", icon: Home, label: "Home", end: true },
@@ -56,12 +57,14 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
           md:translate-x-0 md:static md:z-auto
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
+        aria-label="Main navigation"
       >
-        <div className="flex items-center justify-between h-14 px-4 border-b border-border">
-          <span className="text-lg font-semibold text-white">Agent Portal</span>
+        <div className="flex items-center justify-between h-14 px-4 border-b border-border bg-gradient-to-r from-surface-light to-surface">
+          <Logo size="sm" variant="full" />
           <button
             onClick={onClose}
-            className="md:hidden p-1 rounded hover:bg-surface-lighter text-gray-400"
+            className="md:hidden p-1 rounded hover:bg-surface-lighter text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent"
+            aria-label="Close navigation menu"
           >
             <X size={18} />
           </button>
@@ -75,7 +78,7 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
               end={end}
               onClick={onClose}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent ${isActive
                   ? "bg-accent/15 text-accent-hover"
                   : "text-gray-400 hover:text-gray-200 hover:bg-surface-lighter"
                 }`

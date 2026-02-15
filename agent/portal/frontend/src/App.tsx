@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { getToken, setToken, setUser, clearAuth, api } from "@/api/client";
 import Layout from "@/components/layout/Layout";
+import { Logo } from "@/components/brand/Logo";
 import TasksPage from "@/pages/TasksPage";
 import ChatPage from "@/pages/ChatPage";
 import FilesPage from "@/pages/FilesPage";
@@ -20,6 +21,9 @@ import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import PhaseDetailPage from "@/pages/PhaseDetailPage";
 import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
 import HomePage from "@/pages/HomePage";
+import LandingPage from "@/pages/LandingPage";
+import NotFoundPage from "@/pages/NotFoundPage";
+import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
 interface AuthProvider {
   name: string;
@@ -31,6 +35,7 @@ function LoginScreen() {
   const [error, setError] = useState("");
   const [providers, setProviders] = useState<AuthProvider[]>([]);
   const [discovering, setDiscovering] = useState(true);
+  const [showLanding, setShowLanding] = useState(true);
 
   useEffect(() => {
     fetch("/api/auth/providers")
@@ -54,23 +59,45 @@ function LoginScreen() {
     }
   };
 
+  // Show landing page if enabled, otherwise show compact login
+  if (showLanding && !discovering) {
+    return <LandingPage providers={providers} onLogin={handleLogin} loading={loading} />;
+  }
+
   return (
-    <div className="h-full flex items-center justify-center p-4">
-      <div className="bg-surface-light border border-border rounded-xl p-8 w-full max-w-sm space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-white">Agent Portal</h1>
-          <p className="text-sm text-gray-400 mt-2">Sign in to continue</p>
+    <div className="h-full flex items-center justify-center p-4 bg-gradient-to-br from-surface via-surface to-surface-lighter">
+      <div className="bg-surface-light/80 backdrop-blur-sm border border-border rounded-2xl p-10 w-full max-w-md space-y-8 shadow-2xl">
+        {/* Logo and Tagline */}
+        <div className="flex flex-col items-center text-center space-y-3">
+          <Logo size="lg" variant="icon" />
+          <div>
+            <h1 className="text-3xl font-bold text-white tracking-tight">ModuFlow</h1>
+            <p className="text-sm text-gray-400 mt-1">Your Modular AI Agent Framework</p>
+          </div>
+          <div className="w-16 h-1 bg-gradient-to-r from-accent to-cyan-500 rounded-full" />
         </div>
-        {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+
+        {/* Sign in prompt */}
+        <div className="text-center">
+          <p className="text-gray-300 font-medium">Sign in to continue</p>
+        </div>
+
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+            <p className="text-sm text-red-400 text-center">{error}</p>
+          </div>
+        )}
 
         {discovering ? (
           <div className="flex justify-center py-4">
-            <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+            <LoadingSpinner size="md" />
           </div>
         ) : providers.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center">
-            No authentication providers configured.
-          </p>
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+            <p className="text-sm text-yellow-400 text-center">
+              No authentication providers configured.
+            </p>
+          </div>
         ) : (
           <div className="space-y-3">
             {providers.map((p) => (
@@ -78,12 +105,12 @@ function LoginScreen() {
                 key={p.name}
                 onClick={() => handleLogin(p.name)}
                 disabled={loading}
-                className={`w-full py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
+                className={`w-full py-3.5 px-4 rounded-lg font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface-light ${
                   p.name === "discord"
-                    ? "bg-[#5865F2] hover:bg-[#4752C4] text-white"
+                    ? "bg-[#5865F2] hover:bg-[#4752C4] text-white focus:ring-[#5865F2]"
                     : p.name === "google"
-                    ? "bg-white text-gray-800 hover:bg-gray-100 border border-gray-300"
-                    : "bg-accent hover:bg-accent-hover text-white"
+                    ? "bg-white text-gray-800 hover:bg-gray-50 border border-gray-200 focus:ring-gray-400"
+                    : "bg-gradient-to-r from-accent to-accent-hover text-white focus:ring-accent"
                 }`}
               >
                 {p.name === "discord" && (
@@ -104,6 +131,24 @@ function LoginScreen() {
             ))}
           </div>
         )}
+
+        {/* Feature highlights */}
+        <div className="pt-6 border-t border-border/50">
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-accent font-bold text-lg">∞</div>
+              <div className="text-xs text-gray-400 mt-1">Modules</div>
+            </div>
+            <div>
+              <div className="text-cyan-500 font-bold text-lg">⚡</div>
+              <div className="text-xs text-gray-400 mt-1">Fast</div>
+            </div>
+            <div>
+              <div className="text-accent-hover font-bold text-lg">🔒</div>
+              <div className="text-xs text-gray-400 mt-1">Secure</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -168,7 +213,7 @@ function AuthCallback() {
 
   return (
     <div className="h-full flex items-center justify-center">
-      <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      <LoadingSpinner size="lg" />
     </div>
   );
 }
@@ -210,7 +255,7 @@ export default function App() {
   if (authenticated === null) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <LoadingSpinner size="lg" />
       </div>
     );
   }
@@ -241,6 +286,7 @@ export default function App() {
         <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
         <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Layout>
   );

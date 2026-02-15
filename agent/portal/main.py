@@ -21,7 +21,11 @@ from sqlalchemy import select
 
 logger = structlog.get_logger()
 
-app = FastAPI(title="Agent Portal", version="1.0.0")
+app = FastAPI(
+    title="ModuFlow API - Web Portal",
+    description="ModuFlow's web portal API provides authentication, conversation management, and project orchestration endpoints for the modular AI agent framework.",
+    version="1.0.0"
+)
 
 # --------------- Routers ---------------
 

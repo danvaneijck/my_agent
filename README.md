@@ -1,6 +1,27 @@
-# AI Agent System
+# ModuFlow
 
-A modular, self-hosted AI agent that connects to Discord, Telegram, and Slack. The agent can orchestrate multi-step tasks using pluggable modules (web research, code execution, persistent memory, file management, etc.), supports multiple LLM providers with automatic fallback, and maintains persistent memory with semantic recall.
+**Your Modular AI Agent Framework**
+
+A professional, modular AI agent framework for building intelligent assistants that orchestrate multi-step tasks. Connect to Discord, Telegram, and Slack with a plug-and-play architecture featuring web research, code execution, persistent memory, file management, and more. Supports multiple LLM providers with automatic fallback.
+
+🌐 **Production**: [agent.danvan.xyz](https://agent.danvan.xyz)
+
+## Features
+
+- **Modular Architecture**: Plug-and-play modules for extensible functionality
+- **Multi-Platform Support**: Discord, Telegram, and Slack integrations
+- **Multi-LLM Support**: Anthropic Claude, OpenAI GPT, Google Gemini with automatic fallback
+- **Persistent Memory**: Semantic recall using pgvector for context-aware conversations
+- **Background Jobs**: Scheduler for long-running tasks and proactive notifications
+- **Code Execution**: Sandboxed Python and shell execution with popular data science libraries
+- **File Management**: MinIO-backed storage for documents and generated files
+- **Web Research**: Search, scraping, and summarization capabilities
+- **Development Tools**: Claude Code integration for autonomous coding tasks
+- **Project Deployment**: Deploy React, Next.js, and Node.js projects to live URLs
+- **Health & Fitness**: Garmin and Renpho integrations for personal data tracking
+- **Location Services**: OwnTracks integration for geofence reminders
+- **Atlassian Integration**: Jira and Confluence automation
+- **Self-Hosted**: Full control over your data and infrastructure
 
 ## Architecture
 
@@ -249,3 +270,29 @@ cd agent && uvicorn core.main:app --reload --port 8000
 ```
 
 You'll need Postgres, Redis, and MinIO running (use `make infra` to start just infrastructure).
+
+## Documentation
+
+- **[Brand Guidelines](agent/docs/BRANDING.md)** - Logo usage, color palette, typography, and brand voice
+- **[Adding Modules](agent/docs/ADDING_MODULES.md)** - Complete guide for creating new modules
+- **[Portal Documentation](agent/docs/portal.md)** - Web portal setup and usage
+- **[Module Documentation](agent/docs/modules/)** - Detailed docs for each module
+
+## Branding
+
+ModuFlow uses a modern, professional brand identity:
+
+- **Colors**: Indigo (#6366f1) primary, Teal (#06b6d4) secondary
+- **Font**: Inter from Google Fonts
+- **Logo**: Connected hexagons representing modular architecture
+- **Theme**: Dark-first design optimized for developer experience
+
+See the [Brand Guidelines](agent/docs/BRANDING.md) for complete details.
+
+## License
+
+This project is open source and available for personal and commercial use.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.

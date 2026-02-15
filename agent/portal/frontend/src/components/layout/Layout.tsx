@@ -144,7 +144,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const title =
     PAGE_TITLES[location.pathname] ||
-    (location.pathname.startsWith("/tasks/") ? "Task Detail" : "Agent Portal");
+    (location.pathname.startsWith("/tasks/") ? "Task Detail" : "ModuFlow");
 
   return (
     <div className="h-full flex">
@@ -160,12 +160,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           title={title}
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
         />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="flex-1 overflow-auto page-transition">{children}</main>
       </div>
 
       {/* Notification toasts */}
       {toasts.length > 0 && (
-        <div className="fixed inset-x-0 top-16 z-50 flex flex-col items-center gap-2 pointer-events-none">
+        <div className="fixed inset-x-0 top-16 z-50 flex flex-col items-center gap-2 pointer-events-none" role="region" aria-live="polite" aria-label="Notifications">
           {toasts.map((toast) => (
             <div
               key={toast.id}
