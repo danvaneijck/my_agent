@@ -75,6 +75,7 @@ def mock_redis():
     redis.get = AsyncMock(return_value=None)
     redis.set = AsyncMock()
     redis.delete = AsyncMock()
+    redis.exists = AsyncMock(return_value=0)
     redis.publish = AsyncMock()
     return redis
 

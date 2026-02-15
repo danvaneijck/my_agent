@@ -193,11 +193,13 @@ MANIFEST = ModuleManifest(
         ToolDefinition(
             name="project_planner.get_next_task",
             description=(
-                "Get the next 'todo' task in a phase (by order_index). "
+                "Get the next 'todo' task (by order_index). "
+                "Pass project_id to auto-pick the current phase, or phase_id for a specific phase. "
                 "Returns null if all tasks are done or in progress."
             ),
             parameters=[
-                ToolParameter(name="phase_id", type="string", description="UUID of the phase."),
+                ToolParameter(name="project_id", type="string", description="UUID of the project. Finds the earliest phase with todo tasks.", required=False),
+                ToolParameter(name="phase_id", type="string", description="UUID of a specific phase. Takes priority over project_id.", required=False),
                 ToolParameter(name="user_id", type="string", description="User ID (injected by orchestrator).", required=False),
             ],
             required_permission="user",

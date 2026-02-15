@@ -172,14 +172,15 @@ class TestTriggerReminderByRid:
         )
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = reminder
+        mock_result.scalars.return_value.all.return_value = [reminder]
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
-        notification = await trigger_reminder_by_rid(
-            mock_db_session, mock_redis, user_id, "abc123"
+        notifications = await trigger_reminder_by_rid(
+            mock_db_session, mock_redis, user_id, "abc123", "enter"
         )
 
-        assert notification is not None
+        assert len(notifications) == 1
+        notification = notifications[0]
         assert isinstance(notification, Notification)
         assert notification.platform == "discord"
         assert notification.platform_channel_id == "123456"
@@ -192,7 +193,7 @@ class TestTriggerReminderByRid:
     async def test_returns_none_without_platform(
         self, mock_db_session, mock_redis, make_location_reminder
     ):
-        """When reminder has NO platform, triggering returns None — the original bug."""
+        """When reminder has NO platform, triggering returns no notifications — the original bug."""
         from modules.location.owntracks import trigger_reminder_by_rid
 
         user_id = str(uuid.uuid4())
@@ -204,27 +205,27 @@ class TestTriggerReminderByRid:
         )
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = reminder
+        mock_result.scalars.return_value.all.return_value = [reminder]
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
-        notification = await trigger_reminder_by_rid(
-            mock_db_session, mock_redis, user_id, "abc123"
+        notifications = await trigger_reminder_by_rid(
+            mock_db_session, mock_redis, user_id, "abc123", "enter"
         )
 
         # No notification, but reminder is still marked triggered
-        assert notification is None
+        assert notifications == []
         assert reminder.status == "triggered"
 
     @pytest.mark.asyncio
     async def test_not_found_returns_none(self, mock_db_session, mock_redis):
-        """Unknown rid returns None without error."""
+        """Unknown rid returns empty list without error."""
         from modules.location.owntracks import trigger_reminder_by_rid
 
-        notification = await trigger_reminder_by_rid(
-            mock_db_session, mock_redis, str(uuid.uuid4()), "nonexistent"
+        notifications = await trigger_reminder_by_rid(
+            mock_db_session, mock_redis, str(uuid.uuid4()), "nonexistent", "enter"
         )
 
-        assert notification is None
+        assert notifications == []
 
     @pytest.mark.asyncio
     async def test_cooldown_prevents_trigger(
@@ -241,14 +242,14 @@ class TestTriggerReminderByRid:
         reminder.cooldown_until = datetime.now(timezone.utc) + timedelta(hours=1)
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = reminder
+        mock_result.scalars.return_value.all.return_value = [reminder]
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
-        notification = await trigger_reminder_by_rid(
-            mock_db_session, mock_redis, user_id, "abc123"
+        notifications = await trigger_reminder_by_rid(
+            mock_db_session, mock_redis, user_id, "abc123", "enter"
         )
 
-        assert notification is None
+        assert notifications == []
         assert reminder.status == "active"  # unchanged
 
 
@@ -277,16 +278,17 @@ class TestHandleOwnTracksPublish:
         )
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = reminder
+        mock_result.scalars.return_value.all.return_value = [reminder]
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
+        now_tst = int(datetime.now(timezone.utc).timestamp())
         payload = {
             "_type": "transition",
             "event": "enter",
             "rid": "rid_1",
             "lat": -41.28,
             "lon": 174.77,
-            "tst": 1700000000,
+            "tst": now_tst,
         }
 
         await handle_owntracks_publish(mock_db_session, mock_redis, user_id, payload)
@@ -304,16 +306,17 @@ class TestHandleOwnTracksPublish:
     async def test_leave_transition_does_not_trigger(
         self, mock_db_session, mock_redis
     ):
-        """A 'leave' transition should not trigger any reminder."""
+        """A 'leave' transition should not trigger any reminder (default trigger_on=enter)."""
         from modules.location.owntracks import handle_owntracks_publish
 
+        now_tst = int(datetime.now(timezone.utc).timestamp())
         payload = {
             "_type": "transition",
             "event": "leave",
             "rid": "rid_1",
             "lat": -41.28,
             "lon": 174.77,
-            "tst": 1700000000,
+            "tst": now_tst,
         }
 
         await handle_owntracks_publish(
