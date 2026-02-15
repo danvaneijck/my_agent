@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/api/client";
-import type { GitRepo } from "@/types";
+import type { GitRepo, CreateRepoPayload, CreateRepoResult } from "@/types";
 
 export function useRepos(search: string = "") {
   const [repos, setRepos] = useState<GitRepo[]>([]);
@@ -41,4 +41,11 @@ export function useRepos(search: string = "") {
   }, [fetchRepos]);
 
   return { repos, loading, error, refetch: fetchRepos };
+}
+
+export async function createRepo(payload: CreateRepoPayload): Promise<CreateRepoResult> {
+  return api<CreateRepoResult>("/api/repos", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

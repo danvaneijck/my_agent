@@ -312,3 +312,35 @@ export interface ModuleHealth {
   status: "ok" | "error" | "unknown";
   error?: string;
 }
+
+// New project creation flow
+export interface CreateProjectPayload {
+  name: string;
+  description?: string;
+  repo_owner?: string;
+  repo_name?: string;
+  default_branch?: string;
+  auto_merge?: boolean;
+}
+
+export interface CreateRepoPayload {
+  name: string;
+  description?: string;
+  private?: boolean;
+}
+
+export interface CreateRepoResult {
+  owner: string;
+  repo: string;
+  full_name: string;
+  clone_url: string;
+  default_branch: string;
+  private: boolean;
+}
+
+export interface KickoffResult {
+  project_id: string;
+  claude_task_id: string;
+  mode: string;
+  workspace: string;
+}

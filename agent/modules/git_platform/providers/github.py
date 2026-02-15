@@ -125,6 +125,25 @@ class GitHubProvider(GitProvider):
             "updated_at": data.get("updated_at"),
         }
 
+    async def create_repo(
+        self, name: str, description: str | None = None,
+        private: bool = True, auto_init: bool = True,
+    ) -> dict:
+        payload: dict = {"name": name, "private": private, "auto_init": auto_init}
+        if description:
+            payload["description"] = description
+        data = await self._post("/user/repos", json=payload)
+        return {
+            "owner": (data.get("owner") or {}).get("login", ""),
+            "repo": data.get("name", ""),
+            "full_name": data.get("full_name"),
+            "description": data.get("description"),
+            "url": data.get("html_url"),
+            "clone_url": data.get("clone_url"),
+            "default_branch": data.get("default_branch"),
+            "private": data.get("private"),
+        }
+
     async def list_branches(self, owner: str, repo: str, per_page: int = 30) -> dict:
         data = await self._get(f"/repos/{owner}/{repo}/branches", per_page=per_page)
 

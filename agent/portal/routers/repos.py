@@ -49,6 +49,29 @@ async def _safe_call(
         return None, JSONResponse(status_code=502, content={"error": detail})
 
 
+class CreateRepoBody(BaseModel):
+    name: str
+    description: str | None = None
+    private: bool = True
+
+
+@router.post("")
+async def create_repo(
+    body: CreateRepoBody,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Create a new git repository."""
+    args: dict = {"name": body.name, "private": body.private}
+    if body.description:
+        args["description"] = body.description
+    result, err = await _safe_call(
+        "git_platform", "git_platform.create_repo", args, str(user.user_id), timeout=30.0
+    )
+    if err:
+        return err
+    return result
+
+
 @router.get("")
 async def list_repos(
     search: str | None = Query(None),

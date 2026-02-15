@@ -23,6 +23,12 @@ class GitPlatformTools:
     async def list_repos(self, per_page: int = 30, sort: str = "updated", search: str | None = None) -> dict:
         return await self.provider.list_repos(per_page=per_page, sort=sort, search=search)
 
+    async def create_repo(
+        self, name: str, description: str | None = None,
+        private: bool = True, auto_init: bool = True,
+    ) -> dict:
+        return await self.provider.create_repo(name, description=description, private=private, auto_init=auto_init)
+
     async def get_repo(self, owner: str, repo: str) -> dict:
         return await self.provider.get_repo(owner, repo)
 

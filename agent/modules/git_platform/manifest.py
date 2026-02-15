@@ -26,6 +26,17 @@ MANIFEST = ModuleManifest(
             required_permission="guest",
         ),
         ToolDefinition(
+            name="git_platform.create_repo",
+            description="Create a new git repository under the authenticated user's account.",
+            parameters=[
+                ToolParameter(name="name", type="string", description="Repository name."),
+                ToolParameter(name="description", type="string", description="Repository description.", required=False),
+                ToolParameter(name="private", type="boolean", description="Whether the repo is private (default true).", required=False),
+                ToolParameter(name="auto_init", type="boolean", description="Initialize with a README (default true).", required=False),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
             name="git_platform.get_repo",
             description="Get repository metadata including description, default branch, language, stars, and fork count.",
             parameters=[_OWNER, _REPO],

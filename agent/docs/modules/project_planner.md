@@ -126,9 +126,59 @@ Use `phase_ids` parameter on `get_execution_plan` to limit to specific phases if
 - `auto_merge=false` (default): PRs stay `in_review` until manually merged
 - `auto_merge=true`: agent polls CI status, merges after passing
 
+## Portal — New Project Flow
+
+The Projects portal page includes a "New Project" button that opens a multi-step creation modal. This is the primary way to create projects from the web UI.
+
+### Modal Steps
+
+1. **Details** — project name (required) and description (used as the project goal for Claude)
+2. **Repository** — choose one of:
+   - **Existing repo** — searchable dropdown fetched from `GET /api/repos` (`git_platform.list_repos`)
+   - **Create new repo** — name + private toggle, calls `POST /api/repos` (`git_platform.create_repo`)
+   - **No repo** — skip repo linkage entirely
+3. **Options** — execution mode (plan first / execute immediately) and auto-push toggle
+
+### Submit Flow
+
+```
+[Create repo]  POST /api/repos  →  git_platform.create_repo
+       │                              (only if "Create new" selected)
+       ▼
+[Create project]  POST /api/projects  →  project_planner.create_project
+       │                                   (links repo_owner/repo_name if set)
+       ▼
+[Kickoff]  POST /api/projects/{id}/kickoff  →  builds prompt + claude_code.run_task
+       │                                         + project_planner.update_project(status="active")
+       ▼
+Navigate to /projects/{id}
+```
+
+### Kickoff Endpoint (`POST /api/projects/{id}/kickoff`)
+
+Accepts:
+- `mode` — `"plan"` (default) or `"execute"`
+- `auto_push` — push branch to remote on completion (default `true`)
+- `timeout` — task timeout in seconds (default `1800`)
+- `description` — optional project goal passed to the prompt
+
+Behaviour:
+- **Plan mode**: builds a prompt asking Claude to analyze the repo, create a design document, and break the project into phases and tasks. The claude_code task runs in `mode: "plan"` and ends in `awaiting_input` status with a PLAN.md.
+- **Execute mode**: calls `get_execution_plan` to gather existing todo tasks. If tasks exist, uses the batch prompt. If no tasks exist, falls back to plan mode.
+- Creates a working branch named `project/{slugified-name}` branched from the project's default branch.
+- Updates the project status to `active` after launching the task.
+
+### Related Endpoints
+
+| Endpoint | Module | Description |
+|----------|--------|-------------|
+| `POST /api/repos` | git_platform | Create a new GitHub/Bitbucket repo |
+| `POST /api/projects` | project_planner | Create project record |
+| `POST /api/projects/{id}/kickoff` | project_planner + claude_code | Launch Claude task for the project |
+
 ## Portal Pages
 
-- `/projects` — project list with status badges and progress bars
+- `/projects` — project list with status badges, progress bars, and "New Project" button
 - `/projects/:id` — project detail with phases and overall progress
 - `/projects/:id/phases/:phaseId` — kanban board (todo/doing/in_review/done columns)
 - `/projects/:id/tasks/:taskId` — task detail with git links and error info

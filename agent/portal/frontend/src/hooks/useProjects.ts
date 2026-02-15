@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/api/client";
-import type { ProjectSummary, ProjectDetail, ProjectTask } from "@/types";
+import type { ProjectSummary, ProjectDetail, ProjectTask, CreateProjectPayload, KickoffResult } from "@/types";
 
 export function useProjects(statusFilter?: string) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -82,4 +82,21 @@ export function usePhaseTasks(projectId: string | undefined, phaseId: string | u
   }, [fetchTasks]);
 
   return { tasks, loading, error, refetch: fetchTasks };
+}
+
+export async function createProject(payload: CreateProjectPayload): Promise<{ project_id: string }> {
+  return api<{ project_id: string }>("/api/projects", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function kickoffProject(
+  projectId: string,
+  options: { mode: string; auto_push: boolean; description?: string },
+): Promise<KickoffResult> {
+  return api<KickoffResult>(`/api/projects/${projectId}/kickoff`, {
+    method: "POST",
+    body: JSON.stringify(options),
+  });
 }

@@ -141,6 +141,36 @@ class BitbucketProvider(GitProvider):
             "updated_at": data.get("updated_on"),
         }
 
+    async def create_repo(
+        self, name: str, description: str | None = None,
+        private: bool = True, auto_init: bool = True,
+    ) -> dict:
+        # Bitbucket uses the workspace from the authenticated user
+        # The owner is derived from the username used for auth
+        slug = name.lower().replace(" ", "-")
+        payload: dict = {"scm": "git", "is_private": private, "name": name}
+        if description:
+            payload["description"] = description
+        # Bitbucket doesn't have auto_init — repos are always empty unless forked
+        # We use PUT to create a repo under the authenticated user's workspace
+        data = await self._put(f"/repositories/{self._client.auth[0]}/{slug}", json=payload)
+        workspace = (data.get("owner") or {}).get("username", data.get("workspace", {}).get("slug", ""))
+        mainbranch = (data.get("mainbranch") or {}).get("name", "main")
+        clone_url = next(
+            (l["href"] for l in data.get("links", {}).get("clone", []) if l.get("name") == "https"),
+            None,
+        )
+        return {
+            "owner": workspace,
+            "repo": data.get("slug", slug),
+            "full_name": data.get("full_name"),
+            "description": data.get("description"),
+            "url": data.get("links", {}).get("html", {}).get("href"),
+            "clone_url": clone_url,
+            "default_branch": mainbranch,
+            "private": data.get("is_private"),
+        }
+
     async def list_branches(self, owner: str, repo: str, per_page: int = 30) -> dict:
         data = await self._get(
             f"{self._repo_path(owner, repo)}/refs/branches",

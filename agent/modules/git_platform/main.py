@@ -36,6 +36,7 @@ settings = get_settings()
 # All tool method names that the /execute endpoint can dispatch to.
 TOOL_MAP = {
     "list_repos",
+    "create_repo",
     "get_repo",
     "list_branches",
     "delete_branch",
