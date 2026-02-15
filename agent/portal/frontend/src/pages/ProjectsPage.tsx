@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FolderKanban, RefreshCw } from "lucide-react";
+import { FolderKanban, RefreshCw, Plus } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
+import NewProjectModal from "@/components/projects/NewProjectModal";
 import type { ProjectSummary } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -74,6 +75,7 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
 
 export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [showNewProject, setShowNewProject] = useState(false);
   const { projects, loading, error, refetch } = useProjects(statusFilter || undefined);
   const navigate = useNavigate();
 
@@ -94,18 +96,27 @@ export default function ProjectsPage() {
           </button>
         </div>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="bg-surface-light border border-border rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-accent"
-        >
-          <option value="">All statuses</option>
-          <option value="planning">Planning</option>
-          <option value="active">Active</option>
-          <option value="paused">Paused</option>
-          <option value="completed">Completed</option>
-          <option value="archived">Archived</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-surface-light border border-border rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-accent"
+          >
+            <option value="">All statuses</option>
+            <option value="planning">Planning</option>
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+            <option value="completed">Completed</option>
+            <option value="archived">Archived</option>
+          </select>
+          <button
+            onClick={() => setShowNewProject(true)}
+            className="bg-accent hover:bg-accent-hover text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
+          >
+            <Plus size={16} />
+            New Project
+          </button>
+        </div>
       </div>
 
       {/* Error */}
@@ -131,7 +142,14 @@ export default function ProjectsPage() {
         <div className="text-center py-16 text-gray-500">
           <FolderKanban size={40} className="mx-auto mb-3 opacity-50" />
           <p>No projects yet</p>
-          <p className="text-sm mt-1">Start a design session in chat to create your first project</p>
+          <p className="text-sm mt-1 mb-4">Create your first project to get started</p>
+          <button
+            onClick={() => setShowNewProject(true)}
+            className="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1.5"
+          >
+            <Plus size={16} />
+            New Project
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -144,6 +162,16 @@ export default function ProjectsPage() {
           ))}
         </div>
       )}
+
+      <NewProjectModal
+        open={showNewProject}
+        onClose={() => setShowNewProject(false)}
+        onCreated={(projectId) => {
+          setShowNewProject(false);
+          refetch();
+          navigate(`/projects/${projectId}`);
+        }}
+      />
     </div>
   );
 }
