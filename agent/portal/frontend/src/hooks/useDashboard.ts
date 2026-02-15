@@ -21,6 +21,17 @@ interface UsageSummary {
   };
 }
 
+export interface AnthropicUsageWindow {
+  utilization_percent: number;
+  reset_timestamp: number;
+}
+
+export interface AnthropicUsageData {
+  available: boolean;
+  five_hour: AnthropicUsageWindow | null;
+  seven_day: AnthropicUsageWindow | null;
+}
+
 export interface DashboardData {
   projects: ProjectSummary[];
   tasks: Task[];
@@ -28,6 +39,7 @@ export interface DashboardData {
   prCount: number;
   deployments: Deployment[];
   usage: UsageSummary | null;
+  anthropicUsage: AnthropicUsageData | null;
 }
 
 export interface DashboardState extends DashboardData {
@@ -44,6 +56,7 @@ export function useDashboard(): DashboardState {
   const [prCount, setPrCount] = useState(0);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [anthropicUsage, setAnthropicUsage] = useState<AnthropicUsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -140,6 +153,24 @@ export function useDashboard(): DashboardState {
     }
   }, []);
 
+  const fetchAnthropicUsage = useCallback(async () => {
+    try {
+      const data = await api<AnthropicUsageData>("/api/usage/anthropic");
+      setAnthropicUsage(data);
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.anthropicUsage;
+        return next;
+      });
+    } catch (e) {
+      setErrors((prev) => ({
+        ...prev,
+        anthropicUsage:
+          e instanceof Error ? e.message : "Failed to load Claude Code usage",
+      }));
+    }
+  }, []);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     await Promise.allSettled([
@@ -148,9 +179,10 @@ export function useDashboard(): DashboardState {
       fetchPullRequests(),
       fetchDeployments(),
       fetchUsage(),
+      fetchAnthropicUsage(),
     ]);
     setLoading(false);
-  }, [fetchProjects, fetchTasks, fetchPullRequests, fetchDeployments, fetchUsage]);
+  }, [fetchProjects, fetchTasks, fetchPullRequests, fetchDeployments, fetchUsage, fetchAnthropicUsage]);
 
   const refetchSection = useCallback(
     (section: keyof DashboardData) => {
@@ -161,10 +193,11 @@ export function useDashboard(): DashboardState {
         prCount: fetchPullRequests,
         deployments: fetchDeployments,
         usage: fetchUsage,
+        anthropicUsage: fetchAnthropicUsage,
       };
       map[section]?.();
     },
-    [fetchProjects, fetchTasks, fetchPullRequests, fetchDeployments, fetchUsage]
+    [fetchProjects, fetchTasks, fetchPullRequests, fetchDeployments, fetchUsage, fetchAnthropicUsage]
   );
 
   useEffect(() => {
@@ -178,6 +211,7 @@ export function useDashboard(): DashboardState {
     prCount,
     deployments,
     usage,
+    anthropicUsage,
     loading,
     errors,
     refetch: fetchAll,
