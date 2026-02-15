@@ -1,0 +1,20 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Simplified icon: Three connected hexagons for favicon -->
+  <rect width="64" height="64" fill="#1a1b23" rx="8"/>
+
+  <!-- Left hexagon -->
+  <path d="M12 32L18 22L30 22L36 32L30 42L18 42L12 32Z" fill="#6366f1"/>
+
+  <!-- Middle hexagon with gradient -->
+  <path d="M28 32L34 22L46 22L52 32L46 42L34 42L28 32Z" fill="url(#iconGradient)"/>
+
+  <!-- Connection line -->
+  <line x1="30" y1="32" x2="34" y2="32" stroke="#818cf8" stroke-width="3" stroke-linecap="round"/>
+
+  <defs>
+    <linearGradient id="iconGradient" x1="28" y1="22" x2="52" y2="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+</svg>
