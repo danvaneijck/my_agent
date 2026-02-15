@@ -1067,7 +1067,7 @@ class ClaudeCodeTools:
             '    mv /tmp/_task_meta/* . 2>/dev/null || true\n'
             '    rm -rf /tmp/_task_meta\n'
             '    if [ -n "$SOURCE_BRANCH" ]; then\n'
-            '        git checkout "$SOURCE_BRANCH" 2>&1\n'
+            '        git checkout "$SOURCE_BRANCH" 2>/dev/null || git checkout -b "$SOURCE_BRANCH"\n'
             '    fi\n'
             '    if [ -n "$BRANCH" ]; then\n'
             '        git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH"\n'

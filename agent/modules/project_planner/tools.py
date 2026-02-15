@@ -755,6 +755,203 @@ class ProjectPlannerTools:
 
         return task_dict
 
+    # ── Batch execution ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_batch_prompt(
+        project_name: str,
+        design_document: str | None,
+        phases: list[dict],
+    ) -> str:
+        """Assemble a combined prompt for a single claude_code.run_task call."""
+        lines: list[str] = [
+            f'You are implementing a project called "{project_name}".',
+            "Implement ALL of the following phases and tasks in order.",
+            "Commit after completing each logical unit of work with clear messages referencing the phase/task.",
+            "Run any existing tests after your changes to make sure nothing is broken.",
+            "",
+        ]
+
+        if design_document:
+            lines.append("## Design Document\n")
+            lines.append(design_document)
+            lines.append("")
+
+        for phase in phases:
+            lines.append(f"## {phase['name']}")
+            if phase.get("description"):
+                lines.append(f"\n{phase['description']}\n")
+            for task in phase["tasks"]:
+                lines.append(f"### Task: {task['title']}")
+                if task.get("description"):
+                    lines.append(f"\n{task['description']}\n")
+                if task.get("acceptance_criteria"):
+                    lines.append(
+                        f"**Acceptance criteria:** {task['acceptance_criteria']}\n"
+                    )
+            lines.append("")
+
+        lines.append("## Instructions")
+        lines.append("- Work through each phase sequentially.")
+        lines.append("- Within each phase, implement tasks in the order listed.")
+        lines.append("- Make sure all tests pass before finishing.")
+        return "\n".join(lines)
+
+    async def get_execution_plan(
+        self,
+        project_id: str,
+        phase_ids: list[str] | None = None,
+        user_id: str | None = None,
+    ) -> dict:
+        """Gather all todo tasks across phases into a single execution plan."""
+        if not user_id:
+            raise ValueError("user_id is required")
+
+        uid = uuid.UUID(user_id)
+        pid = uuid.UUID(project_id)
+
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Project).where(Project.id == pid, Project.user_id == uid)
+            )
+            project = result.scalar_one_or_none()
+            if not project:
+                raise ValueError(f"Project not found: {project_id}")
+
+            # Load phases
+            phase_query = (
+                select(ProjectPhase)
+                .where(ProjectPhase.project_id == pid)
+                .order_by(ProjectPhase.order_index)
+            )
+            if phase_ids:
+                phase_query = phase_query.where(
+                    ProjectPhase.id.in_([uuid.UUID(p) for p in phase_ids])
+                )
+            phases_result = await session.execute(phase_query)
+            phases = list(phases_result.scalars().all())
+
+            if not phases:
+                return {"message": "No phases found for the given filters."}
+
+            # Build phase list with todo tasks
+            phase_dicts: list[dict] = []
+            all_todo_ids: list[str] = []
+
+            for phase in phases:
+                tasks_result = await session.execute(
+                    select(ProjectTask)
+                    .where(
+                        ProjectTask.phase_id == phase.id,
+                        ProjectTask.status == "todo",
+                    )
+                    .order_by(ProjectTask.order_index)
+                )
+                tasks = list(tasks_result.scalars().all())
+
+                task_dicts = []
+                for t in tasks:
+                    all_todo_ids.append(str(t.id))
+                    task_dicts.append({
+                        "task_id": str(t.id),
+                        "title": t.title,
+                        "description": t.description,
+                        "acceptance_criteria": t.acceptance_criteria,
+                        "order_index": t.order_index,
+                        "status": t.status,
+                    })
+
+                if task_dicts:
+                    phase_dicts.append({
+                        "phase_id": str(phase.id),
+                        "name": phase.name,
+                        "description": phase.description,
+                        "order_index": phase.order_index,
+                        "tasks": task_dicts,
+                    })
+
+            if not all_todo_ids:
+                return {"message": "No todo tasks found. All tasks may already be done or in progress."}
+
+            # Build repo URL
+            repo_url = None
+            if project.repo_owner and project.repo_name:
+                repo_url = f"https://github.com/{project.repo_owner}/{project.repo_name}"
+
+            branch = project.project_branch or project.default_branch
+            source_branch = project.default_branch
+
+            prompt = self._build_batch_prompt(
+                project.name, project.design_document, phase_dicts,
+            )
+
+        return {
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "repo_url": repo_url,
+            "branch": branch,
+            "source_branch": source_branch,
+            "design_document": project.design_document,
+            "total_tasks": len(all_todo_ids),
+            "todo_task_ids": all_todo_ids,
+            "phases": phase_dicts,
+            "prompt": prompt,
+        }
+
+    async def bulk_update_tasks(
+        self,
+        task_ids: list[str],
+        status: str,
+        claude_task_id: str | None = None,
+        error_message: str | None = None,
+        user_id: str | None = None,
+    ) -> dict:
+        """Update status on multiple tasks at once."""
+        if not user_id:
+            raise ValueError("user_id is required")
+        if status not in ("todo", "doing", "in_review", "done", "failed"):
+            raise ValueError(f"Invalid status: {status}")
+
+        uid = uuid.UUID(user_id)
+        tids = [uuid.UUID(t) for t in task_ids]
+        now = datetime.now(timezone.utc)
+
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(ProjectTask).where(
+                    ProjectTask.id.in_(tids),
+                    ProjectTask.user_id == uid,
+                )
+            )
+            tasks = list(result.scalars().all())
+
+            for task in tasks:
+                task.status = status
+                if status == "doing" and task.started_at is None:
+                    task.started_at = now
+                elif status in ("done", "failed"):
+                    task.completed_at = now
+                if claude_task_id is not None:
+                    task.claude_task_id = claude_task_id
+                if error_message is not None:
+                    task.error_message = error_message
+                task.updated_at = now
+
+            await session.commit()
+
+        updated = [str(t.id) for t in tasks]
+        logger.info(
+            "bulk_tasks_updated",
+            count=len(updated),
+            status=status,
+        )
+        return {
+            "updated_count": len(updated),
+            "status": status,
+            "task_ids": updated,
+            "message": f"Updated {len(updated)} tasks to status '{status}'.",
+        }
+
     # ── Reporting ───────────────────────────────────────────────────────
 
     async def get_project_status(

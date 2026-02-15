@@ -63,6 +63,8 @@ User ─── Design Session ───► create_project (design doc + phases +
 | `get_task` | user | Get full task detail |
 | `get_phase_tasks` | user | All tasks in a phase |
 | `get_next_task` | user | Next todo task in a phase |
+| `get_execution_plan` | user | Batch plan for all todo tasks across phases |
+| `bulk_update_tasks` | user | Update multiple tasks at once |
 | `get_project_status` | user | Project summary with counts |
 
 ## Planning Session Workflow
@@ -100,6 +102,19 @@ The LLM orchestrates using existing modules — the project planner only manages
   The prompt can instruct the agent to switch branches for the new task.
 - **New phase after push**: Safe to use fresh `run_task` since previous code is in the remote.
 - **`auto_push=true`**: Always set this so changes are pushed after each task completes.
+
+### Batch Execution
+
+For simpler projects, or when the user requests implementing multiple phases at once, use batch mode to run everything in a single `claude_code` task:
+
+1. `get_execution_plan(project_id)` — gathers all todo tasks across all phases, returns a structured plan with the design document and a pre-built prompt
+2. `bulk_update_tasks(task_ids=todo_task_ids, status="doing")` — marks all tasks in-progress
+3. `claude_code.run_task(prompt=plan.prompt, repo_url, branch=plan.branch, source_branch=plan.source_branch, auto_push=true)` — single container handles everything
+4. `scheduler.add_job(poll task_status, on_complete="resume_conversation")` — monitor
+5. On completion: `bulk_update_tasks(task_ids, status="done", claude_task_id=...)` — mark all done
+6. Optionally create a single PR from the project branch into the default branch
+
+Use `phase_ids` parameter on `get_execution_plan` to limit to specific phases if needed.
 
 ### Error Handling
 - Task failure: mark as `failed` with error_message, notify user, skip to next

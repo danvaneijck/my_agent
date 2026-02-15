@@ -323,6 +323,25 @@ class ContextBuilder:
                 "previous workspace (keeps file context). Only start a fresh run_task when "
                 "previous work is pushed and a clean workspace is needed."
             )
+            lines.append(
+                "\nBatch execution (for simpler projects or when the user "
+                "requests implementing multiple phases at once):"
+                "\n1. get_execution_plan(project_id) — returns all todo tasks, "
+                "design doc, and a pre-built prompt."
+                "\n2. bulk_update_tasks(task_ids=todo_task_ids, status='doing') — "
+                "marks all tasks as in-progress."
+                "\n3. claude_code.run_task with the plan's prompt, repo_url, "
+                "branch=plan.branch, source_branch=plan.source_branch, "
+                "auto_push=true."
+                "\n4. scheduler.add_job to monitor, with on_complete='resume_conversation'."
+                "\n5. On completion: bulk_update_tasks(task_ids, status='done', "
+                "claude_task_id=task_id). Optionally create a single PR from "
+                "the project branch into the default branch."
+                "\nUse batch execution when the user says things like "
+                "'implement everything', 'do all phases', or 'implement the "
+                "whole project'. Use sequential execution for complex projects "
+                "where each task needs individual review."
+            )
 
             return "\n".join(lines)
         except Exception as e:
