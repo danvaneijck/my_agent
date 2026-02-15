@@ -10,7 +10,8 @@ import { api } from "@/api/client";
 import type { Conversation, WsNotification } from "@/types";
 
 const PAGE_TITLES: Record<string, string> = {
-  "/": "Tasks",
+  "/": "Home",
+  "/tasks": "Tasks",
   "/chat": "Chat",
   "/files": "Files",
 };

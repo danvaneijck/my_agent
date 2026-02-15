@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import {
+  Home,
   LayoutDashboard,
   MessageSquare,
   FolderOpen,
@@ -15,8 +16,9 @@ import {
 } from "lucide-react";
 
 const NAV_ITEMS = [
+  { to: "/", icon: Home, label: "Home", end: true },
   { to: "/chat", icon: MessageSquare, label: "Chat", badgeKey: "chat" },
-  { to: "/", icon: LayoutDashboard, label: "Tasks", badgeKey: "tasks" },
+  { to: "/tasks", icon: LayoutDashboard, label: "Tasks", badgeKey: "tasks" },
   { to: "/projects", icon: FolderKanban, label: "Projects" },
   { to: "/repos", icon: GitBranch, label: "Repos" },
   { to: "/pulls", icon: GitPullRequest, label: "Pull Requests", badgeKey: "pulls" },
@@ -66,10 +68,11 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
         </div>
 
         <nav className="p-3 space-y-1">
-          {NAV_ITEMS.map(({ to, icon: Icon, label, badgeKey }) => (
+          {NAV_ITEMS.map(({ to, icon: Icon, label, badgeKey, end }) => (
             <NavLink
               key={to}
               to={to}
+              end={end}
               onClick={onClose}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive

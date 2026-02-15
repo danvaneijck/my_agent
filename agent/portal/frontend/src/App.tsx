@@ -19,6 +19,7 @@ import ProjectsPage from "@/pages/ProjectsPage";
 import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import PhaseDetailPage from "@/pages/PhaseDetailPage";
 import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
+import HomePage from "@/pages/HomePage";
 
 interface AuthProvider {
   name: string;
@@ -221,7 +222,8 @@ export default function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<TasksPage />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/tasks" element={<TasksPage />} />
         <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/chat/:conversationId" element={<ChatPage />} />
