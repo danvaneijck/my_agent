@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import re
 
+import anthropic
 import structlog
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from portal.auth import PortalUser, require_auth
 from portal.services.module_client import call_tool
+from shared.config import get_settings
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -73,6 +76,7 @@ class UpdateProjectRequest(BaseModel):
     repo_name: str | None = None
     default_branch: str | None = None
     auto_merge: bool | None = None
+    planning_task_id: str | None = None
 
 
 class UpdateTaskRequest(BaseModel):
@@ -92,6 +96,16 @@ class KickoffRequest(BaseModel):
     auto_push: bool = True
     timeout: int = 1800
     description: str | None = None  # optional project goal for the prompt
+
+
+class ApplyPlanRequest(BaseModel):
+    plan_content: str | None = None  # If None, fetch from planning task
+
+
+class ExecutePhaseRequest(BaseModel):
+    phase_id: str | None = None  # If None, auto-pick next incomplete phase
+    auto_push: bool = True
+    timeout: int = 1800
 
 
 # --------------- Project endpoints ---------------
@@ -257,12 +271,22 @@ async def kickoff_project(
     )
     claude_task = task_result.get("result", {})
 
-    # 4. Update project status to "active"
+    # 4. Update project with planning_task_id and status
     try:
+        update_args = {
+            "project_id": project_id,
+            "planning_task_id": claude_task.get("task_id"),
+        }
+        # Keep status as "planning" for plan mode, "active" for execute mode
+        if mode == "execute":
+            update_args["status"] = "active"
+        elif mode == "plan":
+            update_args["status"] = "planning"
+
         await call_tool(
             module="project_planner",
             tool_name="project_planner.update_project",
-            arguments={"project_id": project_id, "status": "active"},
+            arguments=update_args,
             user_id=uid,
             timeout=15.0,
         )
@@ -274,6 +298,178 @@ async def kickoff_project(
         "claude_task_id": claude_task.get("task_id"),
         "mode": mode,
         "workspace": claude_task.get("workspace"),
+    }
+
+
+@router.post("/{project_id}/apply-plan")
+async def apply_plan(
+    project_id: str,
+    body: ApplyPlanRequest,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Parse a plan and create project phases and tasks from it."""
+    uid = str(user.user_id)
+    settings = get_settings()
+
+    # 1. Get the project
+    project_result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.get_project",
+        arguments={"project_id": project_id},
+        user_id=uid,
+        timeout=15.0,
+    )
+    project_data = project_result.get("result", {})
+
+    # 2. Get plan content
+    plan_content = body.plan_content
+    if not plan_content:
+        # Fetch from planning task
+        planning_task_id = project_data.get("planning_task_id")
+        if not planning_task_id:
+            raise ValueError("No planning_task_id found and no plan_content provided")
+
+        task_result = await call_tool(
+            module="claude_code",
+            tool_name="claude_code.task_status",
+            arguments={"task_id": planning_task_id},
+            user_id=uid,
+            timeout=15.0,
+        )
+        task_data = task_result.get("result", {})
+        task_result_data = task_data.get("result") or {}
+
+        # Extract plan content from task result
+        plan_content = (
+            task_result_data.get("plan_content") or
+            task_result_data.get("raw_text") or
+            ""
+        )
+
+    if not plan_content.strip():
+        raise ValueError("No plan content found to apply")
+
+    # 3. Parse plan using Anthropic API
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+    parse_system_prompt = """You are a project plan parser. Given a markdown project plan, extract it into structured phases and tasks.
+
+Return JSON in this exact format:
+{
+  "design_document": "extracted design overview text (if any)",
+  "phases": [
+    {
+      "name": "Phase 1: ...",
+      "description": "...",
+      "tasks": [
+        {
+          "title": "Task title",
+          "description": "Detailed description",
+          "acceptance_criteria": "How to verify completion"
+        }
+      ]
+    }
+  ]
+}
+
+Rules:
+- Each phase should have a clear name and description
+- Each task should have a title, description, and acceptance criteria
+- Preserve the order from the original plan
+- If the plan has no clear phase structure, create logical groupings
+- Extract any design document or architecture overview into the design_document field"""
+
+    try:
+        response = await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            system=parse_system_prompt,
+            messages=[{"role": "user", "content": plan_content}],
+        )
+
+        # Extract JSON from response
+        response_text = response.content[0].text
+        # Try to extract JSON from markdown code blocks if present
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response_text, re.DOTALL)
+        if json_match:
+            parsed = json.loads(json_match.group(1))
+        else:
+            parsed = json.loads(response_text)
+
+    except Exception as e:
+        logger.error("plan_parse_failed", error=str(e), plan_length=len(plan_content))
+        raise ValueError(f"Failed to parse plan: {str(e)}")
+
+    # 4. Update project with design document and status
+    design_doc = parsed.get("design_document")
+    if design_doc:
+        await call_tool(
+            module="project_planner",
+            tool_name="project_planner.update_project",
+            arguments={
+                "project_id": project_id,
+                "design_document": design_doc,
+                "status": "active",
+            },
+            user_id=uid,
+            timeout=15.0,
+        )
+    else:
+        await call_tool(
+            module="project_planner",
+            tool_name="project_planner.update_project",
+            arguments={"project_id": project_id, "status": "active"},
+            user_id=uid,
+            timeout=15.0,
+        )
+
+    # 5. Create phases and tasks
+    phases = parsed.get("phases", [])
+    phases_created = 0
+    tasks_created = 0
+
+    for phase_data in phases:
+        phase_result = await call_tool(
+            module="project_planner",
+            tool_name="project_planner.add_phase",
+            arguments={
+                "project_id": project_id,
+                "name": phase_data.get("name", "Unnamed Phase"),
+                "description": phase_data.get("description"),
+            },
+            user_id=uid,
+            timeout=15.0,
+        )
+        phase_id = phase_result.get("result", {}).get("phase_id")
+        phases_created += 1
+
+        # Add tasks for this phase
+        tasks = phase_data.get("tasks", [])
+        if tasks and phase_id:
+            await call_tool(
+                module="project_planner",
+                tool_name="project_planner.bulk_add_tasks",
+                arguments={
+                    "phase_id": phase_id,
+                    "tasks": tasks,
+                },
+                user_id=uid,
+                timeout=30.0,
+            )
+            tasks_created += len(tasks)
+
+    logger.info(
+        "plan_applied",
+        project_id=project_id,
+        phases_created=phases_created,
+        tasks_created=tasks_created,
+    )
+
+    return {
+        "project_id": project_id,
+        "phases_created": phases_created,
+        "tasks_created": tasks_created,
+        "message": f"Created {phases_created} phases with {tasks_created} tasks",
     }
 
 
@@ -350,3 +546,204 @@ async def update_task(
         timeout=15.0,
     )
     return result.get("result", {})
+
+
+@router.post("/{project_id}/execute-phase")
+async def execute_phase(
+    project_id: str,
+    body: ExecutePhaseRequest,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Start executing a phase by launching a Claude Code task."""
+    uid = str(user.user_id)
+
+    # 1. Get project
+    project_result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.get_project",
+        arguments={"project_id": project_id},
+        user_id=uid,
+        timeout=15.0,
+    )
+    project_data = project_result.get("result", {})
+
+    # 2. Determine target phase
+    target_phase_id = body.phase_id
+    if not target_phase_id:
+        # Find first phase with todo tasks
+        for phase in project_data.get("phases", []):
+            if phase.get("status") in ("planned", "in_progress"):
+                task_counts = phase.get("task_counts", {})
+                if task_counts.get("todo", 0) > 0:
+                    target_phase_id = phase["phase_id"]
+                    break
+
+    if not target_phase_id:
+        raise ValueError("No phase found with pending tasks to execute")
+
+    # 3. Get execution plan for this phase
+    exec_plan_result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.get_execution_plan",
+        arguments={
+            "project_id": project_id,
+            "phase_ids": [target_phase_id],
+        },
+        user_id=uid,
+        timeout=15.0,
+    )
+    exec_plan = exec_plan_result.get("result", {})
+
+    if not exec_plan.get("prompt"):
+        raise ValueError("No tasks to execute in the selected phase")
+
+    repo_url = exec_plan.get("repo_url")
+    prompt = exec_plan.get("prompt")
+    default_branch = project_data.get("default_branch", "main")
+
+    # Find the phase to get its branch name
+    target_phase = next(
+        (p for p in project_data.get("phases", []) if p["phase_id"] == target_phase_id),
+        None
+    )
+    if not target_phase:
+        raise ValueError(f"Phase not found: {target_phase_id}")
+
+    phase_branch = target_phase.get("branch_name")
+    source_branch = default_branch
+
+    # 4. Launch claude_code task
+    task_args = {
+        "prompt": prompt,
+        "mode": "execute",
+        "auto_push": body.auto_push,
+        "timeout": body.timeout,
+    }
+    if repo_url:
+        task_args["repo_url"] = repo_url
+        task_args["branch"] = phase_branch
+        task_args["source_branch"] = source_branch
+
+    task_result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.run_task",
+        arguments=task_args,
+        user_id=uid,
+        timeout=30.0,
+    )
+    claude_task = task_result.get("result", {})
+    claude_task_id = claude_task.get("task_id")
+
+    # 5. Mark tasks as "doing" with claude_task_id
+    todo_task_ids = exec_plan.get("todo_task_ids", [])
+    if todo_task_ids:
+        await call_tool(
+            module="project_planner",
+            tool_name="project_planner.bulk_update_tasks",
+            arguments={
+                "task_ids": todo_task_ids,
+                "status": "doing",
+                "claude_task_id": claude_task_id,
+            },
+            user_id=uid,
+            timeout=15.0,
+        )
+
+    # 6. Update phase status to in_progress
+    await call_tool(
+        module="project_planner",
+        tool_name="project_planner.update_phase",
+        arguments={
+            "phase_id": target_phase_id,
+            "status": "in_progress",
+        },
+        user_id=uid,
+        timeout=15.0,
+    )
+
+    logger.info(
+        "phase_execution_started",
+        project_id=project_id,
+        phase_id=target_phase_id,
+        claude_task_id=claude_task_id,
+        task_count=len(todo_task_ids),
+    )
+
+    return {
+        "phase_id": target_phase_id,
+        "claude_task_id": claude_task_id,
+        "task_count": len(todo_task_ids),
+        "message": f"Started executing {len(todo_task_ids)} tasks in phase '{target_phase.get('name')}'",
+    }
+
+
+@router.get("/{project_id}/execution-status")
+async def get_execution_status(
+    project_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Get current execution status for a project."""
+    uid = str(user.user_id)
+
+    # 1. Get project status
+    status_result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.get_project_status",
+        arguments={"project_id": project_id},
+        user_id=uid,
+        timeout=15.0,
+    )
+    project_status = status_result.get("result", {})
+
+    current_phase = project_status.get("current_phase")
+    if not current_phase or current_phase.get("status") != "in_progress":
+        return {
+            "project_id": project_id,
+            "project_status": project_status.get("status"),
+            "current_phase": None,
+            "claude_task_status": None,
+            "message": "No phase currently executing",
+        }
+
+    # 2. Get tasks for current phase to find claude_task_id
+    phase_id = current_phase["phase_id"]
+    tasks_result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.get_phase_tasks",
+        arguments={"phase_id": phase_id},
+        user_id=uid,
+        timeout=15.0,
+    )
+    tasks = tasks_result.get("result", [])
+
+    # Find a task with a claude_task_id
+    claude_task_id = None
+    for task in tasks:
+        if task.get("claude_task_id") and task.get("status") == "doing":
+            claude_task_id = task["claude_task_id"]
+            break
+
+    claude_task_status = None
+    if claude_task_id:
+        # 3. Get claude_code task status
+        task_status_result = await call_tool(
+            module="claude_code",
+            tool_name="claude_code.task_status",
+            arguments={"task_id": claude_task_id},
+            user_id=uid,
+            timeout=15.0,
+        )
+        claude_task_status = task_status_result.get("result", {})
+
+    # Count task statuses
+    task_counts = project_status.get("task_counts", {})
+
+    return {
+        "project_id": project_id,
+        "project_status": project_status.get("status"),
+        "current_phase": current_phase,
+        "claude_task_id": claude_task_id,
+        "claude_task_status": claude_task_status,
+        "total_tasks": project_status.get("total_tasks", 0),
+        "task_counts": task_counts,
+    }

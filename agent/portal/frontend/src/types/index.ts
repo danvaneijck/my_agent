@@ -266,6 +266,7 @@ export interface ProjectSummary {
   repo_name: string | null;
   status: string;
   auto_merge: boolean;
+  planning_task_id: string | null;
   total_tasks: number;
   done_tasks: number;
   task_counts: ProjectTaskCounts;
@@ -281,6 +282,7 @@ export interface ProjectDetail {
   repo_name: string | null;
   default_branch: string;
   auto_merge: boolean;
+  planning_task_id: string | null;
   status: string;
   created_at: string;
   updated_at: string;

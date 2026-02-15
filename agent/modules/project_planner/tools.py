@@ -177,6 +177,7 @@ class ProjectPlannerTools:
         repo_name: str | None = None,
         default_branch: str | None = None,
         auto_merge: bool | None = None,
+        planning_task_id: str | None = None,
         user_id: str | None = None,
     ) -> dict:
         if not user_id:
@@ -209,6 +210,8 @@ class ProjectPlannerTools:
                 project.default_branch = default_branch
             if auto_merge is not None:
                 project.auto_merge = auto_merge
+            if planning_task_id is not None:
+                project.planning_task_id = planning_task_id
 
             project.updated_at = datetime.now(timezone.utc)
             await session.commit()
@@ -266,6 +269,7 @@ class ProjectPlannerTools:
             "default_branch": project.default_branch,
             "project_branch": project.project_branch,
             "auto_merge": project.auto_merge,
+            "planning_task_id": project.planning_task_id,
             "status": project.status,
             "created_at": project.created_at.isoformat(),
             "updated_at": project.updated_at.isoformat(),
@@ -314,6 +318,7 @@ class ProjectPlannerTools:
                     "repo_name": p.repo_name,
                     "status": p.status,
                     "auto_merge": p.auto_merge,
+                    "planning_task_id": p.planning_task_id,
                     "total_tasks": total,
                     "done_tasks": done,
                     "task_counts": counts,
@@ -1011,6 +1016,7 @@ class ProjectPlannerTools:
             "project_id": str(project.id),
             "name": project.name,
             "status": project.status,
+            "planning_task_id": project.planning_task_id,
             "total_tasks": total,
             "task_counts": task_counts,
             "current_phase": current_phase,

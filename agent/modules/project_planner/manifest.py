@@ -46,7 +46,7 @@ MANIFEST = ModuleManifest(
         ),
         ToolDefinition(
             name="project_planner.update_project",
-            description="Update project fields (name, description, design_document, status, repo info, auto_merge).",
+            description="Update project fields (name, description, design_document, status, repo info, auto_merge, planning_task_id).",
             parameters=[
                 ToolParameter(name="project_id", type="string", description="UUID of the project."),
                 ToolParameter(name="name", type="string", description="New project name.", required=False),
@@ -57,6 +57,7 @@ MANIFEST = ModuleManifest(
                 ToolParameter(name="repo_name", type="string", description="GitHub repo name.", required=False),
                 ToolParameter(name="default_branch", type="string", description="Base branch.", required=False),
                 ToolParameter(name="auto_merge", type="boolean", description="Auto-merge PRs after CI.", required=False),
+                ToolParameter(name="planning_task_id", type="string", description="Claude Code task ID for planning phase.", required=False),
                 ToolParameter(name="user_id", type="string", description="User ID (injected by orchestrator).", required=False),
             ],
             required_permission="user",

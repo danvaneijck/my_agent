@@ -100,3 +100,13 @@ export async function kickoffProject(
     body: JSON.stringify(options),
   });
 }
+
+export async function executePhase(
+  projectId: string,
+  options?: { phase_id?: string; auto_push?: boolean; timeout?: number },
+): Promise<{ phase_id: string; claude_task_id: string; task_count: number }> {
+  return api(`/api/projects/${projectId}/execute-phase`, {
+    method: "POST",
+    body: JSON.stringify(options || {}),
+  });
+}
