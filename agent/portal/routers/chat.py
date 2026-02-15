@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -216,19 +217,75 @@ async def get_conversation_messages(
             .limit(200)
         )
         msgs = result.scalars().all()
-        return {
-            "messages": [
-                {
+
+        # Build messages with tool call metadata for assistant responses
+        output_messages = []
+        pending_tool_calls = []
+
+        for m in msgs:
+            if m.role == "tool_call":
+                # Parse and track tool call
+                try:
+                    tc_data = json.loads(m.content)
+                    pending_tool_calls.append({
+                        "name": tc_data.get("name"),
+                        "tool_use_id": tc_data.get("tool_use_id"),
+                        "success": None,  # Will be set by tool_result
+                    })
+                except (json.JSONDecodeError, KeyError):
+                    pass
+            elif m.role == "tool_result":
+                # Match result to pending call and mark success
+                try:
+                    tr_data = json.loads(m.content)
+                    tool_use_id = tr_data.get("tool_use_id")
+                    success = tr_data.get("error") is None
+                    for tc in pending_tool_calls:
+                        if tc["tool_use_id"] == tool_use_id:
+                            tc["success"] = success
+                            break
+                except (json.JSONDecodeError, KeyError):
+                    pass
+            elif m.role == "assistant":
+                # Build metadata from pending tool calls
+                tool_metadata = None
+                if pending_tool_calls:
+                    # Filter out calls with unknown success status
+                    valid_calls = [tc for tc in pending_tool_calls if tc["success"] is not None]
+                    if valid_calls:
+                        unique_names = set(tc["name"] for tc in valid_calls)
+                        tool_metadata = {
+                            "total_count": len(valid_calls),
+                            "unique_tools": len(unique_names),
+                            "tools_sequence": [
+                                {
+                                    "name": tc["name"],
+                                    "success": tc["success"],
+                                    "tool_use_id": tc["tool_use_id"],
+                                }
+                                for tc in valid_calls
+                            ],
+                        }
+                    pending_tool_calls = []  # Reset for next assistant message
+
+                output_messages.append({
                     "id": str(m.id),
                     "role": m.role,
                     "content": m.content,
                     "model_used": m.model_used,
                     "created_at": m.created_at.isoformat() if m.created_at else None,
-                }
-                for m in msgs
-                if m.role in ("user", "assistant")
-            ]
-        }
+                    "tool_calls_metadata": tool_metadata,
+                })
+            elif m.role == "user":
+                output_messages.append({
+                    "id": str(m.id),
+                    "role": m.role,
+                    "content": m.content,
+                    "model_used": m.model_used,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                })
+
+        return {"messages": output_messages}
 
 
 @router.patch("/api/chat/conversations/{conversation_id}")
@@ -364,6 +421,7 @@ async def send_chat_message(
         "content": response.get("content", ""),
         "files": response.get("files", []),
         "error": response.get("error"),
+        "tool_calls_metadata": response.get("tool_calls_metadata"),
     }
 
 
@@ -431,6 +489,7 @@ async def ws_chat(websocket: WebSocket) -> None:
                         "content": response.get("content", ""),
                         "files": response.get("files", []),
                         "error": response.get("error"),
+                        "tool_calls_metadata": response.get("tool_calls_metadata"),
                     }
                 )
 

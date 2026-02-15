@@ -5,6 +5,22 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+class ToolCallSummary(BaseModel):
+    """Summary of a single tool call execution."""
+
+    name: str
+    success: bool
+    tool_use_id: str
+
+
+class ToolCallsMetadata(BaseModel):
+    """Metadata about tool calls made during an agent response."""
+
+    total_count: int
+    unique_tools: int
+    tools_sequence: list[ToolCallSummary]
+
+
 class IncomingMessage(BaseModel):
     """Normalized incoming message from any platform."""
 
@@ -24,3 +40,4 @@ class AgentResponse(BaseModel):
     content: str
     files: list[dict] = []  # [{filename, url}]
     error: str | None = None
+    tool_calls_metadata: ToolCallsMetadata | None = None
