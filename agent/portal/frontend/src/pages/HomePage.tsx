@@ -12,6 +12,12 @@ import {
   ExternalLink,
   ArrowRight,
   AlertCircle,
+  Sparkles,
+  Zap,
+  Code,
+  MessageSquare,
+  FileText,
+  Calendar,
 } from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
 import type { AnthropicUsageData } from "@/hooks/useDashboard";
@@ -22,6 +28,8 @@ import type {
   Deployment,
 } from "@/types";
 import { Skeleton } from "@/components/common/Skeleton";
+import { Logo } from "@/components/brand/Logo";
+import { getUser } from "@/api/client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -137,6 +145,7 @@ function DashboardCard({
   loading,
   children,
   headerAction,
+  gradient,
 }: {
   title: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -144,10 +153,11 @@ function DashboardCard({
   loading?: boolean;
   children: React.ReactNode;
   headerAction?: React.ReactNode;
+  gradient?: string;
 }) {
   return (
-    <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+    <div className={`bg-surface-light border border-border rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow ${gradient || ""}`}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-gradient-to-r from-surface-light to-surface">
         <h3 className="text-sm font-semibold text-white flex items-center gap-2">
           <Icon size={16} className="text-accent" />
           {title}
@@ -265,8 +275,19 @@ function ProjectsCard({
         ]}
       />
       {filtered.length === 0 ? (
-        <div className="px-4 pb-4 text-sm text-gray-500 text-center">
-          No projects{statusFilter ? ` with status "${statusFilter}"` : ""}
+        <div className="px-4 py-8 text-center">
+          <FolderKanban className="mx-auto text-gray-600 mb-3" size={40} />
+          <p className="text-sm text-gray-400 mb-2">
+            {statusFilter ? `No projects with status "${statusFilter}"` : "No projects yet"}
+          </p>
+          {!statusFilter && (
+            <button
+              onClick={() => navigate("/projects")}
+              className="text-xs text-accent hover:text-accent-hover"
+            >
+              Create your first project
+            </button>
+          )}
         </div>
       ) : (
         <div className="divide-y divide-border/50">
@@ -422,8 +443,15 @@ function TasksCard({
         </div>
       )}
       {sorted.length === 0 ? (
-        <div className="px-4 pb-4 text-sm text-gray-500 text-center">
-          No tasks yet
+        <div className="px-4 py-8 text-center">
+          <ListChecks className="mx-auto text-gray-600 mb-3" size={40} />
+          <p className="text-sm text-gray-400 mb-2">No tasks yet</p>
+          <button
+            onClick={() => navigate("/code")}
+            className="text-xs text-accent hover:text-accent-hover"
+          >
+            Start your first task
+          </button>
         </div>
       ) : (
         <div className="divide-y divide-border/50">
@@ -520,8 +548,15 @@ function PullRequestsCard({
         ]}
       />
       {recent.length === 0 ? (
-        <div className="px-4 pb-4 text-sm text-gray-500 text-center">
-          No pull requests
+        <div className="px-4 py-8 text-center">
+          <GitPullRequest className="mx-auto text-gray-600 mb-3" size={40} />
+          <p className="text-sm text-gray-400 mb-2">No pull requests</p>
+          <button
+            onClick={() => navigate("/repos")}
+            className="text-xs text-accent hover:text-accent-hover"
+          >
+            Connect a repository
+          </button>
         </div>
       ) : (
         <div className="divide-y divide-border/50">
@@ -627,8 +662,15 @@ function DeploymentsCard({
         ]}
       />
       {deployments.length === 0 ? (
-        <div className="px-4 pb-4 text-sm text-gray-500 text-center">
-          No deployments
+        <div className="px-4 py-8 text-center">
+          <Rocket className="mx-auto text-gray-600 mb-3" size={40} />
+          <p className="text-sm text-gray-400 mb-2">No deployments</p>
+          <button
+            onClick={() => navigate("/deployments")}
+            className="text-xs text-accent hover:text-accent-hover"
+          >
+            Deploy your first project
+          </button>
         </div>
       ) : (
         <div className="divide-y divide-border/50">
@@ -1097,12 +1139,195 @@ function DashboardSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
+// Welcome Section
+// ---------------------------------------------------------------------------
+
+function WelcomeSection({ username }: { username?: string }) {
+  const navigate = useNavigate();
+
+  const capabilities = [
+    {
+      icon: Code,
+      title: "Code Execution",
+      description: "Run Python, shell commands, and automated coding tasks",
+      link: "/code",
+      color: "text-accent",
+    },
+    {
+      icon: MessageSquare,
+      title: "Chat Interface",
+      description: "Interact with the AI agent in natural language",
+      link: "/chat",
+      color: "text-secondary",
+    },
+    {
+      icon: FolderKanban,
+      title: "Project Management",
+      description: "Plan and execute multi-phase projects automatically",
+      link: "/projects",
+      color: "text-accent",
+    },
+    {
+      icon: GitPullRequest,
+      title: "Git Integration",
+      description: "Manage repositories, PRs, and automated workflows",
+      link: "/repos",
+      color: "text-secondary",
+    },
+    {
+      icon: Rocket,
+      title: "Deployments",
+      description: "Deploy and host your projects with one command",
+      link: "/deployments",
+      color: "text-accent",
+    },
+    {
+      icon: FileText,
+      title: "File Management",
+      description: "Store, retrieve, and process documents",
+      link: "/files",
+      color: "text-secondary",
+    },
+  ];
+
+  return (
+    <div className="bg-gradient-to-br from-surface-light via-surface to-surface-light border border-border rounded-2xl p-6 md:p-8 shadow-2xl">
+      <div className="flex flex-col md:flex-row items-center gap-6 mb-8">
+        <Logo size="lg" variant="full" />
+        <div className="flex-1 text-center md:text-left">
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
+            Welcome{username ? `, ${username}` : ""}!
+          </h1>
+          <p className="text-gray-400 text-sm md:text-base">
+            Your modular AI agent framework is ready. Explore powerful capabilities
+            powered by multiple LLM providers and extensible modules.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate("/chat")}
+            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+          >
+            <Sparkles size={16} />
+            Start Chat
+          </button>
+          <button
+            onClick={() => navigate("/projects")}
+            className="px-4 py-2 bg-secondary hover:bg-secondary-hover text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+          >
+            <Zap size={16} />
+            New Project
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {capabilities.map((cap) => (
+          <button
+            key={cap.title}
+            onClick={() => navigate(cap.link)}
+            className="p-4 bg-surface-lighter/50 hover:bg-surface-lighter border border-border/50 hover:border-border rounded-xl transition-all text-left group"
+          >
+            <cap.icon className={`${cap.color} mb-2 group-hover:scale-110 transition-transform`} size={24} />
+            <h3 className="text-white font-semibold mb-1">{cap.title}</h3>
+            <p className="text-gray-400 text-xs">{cap.description}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Quick Start Guide
+// ---------------------------------------------------------------------------
+
+function QuickStartGuide({ show }: { show: boolean }) {
+  const navigate = useNavigate();
+
+  if (!show) return null;
+
+  return (
+    <div className="bg-gradient-to-r from-accent/10 to-secondary/10 border border-accent/20 rounded-xl p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <Sparkles className="text-accent" size={20} />
+        <h3 className="text-lg font-semibold text-white">Quick Start Guide</h3>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-accent font-medium">
+            <div className="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-white text-xs font-bold">
+              1
+            </div>
+            <span>Start a Conversation</span>
+          </div>
+          <p className="text-sm text-gray-400 ml-8">
+            Head to the Chat page to interact with your AI agent in natural language.
+          </p>
+          <button
+            onClick={() => navigate("/chat")}
+            className="ml-8 text-xs text-accent hover:text-accent-hover flex items-center gap-1"
+          >
+            Go to Chat <ArrowRight size={12} />
+          </button>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-secondary font-medium">
+            <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-white text-xs font-bold">
+              2
+            </div>
+            <span>Run a Task</span>
+          </div>
+          <p className="text-sm text-gray-400 ml-8">
+            Execute code, process files, or automate workflows using the Code page.
+          </p>
+          <button
+            onClick={() => navigate("/code")}
+            className="ml-8 text-xs text-secondary hover:text-secondary-hover flex items-center gap-1"
+          >
+            Go to Code <ArrowRight size={12} />
+          </button>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-accent font-medium">
+            <div className="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-white text-xs font-bold">
+              3
+            </div>
+            <span>Create a Project</span>
+          </div>
+          <p className="text-sm text-gray-400 ml-8">
+            Plan and execute multi-phase projects with autonomous task execution.
+          </p>
+          <button
+            onClick={() => navigate("/projects")}
+            className="ml-8 text-xs text-accent hover:text-accent-hover flex items-center gap-1"
+          >
+            Go to Projects <ArrowRight size={12} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Home Page
 // ---------------------------------------------------------------------------
 
 export default function HomePage() {
   const dashboard = useDashboard();
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const user = getUser();
+
+  // Show quick start guide if user has no projects, tasks, or PRs
+  const showQuickStart = useMemo(() => {
+    return (
+      dashboard.projects.length === 0 &&
+      dashboard.tasks.length === 0 &&
+      dashboard.pullRequests.length === 0 &&
+      !dashboard.loading
+    );
+  }, [dashboard]);
 
   // Auto-refresh every 30s when enabled
   useEffect(() => {
@@ -1112,12 +1337,18 @@ export default function HomePage() {
   }, [autoRefresh, dashboard.refetch]);
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Welcome Section */}
+      <WelcomeSection username={user?.username} />
+
+      {/* Quick Start Guide (shown for new users) */}
+      <QuickStartGuide show={showQuickStart} />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
           <Home size={20} className="text-accent" />
-          Dashboard
+          Dashboard Overview
         </h2>
         <div className="flex items-center gap-2">
           <button

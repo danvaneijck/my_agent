@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { getToken, setToken, setUser, clearAuth, api } from "@/api/client";
 import Layout from "@/components/layout/Layout";
-import Logo from "@/components/common/Logo";
+import { Logo } from "@/components/brand/Logo";
 import TasksPage from "@/pages/TasksPage";
 import ChatPage from "@/pages/ChatPage";
 import FilesPage from "@/pages/FilesPage";
@@ -21,6 +21,7 @@ import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import PhaseDetailPage from "@/pages/PhaseDetailPage";
 import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
 import HomePage from "@/pages/HomePage";
+import LandingPage from "@/pages/LandingPage";
 
 interface AuthProvider {
   name: string;
@@ -32,6 +33,7 @@ function LoginScreen() {
   const [error, setError] = useState("");
   const [providers, setProviders] = useState<AuthProvider[]>([]);
   const [discovering, setDiscovering] = useState(true);
+  const [showLanding, setShowLanding] = useState(true);
 
   useEffect(() => {
     fetch("/api/auth/providers")
@@ -55,12 +57,17 @@ function LoginScreen() {
     }
   };
 
+  // Show landing page if enabled, otherwise show compact login
+  if (showLanding && !discovering) {
+    return <LandingPage providers={providers} onLogin={handleLogin} loading={loading} />;
+  }
+
   return (
     <div className="h-full flex items-center justify-center p-4 bg-gradient-to-br from-surface via-surface to-surface-lighter">
       <div className="bg-surface-light/80 backdrop-blur-sm border border-border rounded-2xl p-10 w-full max-w-md space-y-8 shadow-2xl">
         {/* Logo and Tagline */}
         <div className="flex flex-col items-center text-center space-y-3">
-          <Logo size="lg" withText={false} />
+          <Logo size="lg" variant="icon" />
           <div>
             <h1 className="text-3xl font-bold text-white tracking-tight">ModuFlow</h1>
             <p className="text-sm text-gray-400 mt-1">Your Modular AI Agent Framework</p>
