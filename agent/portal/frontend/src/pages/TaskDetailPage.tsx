@@ -11,7 +11,7 @@ import PlanReviewPanel from "@/components/tasks/PlanReviewPanel";
 import TaskChainViewer from "@/components/tasks/TaskChainViewer";
 import WorkspaceBrowser from "@/components/tasks/WorkspaceBrowser";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
-import type { Task } from "@/types";
+import type { Task, ContextTracking } from "@/types";
 import { mapTask } from "@/types";
 
 function formatElapsed(seconds: number | null): string {
@@ -23,24 +23,51 @@ function formatElapsed(seconds: number | null): string {
 
 interface TokenSummary {
   latest_context_tokens: number;
+  peak_context_tokens?: number;
   total_output_tokens: number;
   num_turns: number;
+  num_compactions?: number;
+  num_continuations?: number;
   model?: string;
 }
 
-function ContextUsageBadge({ summary }: { summary: TokenSummary }) {
-  const ctx = summary.latest_context_tokens;
-  const maxCtx = summary.model?.includes("gemini") ? 1000000 : 200000;
-  const pct = Math.round((ctx / maxCtx) * 100);
+function ContextUsageBadge({ summary, tracking }: { summary?: TokenSummary; tracking?: ContextTracking }) {
+  // Prefer live context_tracking data (available during execution), fall back to token_summary
+  const peak = tracking?.peak_context_tokens ?? summary?.peak_context_tokens ?? summary?.latest_context_tokens ?? 0;
+  const model = tracking?.context_model ?? summary?.model;
+  const maxCtx = model?.includes("gemini") ? 1000000 : 200000;
+  const pct = Math.round((peak / maxCtx) * 100);
   const color = pct > 80 ? "text-red-400" : pct > 50 ? "text-yellow-400" : "text-green-400";
   const fmt = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}K` : `${n}`);
+  const turns = tracking?.num_turns ?? summary?.num_turns ?? 0;
+  const compactions = tracking?.num_compactions ?? summary?.num_compactions ?? 0;
+  const continuations = tracking?.num_continuations ?? summary?.num_continuations ?? 0;
+
+  const titleParts = [
+    `Peak: ${peak.toLocaleString()} / ${maxCtx.toLocaleString()} context tokens`,
+    `${(summary?.total_output_tokens ?? 0).toLocaleString()} output`,
+    `${turns} turns`,
+  ];
+  if (compactions > 0) titleParts.push(`${compactions} compaction(s)`);
+  if (continuations > 0) titleParts.push(`${continuations} auto-continuation(s)`);
+
   return (
     <span
       className={`inline-flex items-center gap-1 ${color}`}
-      title={`${ctx.toLocaleString()} / ${maxCtx.toLocaleString()} context tokens | ${summary.total_output_tokens.toLocaleString()} output | ${summary.num_turns} turns`}
+      title={titleParts.join(" | ")}
     >
       <Brain size={12} />
-      {fmt(ctx)} / {fmt(maxCtx)} ({pct}%)
+      {fmt(peak)} / {fmt(maxCtx)} ({pct}%)
+      {compactions > 0 && (
+        <span className="text-xs text-yellow-500" title={`${compactions} compaction(s) detected`}>
+          C{compactions}
+        </span>
+      )}
+      {continuations > 0 && (
+        <span className="text-xs text-blue-400" title={`${continuations} auto-continuation(s)`}>
+          R{continuations}
+        </span>
+      )}
     </span>
   );
 }
@@ -188,8 +215,11 @@ export default function TaskDetailPage() {
             <FolderOpen size={12} />
             {task.workspace}
           </span>
-          {task.result?.token_summary != null ? (
-            <ContextUsageBadge summary={task.result.token_summary as TokenSummary} />
+          {(task.context_tracking && task.context_tracking.num_turns > 0) || task.result?.token_summary != null ? (
+            <ContextUsageBadge
+              tracking={task.context_tracking?.num_turns ? task.context_tracking : undefined}
+              summary={task.result?.token_summary as TokenSummary | undefined}
+            />
           ) : null}
         </div>
 
