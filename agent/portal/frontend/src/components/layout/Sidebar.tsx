@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
 import {
   Home,
   LayoutDashboard,
@@ -40,11 +41,24 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCount = 0, activeTaskCount = 0 }: SidebarProps) {
+  // Check if we're on desktop (md breakpoint and above)
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const checkDesktop = () => {
+      setIsDesktop(window.innerWidth >= 768); // md breakpoint
+    };
+
+    checkDesktop();
+    window.addEventListener("resize", checkDesktop);
+    return () => window.removeEventListener("resize", checkDesktop);
+  }, []);
+
   return (
     <>
       {/* Mobile overlay with backdrop blur */}
       <AnimatePresence>
-        {open && (
+        {open && !isDesktop && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -57,20 +71,19 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
         )}
       </AnimatePresence>
 
-      {/* Sidebar with slide animation */}
-      <aside className="md:block md:static md:z-auto w-56 bg-white dark:bg-surface-light border-r border-light-border dark:border-border">
-        <motion.div
-          initial={false}
-          animate={{
-            x: open ? 0 : "-100%",
-          }}
-          transition={{
-            type: "spring",
-            damping: 30,
-            stiffness: 300,
-          }}
-          className="fixed inset-y-0 left-0 z-40 w-56 bg-white dark:bg-surface-light border-r border-light-border dark:border-border md:static md:translate-x-0"
-        >
+      {/* Sidebar with slide animation on mobile, static on desktop */}
+      <motion.aside
+        initial={false}
+        animate={{
+          x: isDesktop ? 0 : (open ? 0 : "-100%"),
+        }}
+        transition={{
+          type: "spring",
+          damping: 30,
+          stiffness: 300,
+        }}
+        className="fixed inset-y-0 left-0 z-40 w-56 bg-white dark:bg-surface-light border-r border-light-border dark:border-border md:static"
+      >
         <div className="flex items-center justify-between h-14 px-4 border-b border-light-border dark:border-border">
           <NavLink
             to="/"
@@ -149,8 +162,7 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
             </motion.div>
           ))}
         </motion.nav>
-        </motion.div>
-      </aside>
+      </motion.aside>
     </>
   );
 }
