@@ -1099,6 +1099,7 @@ class ProjectPlannerTools:
                     "mode": "execute",
                     "auto_push": auto_push,
                     "timeout": timeout,
+                    "group_id": project_id,
                 }
                 if repo_url:
                     task_args["repo_url"] = repo_url
