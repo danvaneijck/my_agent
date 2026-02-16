@@ -1,29 +1,31 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { getToken, setToken, setUser, clearAuth, api } from "@/api/client";
 import ErrorBoundary from "@/components/common/ErrorBoundary";
 import LoadingScreen from "@/components/common/LoadingScreen";
 import Layout from "@/components/layout/Layout";
-import TasksPage from "@/pages/TasksPage";
-import ChatPage from "@/pages/ChatPage";
-import FilesPage from "@/pages/FilesPage";
-import CodePage from "@/pages/CodePage";
-import SchedulePage from "@/pages/SchedulePage";
-import DeploymentsPage from "@/pages/DeploymentsPage";
-import TaskDetailPage from "@/pages/TaskDetailPage";
-import ReposPage from "@/pages/ReposPage";
-import RepoDetailPage from "@/pages/RepoDetailPage";
-import PullRequestsPage from "@/pages/PullRequestsPage";
-import PullRequestDetailPage from "@/pages/PullRequestDetailPage";
-import SettingsPage from "@/pages/SettingsPage";
-import UsagePage from "@/pages/UsagePage";
-import ProjectsPage from "@/pages/ProjectsPage";
-import ProjectDetailPage from "@/pages/ProjectDetailPage";
-import PhaseDetailPage from "@/pages/PhaseDetailPage";
-import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
-import HomePage from "@/pages/HomePage";
-import NotFoundPage from "@/pages/NotFoundPage";
+
+// Lazy load all page components for code splitting
+const HomePage = lazy(() => import("@/pages/HomePage"));
+const TasksPage = lazy(() => import("@/pages/TasksPage"));
+const TaskDetailPage = lazy(() => import("@/pages/TaskDetailPage"));
+const ChatPage = lazy(() => import("@/pages/ChatPage"));
+const FilesPage = lazy(() => import("@/pages/FilesPage"));
+const CodePage = lazy(() => import("@/pages/CodePage"));
+const SchedulePage = lazy(() => import("@/pages/SchedulePage"));
+const DeploymentsPage = lazy(() => import("@/pages/DeploymentsPage"));
+const ReposPage = lazy(() => import("@/pages/ReposPage"));
+const RepoDetailPage = lazy(() => import("@/pages/RepoDetailPage"));
+const PullRequestsPage = lazy(() => import("@/pages/PullRequestsPage"));
+const PullRequestDetailPage = lazy(() => import("@/pages/PullRequestDetailPage"));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
+const UsagePage = lazy(() => import("@/pages/UsagePage"));
+const ProjectsPage = lazy(() => import("@/pages/ProjectsPage"));
+const ProjectDetailPage = lazy(() => import("@/pages/ProjectDetailPage"));
+const PhaseDetailPage = lazy(() => import("@/pages/PhaseDetailPage"));
+const ProjectTaskDetailPage = lazy(() => import("@/pages/ProjectTaskDetailPage"));
+const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 interface AuthProvider {
   name: string;
@@ -281,30 +283,32 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Layout>
-        <AnimatePresence mode="wait">
-          <Routes location={location} key={location.pathname}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/chat/:conversationId" element={<ChatPage />} />
-            <Route path="/files" element={<FilesPage />} />
-            <Route path="/repos" element={<ReposPage />} />
-            <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
-            <Route path="/pulls" element={<PullRequestsPage />} />
-            <Route path="/pulls/:owner/:repo/:number" element={<PullRequestDetailPage />} />
-            <Route path="/code" element={<CodePage />} />
-            <Route path="/schedule" element={<SchedulePage />} />
-            <Route path="/deployments" element={<DeploymentsPage />} />
-            <Route path="/usage" element={<UsagePage />} />
-            <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-            <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
-            <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </AnimatePresence>
+        <Suspense fallback={<LoadingScreen />}>
+          <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/chat/:conversationId" element={<ChatPage />} />
+              <Route path="/files" element={<FilesPage />} />
+              <Route path="/repos" element={<ReposPage />} />
+              <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
+              <Route path="/pulls" element={<PullRequestsPage />} />
+              <Route path="/pulls/:owner/:repo/:number" element={<PullRequestDetailPage />} />
+              <Route path="/code" element={<CodePage />} />
+              <Route path="/schedule" element={<SchedulePage />} />
+              <Route path="/deployments" element={<DeploymentsPage />} />
+              <Route path="/usage" element={<UsagePage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+              <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
+              <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </AnimatePresence>
+        </Suspense>
       </Layout>
     </ErrorBoundary>
   );
