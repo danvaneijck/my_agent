@@ -5,7 +5,7 @@ interface SkeletonProps {
 export function Skeleton({ className = "" }: SkeletonProps) {
   return (
     <div
-      className={`animate-pulse rounded bg-surface-lighter/60 ${className}`}
+      className={`animate-pulse rounded bg-gray-200 dark:bg-surface-lighter/60 ${className}`}
     />
   );
 }
@@ -16,7 +16,7 @@ export function Skeleton({ className = "" }: SkeletonProps) {
 
 export function RepoCardSkeleton() {
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-4 space-y-3">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <Skeleton className="h-4 w-40" />
         <Skeleton className="h-4 w-8" />
@@ -65,7 +65,7 @@ export function PullRequestRowSkeleton() {
 
 export function PullRequestsListSkeleton({ count = 5 }: { count?: number }) {
   return (
-    <div className="bg-surface-light border border-border rounded-xl overflow-hidden divide-y divide-border/50">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden divide-y divide-light-border/50 dark:divide-border/50">
       {Array.from({ length: count }).map((_, i) => (
         <PullRequestRowSkeleton key={i} />
       ))}
@@ -75,7 +75,7 @@ export function PullRequestsListSkeleton({ count = 5 }: { count?: number }) {
 
 export function UsageBudgetSkeleton() {
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-6 space-y-4">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4">
       <Skeleton className="h-4 w-32" />
       <div>
         <div className="flex items-baseline justify-between mb-1.5">
@@ -84,7 +84,7 @@ export function UsageBudgetSkeleton() {
         </div>
         <Skeleton className="h-2 w-full rounded-full" />
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 border-t border-border">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 border-t border-light-border dark:border-border">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="space-y-1">
             <Skeleton className="h-3 w-20" />
@@ -98,7 +98,7 @@ export function UsageBudgetSkeleton() {
 
 export function UsageModelSkeleton() {
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-6 space-y-4">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4">
       <Skeleton className="h-4 w-56" />
       <div className="space-y-3">
         {Array.from({ length: 3 }).map((_, i) => (
@@ -117,14 +117,14 @@ export function UsageModelSkeleton() {
 
 export function UsageDailyTableSkeleton() {
   return (
-    <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
-      <div className="p-4 border-b border-border">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
+      <div className="p-4 border-b border-light-border dark:border-border">
         <Skeleton className="h-4 w-48" />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-gray-500 text-xs uppercase tracking-wider">
+            <tr className="border-b border-light-border dark:border-border text-gray-500 text-xs uppercase tracking-wider">
               <th className="text-left px-4 py-2.5 font-medium">Date</th>
               <th className="text-right px-4 py-2.5 font-medium">Input</th>
               <th className="text-right px-4 py-2.5 font-medium">Output</th>
@@ -133,7 +133,7 @@ export function UsageDailyTableSkeleton() {
               <th className="text-right px-4 py-2.5 font-medium">Requests</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border/50">
+          <tbody className="divide-y divide-light-border/50 dark:divide-border/50">
             {Array.from({ length: 7 }).map((_, i) => (
               <tr key={i}>
                 <td className="px-4 py-2">
@@ -165,7 +165,7 @@ export function UsageDailyTableSkeleton() {
 
 export function UsageAnthropicSkeleton() {
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-6 space-y-5">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-5">
       <Skeleton className="h-4 w-36" />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {Array.from({ length: 2 }).map((_, i) => (

@@ -51,17 +51,19 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
 
       <aside
         className={`
-          fixed inset-y-0 left-0 z-40 w-56 bg-surface-light border-r border-border
+          fixed inset-y-0 left-0 z-40 w-56
+          bg-white dark:bg-surface-light
+          border-r border-light-border dark:border-border
           transform transition-transform duration-200 ease-in-out
           md:translate-x-0 md:static md:z-auto
           ${open ? "translate-x-0" : "-translate-x-full"}
         `}
       >
-        <div className="flex items-center justify-between h-14 px-4 border-b border-border">
-          <span className="text-lg font-semibold text-white">Agent Portal</span>
+        <div className="flex items-center justify-between h-14 px-4 border-b border-light-border dark:border-border">
+          <span className="text-lg font-semibold text-gray-900 dark:text-white">Agent Portal</span>
           <button
             onClick={onClose}
-            className="md:hidden p-1 rounded hover:bg-surface-lighter text-gray-400"
+            className="md:hidden p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400"
           >
             <X size={18} />
           </button>
@@ -76,8 +78,8 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
               onClick={onClose}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
-                  ? "bg-accent/15 text-accent-hover"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-surface-lighter"
+                  ? "bg-accent/15 text-accent dark:text-accent-hover"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-surface-lighter"
                 }`
               }
             >
