@@ -268,6 +268,8 @@ export interface ProjectPhase {
   description: string | null;
   order_index: number;
   status: "planned" | "in_progress" | "completed";
+  branch_name: string | null;
+  pr_number: number | null;
   created_at: string;
   task_counts?: ProjectTaskCounts;
 }
