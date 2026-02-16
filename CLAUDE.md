@@ -1,5 +1,20 @@
 # AI Agent System — Developer Guide
 
+> **Quick Reference** for developers working with the AI agent system. For comprehensive documentation, see [Documentation Index](agent/docs/INDEX.md) or [Complete Overview](agent/docs/OVERVIEW.md).
+
+## Documentation Navigation
+
+- **📚 [Complete Documentation Index](agent/docs/INDEX.md)** — Find all documentation organized by category
+- **🎯 [System Overview](agent/docs/OVERVIEW.md)** — Comprehensive system introduction
+- **🏗️ [Architecture](agent/docs/architecture/)** — System design and infrastructure
+- **⚙️ [Core Services](agent/docs/core/)** — Orchestrator internals (agent loop, tool registry, LLM router)
+- **💬 [Communication Layer](agent/docs/comms/)** — Platform bots (Discord, Telegram, Slack)
+- **🔧 [Modules](agent/docs/modules/)** — Tool modules documentation
+- **📖 [Feature Guides](agent/docs/features/)** — Step-by-step implementation guides
+- **📋 [API Reference](agent/docs/api-reference/)** — Schemas, models, and endpoints
+- **🚀 [Development](agent/docs/development/)** — Workflows, testing, debugging
+- **🔧 [Troubleshooting](agent/docs/troubleshooting/)** — Problem diagnosis and solutions
+
 ## Quick Reference
 
 ```
@@ -51,6 +66,8 @@ Makefile:       Makefile (top-level, wraps docker compose)
 
 All services communicate over the `agent-net` Docker bridge network. Services are containerized with Python 3.12-slim base images.
 
+**For detailed architecture:** [Architecture Documentation](agent/docs/architecture/), [System Overview](agent/docs/OVERVIEW.md)
+
 ## Module Documentation
 
 Detailed per-module docs live in `agent/docs/modules/`:
@@ -71,6 +88,8 @@ Detailed per-module docs live in `agent/docs/modules/`:
 - [myfitnesspal](agent/docs/modules/myfitnesspal.md) — nutrition and meal tracking
 - [project_planner](agent/docs/modules/project_planner.md) — project planning, tracking + autonomous execution
 - [injective](agent/docs/modules/injective.md) — blockchain spot and perpetual trading
+
+**For module implementation details:** [Module Documentation](agent/docs/modules/), [Adding Modules Guide](agent/docs/modules/ADDING_MODULES.md)
 
 ## Tech Stack
 
@@ -297,6 +316,8 @@ project_tasks
 2. Import it in `agent/shared/shared/models/__init__.py`
 3. Create Alembic migration: `make shell` then `alembic revision --autogenerate -m "add new_thing table"`
 4. Apply: `make migrate`
+
+**For detailed database documentation:** [Database Schema](agent/docs/architecture/database-schema.md), [Database Models Reference](agent/docs/api-reference/database-models.md), [Adding Database Tables Guide](agent/docs/features/adding-database-table.md)
 
 ## Configuration (Settings)
 
@@ -539,6 +560,8 @@ async def get_embedding(text: str) -> list[float] | None:
 
 ## Core Orchestrator Internals
 
+**For detailed core service documentation:** [Core Services Overview](agent/docs/core/), [Agent Loop](agent/docs/core/agent-loop.md), [Tool Registry](agent/docs/core/tool-registry.md), [LLM Router](agent/docs/core/llm-router.md), [Context Builder](agent/docs/core/context-builder.md), [Memory System](agent/docs/core/memory-system.md)
+
 ### Agent Loop (`agent/core/orchestrator/agent_loop.py`)
 
 The main reasoning cycle:
@@ -571,6 +594,8 @@ The main reasoning cycle:
 - Routes `POST /execute` to the correct module by splitting tool name on first `.`
 
 ## Communication Layer (Bots)
+
+**For detailed bot documentation:** [Communication Layer Overview](agent/docs/comms/), [Discord Bot](agent/docs/comms/discord-bot.md), [Telegram Bot](agent/docs/comms/telegram-bot.md), [Slack Bot](agent/docs/comms/slack-bot.md), [File Pipeline](agent/docs/comms/file-pipeline.md)
 
 Each bot follows the same pattern:
 
@@ -612,6 +637,8 @@ make psql               # PostgreSQL shell
 make redis-cli          # Redis CLI
 make migrate            # Run Alembic migrations
 ```
+
+**For complete command reference:** [Makefile Reference](agent/docs/development/makefile-reference.md)
 
 ## Permission Levels
 
