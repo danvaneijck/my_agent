@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw } from "lucide-react";
-import { useProjectDetail, executePhase, startWorkflow, syncPrStatus } from "@/hooks/useProjects";
+import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase } from "@/hooks/useProjects";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PlanningTaskPanel from "@/components/projects/PlanningTaskPanel";
@@ -22,12 +22,13 @@ const PHASE_STATUS_COLORS: Record<string, string> = {
   completed: "bg-green-500/20 text-green-400",
 };
 
-function PhaseRow({ phase, projectId, repoOwner, repoName, onClick }: {
+function PhaseRow({ phase, projectId, repoOwner, repoName, onClick, onRetry }: {
   phase: ProjectPhase;
   projectId: string;
   repoOwner: string | null;
   repoName: string | null;
   onClick: () => void;
+  onRetry?: () => void;
 }) {
   const counts = phase.task_counts || {};
   const total = Object.values(counts).reduce((a, b) => a + (b || 0), 0);
@@ -73,7 +74,21 @@ function PhaseRow({ phase, projectId, repoOwner, repoName, onClick }: {
             <div className="flex gap-2 text-xs">
               {(counts.doing || 0) > 0 && <span className="text-yellow-400">{counts.doing} doing</span>}
               {(counts.in_review || 0) > 0 && <span className="text-blue-400">{counts.in_review} review</span>}
-              {(counts.failed || 0) > 0 && <span className="text-red-400">{counts.failed} failed</span>}
+              {(counts.failed || 0) > 0 && (
+                <>
+                  <span className="text-red-400">{counts.failed} failed</span>
+                  {onRetry && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onRetry(); }}
+                      className="inline-flex items-center gap-1 text-xs text-red-400 hover:text-white px-1.5 py-0.5 rounded bg-red-500/10 hover:bg-red-500/30 transition-colors"
+                      title="Retry failed tasks"
+                    >
+                      <RotateCcw size={10} />
+                      Retry
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}
@@ -94,18 +109,33 @@ export default function ProjectDetailPage() {
   const [reapplyPrompt, setReapplyPrompt] = useState("");
   const [reapplying, setReapplying] = useState(false);
   const [reapplyProgress, setReapplyProgress] = useState("");
+  const [retryingPhase, setRetryingPhase] = useState<string | null>(null);
   const syncedRef = useRef(false);
 
-  // Auto-sync PR status on page load to catch merges done outside the portal
+  // Auto-sync on page load: fix stuck phases + catch merged PRs
   useEffect(() => {
     if (!projectId || !project || syncedRef.current) return;
-    // Only sync if project has in_review tasks
-    const hasInReview = project.phases.some((p) => (p.task_counts?.in_review || 0) > 0);
-    if (!hasInReview) return;
     syncedRef.current = true;
-    syncPrStatus(projectId).then((result) => {
-      if (result.synced > 0) refetch();
-    }).catch(() => {});
+
+    const syncs: Promise<{ synced: number }>[] = [];
+
+    // Sync stuck in_progress phases whose claude tasks have finished
+    const hasInProgress = project.phases.some((p) => p.status === "in_progress");
+    if (hasInProgress) {
+      syncs.push(syncPhaseStatus(projectId));
+    }
+
+    // Sync merged PRs for in_review tasks
+    const hasInReview = project.phases.some((p) => (p.task_counts?.in_review || 0) > 0);
+    if (hasInReview) {
+      syncs.push(syncPrStatus(projectId));
+    }
+
+    if (syncs.length > 0) {
+      Promise.all(syncs).then((results) => {
+        if (results.some((r) => r.synced > 0)) refetch();
+      }).catch(() => {});
+    }
   }, [projectId, project, refetch]);
 
   const handleDelete = async () => {
@@ -162,6 +192,19 @@ export default function ProjectDetailPage() {
       // Error
     } finally {
       setStarting(false);
+    }
+  };
+
+  const handleRetryPhase = async (phaseId: string) => {
+    if (!projectId) return;
+    setRetryingPhase(phaseId);
+    try {
+      await retryPhase(projectId, phaseId);
+      refetch();
+    } catch {
+      // Error
+    } finally {
+      setRetryingPhase(null);
     }
   };
 
@@ -371,6 +414,11 @@ export default function ProjectDetailPage() {
                 repoOwner={project.repo_owner}
                 repoName={project.repo_name}
                 onClick={() => navigate(`/projects/${project.project_id}/phases/${phase.phase_id}`)}
+                onRetry={
+                  (phase.task_counts?.failed || 0) > 0 && !project.phases.some(p => p.status === "in_progress")
+                    ? () => handleRetryPhase(phase.phase_id)
+                    : undefined
+                }
               />
             ))}
           </div>

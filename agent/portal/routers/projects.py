@@ -166,6 +166,10 @@ class ExecutePhaseRequest(BaseModel):
     timeout: int = 1800
 
 
+class RetryPhaseRequest(BaseModel):
+    phase_id: str
+
+
 # --------------- Project endpoints ---------------
 
 
@@ -705,6 +709,8 @@ async def start_workflow(
             "project_id": project_id,
             "auto_push": body.auto_push,
             "timeout": body.timeout,
+            "platform": "web",
+            "platform_channel_id": uid,
         },
         user_id=uid,
         timeout=30.0,
@@ -757,6 +763,71 @@ async def cancel_workflow(
         },
         user_id=uid,
         timeout=15.0,
+    )
+
+    return result.get("result", {})
+
+
+@router.post("/{project_id}/retry-phase")
+async def retry_phase(
+    project_id: str,
+    body: RetryPhaseRequest,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Reset failed tasks in a phase and restart the automated workflow."""
+    uid = str(user.user_id)
+    phase_id = body.phase_id
+
+    # 1. Get tasks for the phase
+    tasks_result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.get_phase_tasks",
+        arguments={"phase_id": phase_id},
+        user_id=uid,
+        timeout=15.0,
+    )
+    tasks = tasks_result.get("result", [])
+    retryable = [t for t in tasks if t.get("status") in ("failed", "doing")]
+
+    if not retryable:
+        return {"success": False, "message": "No failed or in-progress tasks to retry"}
+
+    # 2. Reset each retryable task to "todo"
+    for task in retryable:
+        await call_tool(
+            module="project_planner",
+            tool_name="project_planner.update_task",
+            arguments={
+                "task_id": task["task_id"],
+                "status": "todo",
+                "error_message": "",
+                "claude_task_id": "",
+            },
+            user_id=uid,
+            timeout=15.0,
+        )
+
+    # 3. Reset phase status to "in_progress"
+    await call_tool(
+        module="project_planner",
+        tool_name="project_planner.update_phase",
+        arguments={"phase_id": phase_id, "status": "in_progress"},
+        user_id=uid,
+        timeout=15.0,
+    )
+
+    # 4. Restart automated workflow
+    result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.start_project_workflow",
+        arguments={
+            "project_id": project_id,
+            "auto_push": True,
+            "platform": "web",
+            "platform_channel_id": uid,
+        },
+        user_id=uid,
+        timeout=30.0,
     )
 
     return result.get("result", {})
@@ -923,3 +994,92 @@ async def sync_pr_status(
             "merged_prs": list(merged_prs),
             "project_completed": project.status == "completed",
         }
+
+
+@router.post("/{project_id}/sync-phase-status")
+async def sync_phase_status(
+    project_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Detect in_progress phases whose claude tasks have finished and finalize them."""
+    uid = str(user.user_id)
+    pid = uuid.UUID(project_id)
+    now = datetime.now(timezone.utc)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        # Find all in_progress phases for this project
+        phases_result = await session.execute(
+            select(ProjectPhase)
+            .where(ProjectPhase.project_id == pid, ProjectPhase.status == "in_progress")
+            .order_by(ProjectPhase.order_index)
+        )
+        phases = list(phases_result.scalars().all())
+
+        if not phases:
+            return {"synced": 0}
+
+        synced = 0
+        for phase in phases:
+            # Find tasks with a claude_task_id that are still "doing"
+            tasks_result = await session.execute(
+                select(ProjectTask).where(
+                    ProjectTask.phase_id == phase.id,
+                    ProjectTask.status == "doing",
+                    ProjectTask.claude_task_id.isnot(None),
+                )
+            )
+            doing_tasks = list(tasks_result.scalars().all())
+
+            if not doing_tasks:
+                continue
+
+            # Check if the claude task has finished
+            claude_task_id = doing_tasks[0].claude_task_id
+            try:
+                task_status_result = await call_tool(
+                    module="claude_code",
+                    tool_name="claude_code.task_status",
+                    arguments={"task_id": claude_task_id},
+                    user_id=uid,
+                    timeout=15.0,
+                )
+                status = task_status_result.get("result", {}).get("status")
+            except Exception:
+                continue
+
+            if status not in ("completed", "failed", "timed_out", "cancelled"):
+                continue  # still running
+
+            # Claude task is done but phase is stuck — try complete_phase
+            try:
+                await call_tool(
+                    module="project_planner",
+                    tool_name="project_planner.complete_phase",
+                    arguments={
+                        "phase_id": str(phase.id),
+                        "claude_task_id": claude_task_id,
+                    },
+                    user_id=uid,
+                    timeout=30.0,
+                )
+                synced += 1
+            except Exception as e:
+                # complete_phase may fail (e.g. no PR possible) — just mark tasks done
+                logger.warning(
+                    "sync_complete_phase_failed",
+                    phase_id=str(phase.id),
+                    error=str(e),
+                )
+                for task in doing_tasks:
+                    task.status = "done" if status == "completed" else "failed"
+                    task.completed_at = now
+                    task.updated_at = now
+                    if status != "completed":
+                        task.error_message = f"Task {status}"
+                phase.status = "completed"
+                phase.updated_at = now
+                await session.commit()
+                synced += 1
+
+    return {"synced": synced}

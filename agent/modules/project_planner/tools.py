@@ -1327,11 +1327,15 @@ class ProjectPlannerTools:
         workflow_id: str | None = None,
         auto_push: bool = True,
         timeout: int = 1800,
+        platform: str | None = None,
+        platform_channel_id: str | None = None,
         user_id: str | None = None,
     ) -> dict:
         """Start automated sequential phase execution with scheduler workflow chaining."""
         if not user_id:
             raise ValueError("user_id is required")
+        if not platform or not platform_channel_id:
+            raise ValueError("platform and platform_channel_id are required for workflow scheduling")
 
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
@@ -1401,6 +1405,8 @@ class ProjectPlannerTools:
                         "on_success_message": on_success_message,
                         "on_complete": "resume_conversation",
                         "workflow_id": workflow_id,
+                        "platform": platform,
+                        "platform_channel_id": platform_channel_id,
                     },
                     "user_id": user_id,
                 }
