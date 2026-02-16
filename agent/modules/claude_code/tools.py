@@ -1093,7 +1093,8 @@ class ClaudeCodeTools:
         container_name = f"claude-task-{task.id}-{task.num_continuations}"
         is_continuation = task.num_continuations > 0
 
-        # For continuations: fresh CLI session, no repo clone (workspace has files)
+        # For auto-continuations: fresh CLI session, no repo clone (workspace has files)
+        # For continue_task calls (first run): preserve continue_session from original task
         run_task = Task(
             id=task.id,
             prompt=prompt,
@@ -1101,7 +1102,7 @@ class ClaudeCodeTools:
             branch=task.branch if not is_continuation else None,
             source_branch=task.source_branch if not is_continuation else None,
             workspace=task.workspace,
-            continue_session=False,
+            continue_session=task.continue_session if not is_continuation else False,
             mode=task.mode,
             auto_push=False,  # only push on final exit
             user_id=task.user_id,
