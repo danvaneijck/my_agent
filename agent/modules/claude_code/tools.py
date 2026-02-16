@@ -380,7 +380,8 @@ class ClaudeCodeTools:
         if mode == "plan":
             effective_prompt = (
                 "Create a detailed implementation plan for the following task. "
-                "Do NOT implement anything yet. Write your plan to PLAN.md. "
+                "Do NOT implement anything yet. Write the complete plan to PLAN.md "
+                "in the repository root and commit it. "
                 "Analyze the codebase, identify files to modify, and describe "
                 "your approach step by step.\n\n"
                 f"Task: {prompt}"
@@ -779,6 +780,43 @@ class ClaudeCodeTools:
 
         return "\n".join(lines) if lines else "  (empty workspace)"
 
+    @staticmethod
+    def _read_plan_file(workspace: str) -> str | None:
+        """Read a plan file from the workspace, checking common name variants.
+
+        Claude may write PLAN.md, plan.md, or other casing.  We do a
+        case-insensitive scan of the workspace root for any ``plan*.md``
+        file and return the largest match (most likely the full plan).
+        """
+        candidates: list[tuple[int, str]] = []
+        try:
+            for entry in os.scandir(workspace):
+                if not entry.is_file():
+                    continue
+                lower = entry.name.lower()
+                if lower.startswith("plan") and lower.endswith(".md"):
+                    try:
+                        size = entry.stat().st_size
+                        candidates.append((size, entry.path))
+                    except OSError:
+                        continue
+        except OSError:
+            return None
+
+        if not candidates:
+            return None
+
+        # Pick the largest plan file (most likely the full plan)
+        candidates.sort(reverse=True)
+        try:
+            with open(candidates[0][1]) as f:
+                content = f.read()
+            if content.strip():
+                return content
+        except OSError:
+            pass
+        return None
+
     # ------------------------------------------------------------------
     # Workspace browsing
     # ------------------------------------------------------------------
@@ -989,14 +1027,11 @@ class ClaudeCodeTools:
                     task.result["token_summary"] = token_summary
                 if task.mode == "plan":
                     task.status = "awaiting_input"
-                    # Extract plan content from PLAN.md or CLI output
-                    plan_md = os.path.join(task.workspace, "PLAN.md")
-                    if os.path.isfile(plan_md):
-                        try:
-                            with open(plan_md) as f:
-                                task.result["plan_content"] = f.read()
-                        except OSError:
-                            pass
+                    # Extract plan content from plan file in workspace
+                    # Claude may write PLAN.md, plan.md, or other variants
+                    plan_content = self._read_plan_file(task.workspace)
+                    if plan_content:
+                        task.result["plan_content"] = plan_content
                     if "plan_content" not in (task.result or {}):
                         # Fallback: extract from CLI JSON result
                         for obj in (task.result.get("json_output") or []):
@@ -1007,7 +1042,9 @@ class ClaudeCodeTools:
                     task.status = "completed"
 
                 # Auto-push: push branch to remote after successful completion
-                if task.auto_push and task.repo_url and task.status == "completed":
+                # Also push for plan mode (awaiting_input) so PLAN.md is in the repo
+                # for subsequent phases that clone fresh.
+                if task.auto_push and task.repo_url and task.status in ("completed", "awaiting_input"):
                     await self._auto_push_branch(task, user_mounts)
             else:
                 task.status = "failed"

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest } from "lucide-react";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw } from "lucide-react";
 import { useProjectDetail, executePhase, startWorkflow, syncPrStatus } from "@/hooks/useProjects";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
@@ -90,6 +90,10 @@ export default function ProjectDetailPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [showReapply, setShowReapply] = useState(false);
+  const [reapplyPrompt, setReapplyPrompt] = useState("");
+  const [reapplying, setReapplying] = useState(false);
+  const [reapplyProgress, setReapplyProgress] = useState("");
   const syncedRef = useRef(false);
 
   // Auto-sync PR status on page load to catch merges done outside the portal
@@ -158,6 +162,31 @@ export default function ProjectDetailPage() {
       // Error
     } finally {
       setStarting(false);
+    }
+  };
+
+  const handleReapplyPlan = async () => {
+    if (!projectId || !project?.design_document) return;
+    setReapplying(true);
+    setReapplyProgress("Clearing existing phases...");
+    try {
+      await api(`/api/projects/${projectId}/clear-phases`, { method: "POST" });
+      setReapplyProgress("Parsing plan with AI...");
+      await api(`/api/projects/${projectId}/apply-plan`, {
+        method: "POST",
+        body: JSON.stringify({
+          plan_content: project.design_document,
+          custom_prompt: reapplyPrompt || undefined,
+        }),
+      });
+      setReapplyProgress("Done!");
+      setShowReapply(false);
+      setReapplyPrompt("");
+      refetch();
+    } catch (e) {
+      setReapplyProgress(`Error: ${e instanceof Error ? e.message : "Failed"}`);
+    } finally {
+      setReapplying(false);
     }
   };
 
@@ -313,10 +342,20 @@ export default function ProjectDetailPage() {
 
       {/* Phases */}
       <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h3 className="text-sm font-medium text-gray-300">
             Phases ({project.phases.length})
           </h3>
+          {project.design_document && (
+            <button
+              onClick={() => setShowReapply(true)}
+              className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 px-2 py-1 rounded hover:bg-surface-lighter transition-colors"
+              title="Clear phases and re-apply the plan with optional modifications"
+            >
+              <RotateCcw size={12} />
+              Re-apply Plan
+            </button>
+          )}
         </div>
         {project.phases.length === 0 ? (
           <div className="px-4 py-8 text-center text-gray-500 text-sm">
@@ -361,6 +400,69 @@ export default function ProjectDetailPage() {
         onConfirm={handleDelete}
         onCancel={() => setShowDelete(false)}
       />
+
+      {/* Re-apply Plan Modal */}
+      {showReapply && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-surface-light border border-border rounded-xl p-6 max-w-lg w-full space-y-4">
+            <h3 className="text-lg font-semibold text-white">Re-apply Plan</h3>
+            <p className="text-sm text-gray-400">
+              This will clear all existing phases and tasks, then re-parse the plan.
+              Optionally provide instructions to modify how the plan is structured.
+            </p>
+
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">
+                Custom instructions (optional)
+              </label>
+              <textarea
+                value={reapplyPrompt}
+                onChange={(e) => setReapplyPrompt(e.target.value)}
+                placeholder='e.g., "Condense into 3 phases", "Split phase 2 into smaller tasks", "Group by file type instead of feature"'
+                rows={3}
+                disabled={reapplying}
+                className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent resize-none disabled:opacity-50"
+              />
+            </div>
+
+            {reapplying && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <RefreshCw size={14} className="animate-spin" />
+                  {reapplyProgress}
+                </div>
+                <div className="h-1.5 bg-surface rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent rounded-full transition-all duration-1000"
+                    style={{
+                      width: reapplyProgress.includes("Clearing") ? "30%" :
+                             reapplyProgress.includes("Parsing") ? "70%" :
+                             reapplyProgress.includes("Done") ? "100%" : "10%",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowReapply(false); setReapplyPrompt(""); setReapplyProgress(""); }}
+                disabled={reapplying}
+                className="px-4 py-2 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReapplyPlan}
+                disabled={reapplying}
+                className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
+              >
+                {reapplying ? "Applying..." : "Clear & Re-apply"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
