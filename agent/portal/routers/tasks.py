@@ -255,6 +255,21 @@ async def delete_workspace(
     return result.get("result", {})
 
 
+@router.delete("")
+async def delete_all_workspaces(
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Delete all workspaces and tasks for the current user."""
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.delete_all_workspaces",
+        arguments={},
+        user_id=str(user.user_id),
+        timeout=60.0,
+    )
+    return result.get("result", {})
+
+
 # --------------- WebSocket ---------------
 
 
