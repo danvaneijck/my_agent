@@ -56,34 +56,82 @@ function LoginScreen() {
   };
 
   return (
-    <div className="h-full flex items-center justify-center p-4">
-      <div className="bg-surface-light border border-border rounded-xl p-8 w-full max-w-sm space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-white">Agent Portal</h1>
-          <p className="text-sm text-gray-400 mt-2">Sign in to continue</p>
-        </div>
-        {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+    <div className="h-full flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <motion.div
+        className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-2xl shadow-xl dark:shadow-2xl p-8 w-full max-w-md space-y-6"
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.0, 0.0, 0.2, 1] }}
+      >
+        {/* Logo and Branding */}
+        <motion.div
+          className="text-center space-y-3"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          <div className="flex justify-center mb-4">
+            <img
+              src="/logo-icon.svg"
+              alt="Nexus"
+              className="h-16 w-16"
+            />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Nexus</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Your AI orchestration platform
+          </p>
+        </motion.div>
+
+        {error && (
+          <motion.div
+            className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-lg p-3"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <p className="text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
+          </motion.div>
+        )}
 
         {discovering ? (
-          <div className="flex justify-center py-4">
-            <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <div className="flex justify-center py-8">
+            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
         ) : providers.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center">
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
             No authentication providers configured.
           </p>
         ) : (
-          <div className="space-y-3">
+          <motion.div
+            className="space-y-3"
+            initial="initial"
+            animate="animate"
+            variants={{
+              initial: {},
+              animate: {
+                transition: {
+                  staggerChildren: 0.1,
+                  delayChildren: 0.2,
+                },
+              },
+            }}
+          >
             {providers.map((p) => (
-              <button
+              <motion.button
                 key={p.name}
                 onClick={() => handleLogin(p.name)}
                 disabled={loading}
-                className={`w-full py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
+                variants={{
+                  initial: { opacity: 0, y: 10 },
+                  animate: { opacity: 1, y: 0 },
+                }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className={`w-full py-3 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm hover:shadow-md ${
                   p.name === "discord"
                     ? "bg-[#5865F2] hover:bg-[#4752C4] text-white"
                     : p.name === "google"
-                    ? "bg-white text-gray-800 hover:bg-gray-100 border border-gray-300"
+                    ? "bg-white text-gray-800 hover:bg-gray-50 border border-gray-300"
                     : "bg-accent hover:bg-accent-hover text-white"
                 }`}
               >
@@ -101,11 +149,21 @@ function LoginScreen() {
                   </svg>
                 )}
                 {loading ? "Redirecting..." : `Sign in with ${p.label}`}
-              </button>
+              </motion.button>
             ))}
-          </div>
+          </motion.div>
         )}
-      </div>
+
+        {/* Footer */}
+        <motion.p
+          className="text-xs text-center text-gray-500 dark:text-gray-400 pt-4 border-t border-light-border dark:border-border"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+        >
+          Secure authentication powered by OAuth 2.0
+        </motion.p>
+      </motion.div>
     </div>
   );
 }
