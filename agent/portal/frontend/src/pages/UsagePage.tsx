@@ -110,21 +110,21 @@ function BudgetCard({ summary }: { summary: UsageSummary }) {
     : 0;
 
   return (
-    <motion.div
-      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4"
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      variants={pageVariants}
-    >
-      <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
-        Monthly Budget
-      </h3>
+ <div
+ className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4"
+      
+      
+      
+      
+>
+ <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
+ Monthly Budget
+ </h3>
 
-      <div>
-        <div className="flex items-baseline justify-between mb-1.5">
-          <span className="text-2xl font-bold text-white">
-            {formatNumber(summary.tokens_used_this_month)}
+ <div>
+ <div className="flex items-baseline justify-between mb-1.5">
+ <span className="text-2xl font-bold text-white">
+ {formatNumber(summary.tokens_used_this_month)}
           </span>
           <span className="text-sm text-gray-400">
             {hasBudget
@@ -391,7 +391,13 @@ export default function UsagePage() {
   }, [fetchData]);
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
+    <motion.div
+      className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       <div className="flex items-center gap-3">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
           <BarChart3 size={20} className="text-accent" />

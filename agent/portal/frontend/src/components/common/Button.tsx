@@ -4,16 +4,20 @@
  * Provides consistent hover/tap animations across all buttons
  */
 
-import { motion, MotionProps } from "framer-motion";
+import { motion } from "framer-motion";
 import { scaleVariants } from "@/utils/animations";
-import type { ReactNode, ButtonHTMLAttributes } from "react";
+import type { ReactNode } from "react";
 
-interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
+interface ButtonProps {
   children: ReactNode;
   variant?: "primary" | "secondary" | "ghost" | "danger";
   size?: "sm" | "md" | "lg";
   className?: string;
   disabled?: boolean;
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  type?: "button" | "submit" | "reset";
+  form?: string;
+  title?: string;
 }
 
 const variantStyles = {
@@ -38,7 +42,10 @@ export default function Button({
   size = "md",
   className = "",
   disabled = false,
-  ...props
+  onClick,
+  type = "button",
+  form,
+  title,
 }: ButtonProps) {
   const baseStyles = "rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
   const combinedClassName = `${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`;
@@ -51,7 +58,10 @@ export default function Button({
       whileTap={disabled ? undefined : "tap"}
       variants={scaleVariants}
       disabled={disabled}
-      {...props}
+      onClick={onClick}
+      type={type}
+      form={form}
+      title={title}
     >
       {children}
     </motion.button>

@@ -91,13 +91,7 @@ function PortsList({ deployment }: { deployment: Deployment }) {
   }
 
   return (
-    <motion.div
-      className="flex flex-wrap gap-1"
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      variants={pageVariants}
-    >
+    <div className="flex flex-wrap gap-1">
       {ports.map((p, i) => (
         <a
           key={i}
@@ -826,6 +820,6 @@ export default function DeploymentsPage() {
           onClose={() => setEnvEditorId(null)}
         />
       )}
-    </motion.div>
+    </div>
   );
 }

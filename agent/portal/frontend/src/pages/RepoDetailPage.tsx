@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
   ArrowLeft,
   GitBranch,
@@ -18,6 +19,7 @@ import {
 import { api } from "@/api/client";
 import { useRepoDetail } from "@/hooks/useRepoDetail";
 import NewTaskModal from "@/components/tasks/NewTaskModal";
+import { pageVariants } from "@/utils/animations";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { GitRepo } from "@/types";
 

@@ -99,21 +99,21 @@ function ProgressBar({
         ? "bg-red-500"
         : "bg-yellow-500";
   return (
-    <motion.div
-      className="flex items-center gap-2"
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      variants={pageVariants}
-    >
-      <div className="w-16 bg-surface rounded-full h-1.5">
-        <div
-          className={`h-1.5 rounded-full ${color}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-xs text-gray-400">
-        {job.attempts}/{job.max_attempts}
+ <div
+ className="flex items-center gap-2"
+      
+      
+      
+      
+>
+ <div className="w-16 bg-surface rounded-full h-1.5">
+ <div
+ className={`h-1.5 rounded-full ${color}`}
+ style={{ width: `${pct}%` }}
+ />
+ </div>
+ <span className="text-xs text-gray-400">
+ {job.attempts}/{job.max_attempts}
       </span>
     </div>
   );
@@ -592,7 +592,7 @@ export default function SchedulePage() {
         onConfirm={handleCancelWorkflow}
         onCancel={() => setCancelWorkflowId(null)}
       />
-    </motion.div>
+    </div>
   );
 }
 

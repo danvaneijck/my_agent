@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { ArrowLeft, RefreshCw, GitBranch, GitPullRequest, ExternalLink, AlertCircle, RotateCcw } from "lucide-react";
 import { useProjectDetail, usePhaseTasks, retryPhase } from "@/hooks/useProjects";
 import { api } from "@/api/client";
 import type { ProjectTask } from "@/types";
+import { pageVariants } from "@/utils/animations";
 
 const COLUMNS = [
   { key: "todo", label: "To Do", color: "border-gray-500" },

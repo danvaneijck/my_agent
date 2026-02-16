@@ -95,13 +95,7 @@ export default function TaskDetailPage() {
 
   if (loading) {
     return (
-      <motion.div
-      className="flex items-center justify-center h-64"
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      variants={pageVariants}
-    >
+      <div className="flex items-center justify-center h-64">
         <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -280,6 +274,6 @@ export default function TaskDetailPage() {
         onConfirm={handleDelete}
         onCancel={() => setShowDelete(false)}
       />
-    </motion.div>
+    </div>
   );
 }

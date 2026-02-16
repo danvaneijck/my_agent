@@ -127,13 +127,7 @@ export default function PullRequestDetailPage() {
 
   if (loading && !pr) {
     return (
-      <motion.div
-      className="flex items-center justify-center py-16"
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      variants={pageVariants}
-    >
+      <div className="flex items-center justify-center py-16">
         <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -467,6 +461,6 @@ export default function PullRequestDetailPage() {
         onConfirm={handleMerge}
         onCancel={() => setConfirmMerge(false)}
       />
-    </motion.div>
+    </div>
   );
 }
