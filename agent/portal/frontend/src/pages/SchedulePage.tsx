@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
 import {
   RefreshCw,
   Clock,
@@ -97,7 +99,13 @@ function ProgressBar({
         ? "bg-red-500"
         : "bg-yellow-500";
   return (
-    <div className="flex items-center gap-2">
+    <motion.div
+      className="flex items-center gap-2"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       <div className="w-16 bg-surface rounded-full h-1.5">
         <div
           className={`h-1.5 rounded-full ${color}`}
@@ -584,7 +592,7 @@ export default function SchedulePage() {
         onConfirm={handleCancelWorkflow}
         onCancel={() => setCancelWorkflowId(null)}
       />
-    </div>
+    </motion.div>
   );
 }
 

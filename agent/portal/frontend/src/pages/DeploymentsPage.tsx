@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
 import {
   RefreshCw,
   Rocket,
@@ -89,7 +91,13 @@ function PortsList({ deployment }: { deployment: Deployment }) {
   }
 
   return (
-    <div className="flex flex-wrap gap-1">
+    <motion.div
+      className="flex flex-wrap gap-1"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {ports.map((p, i) => (
         <a
           key={i}
@@ -808,6 +816,6 @@ export default function DeploymentsPage() {
           onClose={() => setEnvEditorId(null)}
         />
       )}
-    </div>
+    </motion.div>
   );
 }

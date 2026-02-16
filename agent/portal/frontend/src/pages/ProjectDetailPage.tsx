@@ -248,7 +248,13 @@ export default function ProjectDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
+      <motion.div
+      className="p-4 md:p-6 max-w-5xl mx-auto space-y-4 animate-pulse"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
         <div className="h-6 bg-surface-lighter/60 rounded w-1/3" />
         <div className="h-4 bg-surface-lighter/60 rounded w-2/3" />
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
@@ -551,6 +557,6 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

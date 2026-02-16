@@ -144,7 +144,13 @@ export default function PhaseDetailPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <motion.div
+      className="p-4 md:p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Back nav */}
       <button
         onClick={() => navigate(`/projects/${projectId}`)}
@@ -279,6 +285,6 @@ export default function PhaseDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

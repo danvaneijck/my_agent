@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 import { getToken, setToken, setUser, clearAuth, api } from "@/api/client";
 import Layout from "@/components/layout/Layout";
 import TasksPage from "@/pages/TasksPage";
@@ -175,6 +176,7 @@ function AuthCallback() {
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const location = useLocation();
 
   useEffect(() => {
     // Let the callback routes handle themselves
@@ -221,27 +223,29 @@ export default function App() {
 
   return (
     <Layout>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/tasks" element={<TasksPage />} />
-        <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
-        <Route path="/chat" element={<ChatPage />} />
-        <Route path="/chat/:conversationId" element={<ChatPage />} />
-        <Route path="/files" element={<FilesPage />} />
-        <Route path="/repos" element={<ReposPage />} />
-        <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
-        <Route path="/pulls" element={<PullRequestsPage />} />
-        <Route path="/pulls/:owner/:repo/:number" element={<PullRequestDetailPage />} />
-        <Route path="/code" element={<CodePage />} />
-        <Route path="/schedule" element={<SchedulePage />} />
-        <Route path="/deployments" element={<DeploymentsPage />} />
-        <Route path="/usage" element={<UsagePage />} />
-        <Route path="/projects" element={<ProjectsPage />} />
-        <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-        <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
-        <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Routes>
+      <AnimatePresence mode="wait">
+        <Routes location={location} key={location.pathname}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/chat/:conversationId" element={<ChatPage />} />
+          <Route path="/files" element={<FilesPage />} />
+          <Route path="/repos" element={<ReposPage />} />
+          <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
+          <Route path="/pulls" element={<PullRequestsPage />} />
+          <Route path="/pulls/:owner/:repo/:number" element={<PullRequestDetailPage />} />
+          <Route path="/code" element={<CodePage />} />
+          <Route path="/schedule" element={<SchedulePage />} />
+          <Route path="/deployments" element={<DeploymentsPage />} />
+          <Route path="/usage" element={<UsagePage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+          <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
+          <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
+      </AnimatePresence>
     </Layout>
   );
 }

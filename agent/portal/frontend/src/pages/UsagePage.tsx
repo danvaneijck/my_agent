@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
 import { BarChart3, RefreshCw } from "lucide-react";
 import { api } from "@/api/client";
 import { UsagePageSkeleton } from "@/components/common/Skeleton";
@@ -108,7 +110,13 @@ function BudgetCard({ summary }: { summary: UsageSummary }) {
     : 0;
 
   return (
-    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4">
+    <motion.div
+      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
         Monthly Budget
       </h3>
@@ -417,6 +425,6 @@ export default function UsagePage() {
           {history && <DailyHistory daily={history.daily} />}
         </>
       )}
-    </div>
+    </motion.div>
   );
 }

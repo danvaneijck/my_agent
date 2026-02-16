@@ -218,7 +218,13 @@ export default function RepoDetailPage() {
   ];
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <motion.div
+      className="p-4 md:p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -657,6 +663,6 @@ export default function RepoDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

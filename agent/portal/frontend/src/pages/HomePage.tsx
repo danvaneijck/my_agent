@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
   Home,
   RefreshCw,
@@ -22,6 +23,7 @@ import type {
   Deployment,
 } from "@/types";
 import { Skeleton } from "@/components/common/Skeleton";
+import { pageVariants } from "@/utils/animations";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1112,7 +1114,13 @@ export default function HomePage() {
   }, [autoRefresh, dashboard.refetch]);
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
+    <motion.div
+      className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -1194,6 +1202,6 @@ export default function HomePage() {
           />
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

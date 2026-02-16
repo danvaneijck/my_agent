@@ -1,4 +1,6 @@
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
 import { GitPullRequest, RefreshCw } from "lucide-react";
 import { usePullRequests } from "@/hooks/usePullRequests";
 import { PullRequestsListSkeleton } from "@/components/common/Skeleton";
@@ -23,7 +25,13 @@ export default function PullRequestsPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <motion.div
+      className="p-4 md:p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Header */}
       <div className="flex items-center gap-3">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -103,6 +111,6 @@ export default function PullRequestsPage() {
           ))}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

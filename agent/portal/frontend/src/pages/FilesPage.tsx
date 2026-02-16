@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
 import { RefreshCw, Search } from "lucide-react";
 import { api } from "@/api/client";
 import FileList from "@/components/files/FileList";
@@ -48,7 +50,13 @@ export default function FilesPage() {
     : files;
 
   return (
-    <div className="flex flex-col md:flex-row h-full">
+    <motion.div
+      className="flex flex-col md:flex-row h-full"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* File list panel */}
       <div className="flex-1 flex flex-col min-w-0 border-r border-border">
         <div className="p-4 space-y-3 shrink-0">
@@ -111,6 +119,6 @@ export default function FilesPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </motion.div>
   );
 }

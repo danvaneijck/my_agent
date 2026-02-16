@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
 import {
   Folder,
   File,
@@ -210,7 +212,13 @@ export default function CodePage() {
   const breadcrumbs = currentPath ? currentPath.split("/") : [];
 
   return (
-    <div className="flex h-full">
+    <motion.div
+      className="flex h-full"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Task/workspace list panel */}
       <div className="w-72 shrink-0 border-r border-border flex flex-col bg-surface-light">
         <div className="p-3 space-y-2 shrink-0 border-b border-light-border dark:border-border">
@@ -511,6 +519,6 @@ export default function CodePage() {
         onConfirm={() => deleteConfirm && handleDeleteWorkspace(deleteConfirm)}
         onCancel={() => setDeleteConfirm(null)}
       />
-    </div>
+    </motion.div>
   );
 }

@@ -43,7 +43,13 @@ export default function ProjectTaskDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-4 animate-pulse">
+      <motion.div
+      className="p-4 md:p-6 max-w-3xl mx-auto space-y-4 animate-pulse"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
         <div className="h-5 bg-surface-lighter/60 rounded w-1/4" />
         <div className="h-6 bg-surface-lighter/60 rounded w-1/2" />
         <div className="h-32 bg-surface-lighter/60 rounded" />
@@ -170,6 +176,6 @@ export default function ProjectTaskDetailPage() {
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
 import { ShieldOff, Sun, Moon, Monitor } from "lucide-react";
 import { api } from "@/api/client";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -113,7 +115,13 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <motion.div
+      className="max-w-3xl mx-auto space-y-6"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
 
       {/* Tabs */}
       <div className="mt-4 flex gap-1 bg-surface-light rounded-lg p-1 border border-border">
@@ -319,6 +327,6 @@ export default function SettingsPage() {
           )}
         </>
       )}
-    </div>
+    </motion.div>
   );
 }
