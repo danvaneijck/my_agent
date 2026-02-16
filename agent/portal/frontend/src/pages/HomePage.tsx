@@ -23,7 +23,7 @@ import type {
   Deployment,
 } from "@/types";
 import { Skeleton } from "@/components/common/Skeleton";
-import { pageVariants } from "@/utils/animations";
+import { pageVariants, staggerContainerVariants, staggerItemVariants } from "@/utils/animations";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1163,44 +1163,63 @@ export default function HomePage() {
       dashboard.tasks.length === 0 ? (
         <DashboardSkeleton />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ProjectsCard
-            projects={dashboard.projects}
-            loading={dashboard.loading}
-            error={dashboard.errors.projects}
-          />
-          <TasksCard
-            tasks={dashboard.tasks}
-            loading={dashboard.loading}
-            error={dashboard.errors.tasks}
-          />
-          <ProjectTasksCard
-            projects={dashboard.projects}
-            loading={dashboard.loading}
-            error={dashboard.errors.projects}
-          />
-          <PullRequestsCard
-            pullRequests={dashboard.pullRequests}
-            count={dashboard.prCount}
-            loading={dashboard.loading}
-            error={dashboard.errors.pullRequests}
-          />
-          <DeploymentsCard
-            deployments={dashboard.deployments}
-            loading={dashboard.loading}
-            error={dashboard.errors.deployments}
-          />
-          <UsageCard
-            usage={dashboard.usage}
-            loading={dashboard.loading}
-            error={dashboard.errors.usage}
-          />
-          <ClaudeCodeUsageCard
-            data={dashboard.anthropicUsage}
-            loading={dashboard.loading}
-            error={dashboard.errors.anthropicUsage}
-          />
-        </div>
+        <motion.div
+          className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+          initial="initial"
+          animate="animate"
+          variants={staggerContainerVariants}
+        >
+          <motion.div variants={staggerItemVariants}>
+            <ProjectsCard
+              projects={dashboard.projects}
+              loading={dashboard.loading}
+              error={dashboard.errors.projects}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <TasksCard
+              tasks={dashboard.tasks}
+              loading={dashboard.loading}
+              error={dashboard.errors.tasks}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <ProjectTasksCard
+              projects={dashboard.projects}
+              loading={dashboard.loading}
+              error={dashboard.errors.projects}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <PullRequestsCard
+              pullRequests={dashboard.pullRequests}
+              count={dashboard.prCount}
+              loading={dashboard.loading}
+              error={dashboard.errors.pullRequests}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <DeploymentsCard
+              deployments={dashboard.deployments}
+              loading={dashboard.loading}
+              error={dashboard.errors.deployments}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <UsageCard
+              usage={dashboard.usage}
+              loading={dashboard.loading}
+              error={dashboard.errors.usage}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <ClaudeCodeUsageCard
+              data={dashboard.anthropicUsage}
+              loading={dashboard.loading}
+              error={dashboard.errors.anthropicUsage}
+            />
+          </motion.div>
+        </motion.div>
       )}
     </motion.div>
   );
