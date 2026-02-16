@@ -1163,34 +1163,40 @@ class ClaudeCodeTools:
                                 msg = obj.get("message", {})
                                 usage = msg.get("usage")
                                 if usage:
-                                    input_t = usage.get("input_tokens", 0)
-                                    if input_t > 0:
+                                    # Total context = uncached + cache_read + cache_creation
+                                    # input_tokens alone is only the non-cached portion
+                                    context_t = (
+                                        usage.get("input_tokens", 0)
+                                        + usage.get("cache_read_input_tokens", 0)
+                                        + usage.get("cache_creation_input_tokens", 0)
+                                    )
+                                    if context_t > 0:
                                         task.num_turns_tracked += 1
-                                        task.latest_context_tokens = input_t
-                                        if input_t > task.peak_context_tokens:
-                                            task.peak_context_tokens = input_t
+                                        task.latest_context_tokens = context_t
+                                        if context_t > task.peak_context_tokens:
+                                            task.peak_context_tokens = context_t
                                         # Detect compaction: context drops >50K
-                                        if _prev_input_tokens > 0 and (_prev_input_tokens - input_t) > 50_000:
+                                        if _prev_input_tokens > 0 and (_prev_input_tokens - context_t) > 50_000:
                                             task.num_compactions += 1
                                             logger.info(
                                                 "context_compaction_detected",
                                                 task_id=task.id,
                                                 prev=_prev_input_tokens,
-                                                curr=input_t,
+                                                curr=context_t,
                                             )
                                         # Check threshold for auto-continuation
                                         if not context_threshold_event.is_set():
                                             model_limit = _get_model_context_limit(task.context_model)
-                                            if input_t >= model_limit * CONTEXT_THRESHOLD_PCT:
+                                            if context_t >= model_limit * CONTEXT_THRESHOLD_PCT:
                                                 context_threshold_event.set()
                                                 logger.warning(
                                                     "context_threshold_reached",
                                                     task_id=task.id,
-                                                    input_tokens=input_t,
+                                                    context_tokens=context_t,
                                                     limit=model_limit,
-                                                    pct=round(input_t / model_limit * 100, 1),
+                                                    pct=round(context_t / model_limit * 100, 1),
                                                 )
-                                        _prev_input_tokens = input_t
+                                        _prev_input_tokens = context_t
                                     if not task.context_model:
                                         task.context_model = msg.get("model")
                         except (json.JSONDecodeError, KeyError, TypeError):
@@ -1610,11 +1616,14 @@ class ClaudeCodeTools:
 
             num_turns += 1
             input_t = usage.get("input_tokens", 0)
+            cache_read = usage.get("cache_read_input_tokens", 0)
+            cache_creation = usage.get("cache_creation_input_tokens", 0)
             total_input += input_t
             total_output += usage.get("output_tokens", 0)
-            total_cache_read += usage.get("cache_read_input_tokens", 0)
-            total_cache_creation += usage.get("cache_creation_input_tokens", 0)
-            latest_input = input_t
+            total_cache_read += cache_read
+            total_cache_creation += cache_creation
+            # Total context = uncached + cached tokens
+            latest_input = input_t + cache_read + cache_creation
             if not model:
                 model = msg.get("model")
 
