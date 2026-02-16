@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import SkipToContent from "@/components/common/SkipToContent";
+import EnvironmentBadge from "@/components/common/EnvironmentBadge";
 import { connectWs } from "@/api/websocket";
 import { api } from "@/api/client";
 import type { Conversation, WsNotification } from "@/types";
@@ -150,6 +151,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="h-full flex">
       <SkipToContent />
+      <EnvironmentBadge />
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
