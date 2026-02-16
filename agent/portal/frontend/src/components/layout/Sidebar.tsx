@@ -111,7 +111,7 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
         <motion.nav
           className="p-3 space-y-1"
           initial={false}
-          animate={open ? "open" : "closed"}
+          animate={open || isDesktop ? "open" : "closed"}
           variants={{
             open: {
               transition: { staggerChildren: 0.05, delayChildren: 0.1 },
