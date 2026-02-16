@@ -37,6 +37,17 @@ TASK_BASE_DIR = "/tmp/claude_tasks"
 MAX_OUTPUT = 50_000  # chars kept from stdout/stderr
 MAX_FILE_READ = 100_000  # max chars returned by read_workspace_file
 LOG_TAIL_DEFAULT = 100  # lines returned by task_logs when no limit given
+
+# Auto-continuation thresholds
+CONTEXT_THRESHOLD_PCT = 0.80  # trigger continuation at 80% of model context
+MAX_CONTINUATIONS = 5  # safety limit on auto-continuations
+
+
+def _get_model_context_limit(model: str | None) -> int:
+    """Return the context window size for a given model name."""
+    if model and "gemini" in model.lower():
+        return 1_000_000
+    return 200_000
 TASK_META_FILE = "task_meta.json"  # persisted in each task workspace
 GIT_CMD_TIMEOUT = 60  # seconds for git operations (push, status, etc.)
 USER_CREDS_DIR = os.path.join(TASK_BASE_DIR, ".user_creds")  # per-user credentials
@@ -169,6 +180,14 @@ class Task:
     error: str | None = None
     _asyncio_task: asyncio.Task | None = field(default=None, repr=False)
 
+    # Context tracking (updated live during streaming)
+    peak_context_tokens: int = 0
+    latest_context_tokens: int = 0
+    num_compactions: int = 0
+    num_turns_tracked: int = 0
+    num_continuations: int = 0
+    context_model: str | None = None
+
     @property
     def log_file(self) -> str:
         return os.path.join(self.workspace, f"task_{self.id}.log")
@@ -198,6 +217,14 @@ class Task:
             "elapsed_seconds": self._elapsed(),
             "result": self.result,
             "error": self.error,
+            "context_tracking": {
+                "peak_context_tokens": self.peak_context_tokens,
+                "latest_context_tokens": self.latest_context_tokens,
+                "num_compactions": self.num_compactions,
+                "num_turns": self.num_turns_tracked,
+                "num_continuations": self.num_continuations,
+                "context_model": self.context_model,
+            },
         }
 
     def save(self) -> None:
@@ -216,6 +243,7 @@ class Task:
                 return None
             return datetime.fromisoformat(val)
 
+        ct = data.get("context_tracking", {})
         return cls(
             id=data["task_id"],
             prompt=data.get("prompt", ""),
@@ -233,6 +261,12 @@ class Task:
             completed_at=_parse_dt(data.get("completed_at")),
             result=data.get("result"),
             error=data.get("error"),
+            peak_context_tokens=ct.get("peak_context_tokens", 0),
+            latest_context_tokens=ct.get("latest_context_tokens", 0),
+            num_compactions=ct.get("num_compactions", 0),
+            num_turns_tracked=ct.get("num_turns", 0),
+            num_continuations=ct.get("num_continuations", 0),
+            context_model=ct.get("context_model"),
         )
 
     def _elapsed(self) -> float | None:
@@ -571,14 +605,13 @@ class ClaudeCodeTools:
                 "message": f"Task already {task.status}, nothing to cancel.",
             }
 
-        container_name = f"claude-task-{task.id}"
-
         # Cancel the asyncio task (stops streaming, triggers finally block)
         if task._asyncio_task and not task._asyncio_task.done():
             task._asyncio_task.cancel()
 
-        # Kill the Docker container
-        await self._kill_container(container_name)
+        # Kill containers for all possible continuation numbers
+        for i in range(MAX_CONTINUATIONS + 1):
+            await self._kill_container(f"claude-task-{task.id}-{i}")
 
         task.status = "failed"
         task.error = "Cancelled by user"
@@ -920,8 +953,12 @@ class ClaudeCodeTools:
         user_credentials: dict[str, dict[str, str]] | None = None,
         user_id: str | None = None,
     ) -> None:
-        """Background coroutine: run the Claude Code Docker container."""
-        container_name = f"claude-task-{task.id}"
+        """Background coroutine: run the Claude Code Docker container.
+
+        Supports auto-continuation: when context usage exceeds the threshold,
+        gracefully stops the container and restarts with a fresh CLI session
+        on the same workspace.
+        """
         task.status = "running"
         task.started_at = datetime.now(timezone.utc)
         task.heartbeat = task.started_at
@@ -950,36 +987,160 @@ class ClaudeCodeTools:
                 "\n- Do NOT leave uncommitted changes."
             )
 
-        cmd = self._build_docker_cmd(task, container_name, prompt_for_cli, user_mounts=user_mounts)
-        logger.info("task_starting", task_id=task.id, container=container_name)
+        original_prompt = prompt_for_cli
+        remaining_timeout = timeout
+        heartbeat_handle: asyncio.Task | None = None
+
+        try:
+            heartbeat_handle = asyncio.create_task(self._heartbeat_loop(task))
+
+            while True:  # continuation loop
+                run_start = time.monotonic()
+                exit_reason = await self._run_single_container(
+                    task, remaining_timeout, prompt_for_cli, user_mounts,
+                )
+                run_elapsed = time.monotonic() - run_start
+                remaining_timeout -= int(run_elapsed)
+
+                if exit_reason != "context_threshold":
+                    break
+
+                # --- Auto-continuation ---
+                if task.num_continuations >= MAX_CONTINUATIONS:
+                    logger.warning(
+                        "max_continuations_reached",
+                        task_id=task.id,
+                        num_continuations=task.num_continuations,
+                    )
+                    task.status = "completed"
+                    if task.result is None:
+                        task.result = {}
+                    task.result["continuation_note"] = (
+                        f"Reached maximum of {MAX_CONTINUATIONS} auto-continuations. "
+                        f"Task stopped to prevent infinite loops."
+                    )
+                    break
+
+                if remaining_timeout < 60:
+                    logger.warning(
+                        "continuation_timeout_exhausted",
+                        task_id=task.id,
+                        remaining=remaining_timeout,
+                    )
+                    task.status = "timed_out"
+                    task.error = (
+                        f"Context limit reached but insufficient time remaining "
+                        f"for continuation ({remaining_timeout}s left)."
+                    )
+                    break
+
+                task.num_continuations += 1
+                logger.info(
+                    "auto_continuation",
+                    task_id=task.id,
+                    num_continuations=task.num_continuations,
+                    peak_context=task.peak_context_tokens,
+                    remaining_timeout=remaining_timeout,
+                )
+
+                # Build continuation prompt (fresh session, NOT --continue)
+                tree = self._workspace_tree(task.workspace)
+                prompt_for_cli = (
+                    f"You are continuing a coding task that was automatically restarted "
+                    f"because the conversation context was getting full. This is continuation "
+                    f"#{task.num_continuations} of {MAX_CONTINUATIONS} max.\n\n"
+                    f"ORIGINAL TASK:\n{original_prompt}\n\n"
+                    f"CURRENT WORKSPACE STATE:\n{tree}\n\n"
+                    f"Review the workspace files and git log to understand what has already "
+                    f"been done, then continue working on any remaining items from the "
+                    f"original task. Do NOT redo work that is already complete."
+                )
+                task.save()
+
+            # Auto-push on final successful exit
+            if task.auto_push and task.repo_url and task.status in ("completed", "awaiting_input"):
+                await self._auto_push_branch(task, user_mounts)
+
+        except Exception as e:
+            logger.error("task_execution_error", task_id=task.id, error=str(e))
+            task.status = "failed"
+            task.error = str(e)
+        finally:
+            task.completed_at = datetime.now(timezone.utc)
+            task.save()
+            if heartbeat_handle:
+                heartbeat_handle.cancel()
+            logger.info(
+                "task_finished",
+                task_id=task.id,
+                status=task.status,
+                elapsed=task._elapsed(),
+                continuations=task.num_continuations,
+            )
+
+    async def _run_single_container(
+        self, task: Task, timeout: int, prompt: str,
+        user_mounts: dict[str, str] | None,
+    ) -> str:
+        """Run a single Docker container for the task.
+
+        Returns the exit reason:
+        - ``"completed"`` — container exited successfully
+        - ``"failed"`` — container exited with error
+        - ``"timed_out"`` — timeout exceeded
+        - ``"context_threshold"`` — stopped due to context window filling up
+        """
+        container_name = f"claude-task-{task.id}-{task.num_continuations}"
+        is_continuation = task.num_continuations > 0
+
+        # For continuations: fresh CLI session, no repo clone (workspace has files)
+        run_task = Task(
+            id=task.id,
+            prompt=prompt,
+            repo_url=task.repo_url if not is_continuation else None,
+            branch=task.branch if not is_continuation else None,
+            source_branch=task.source_branch if not is_continuation else None,
+            workspace=task.workspace,
+            continue_session=False,
+            mode=task.mode,
+            auto_push=False,  # only push on final exit
+            user_id=task.user_id,
+        )
+        cmd = self._build_docker_cmd(run_task, container_name, prompt, user_mounts=user_mounts)
+        logger.info(
+            "container_starting",
+            task_id=task.id,
+            container=container_name,
+            continuation=task.num_continuations,
+        )
         logger.debug("task_docker_cmd", task_id=task.id, cmd=" ".join(cmd))
 
-        heartbeat_handle: asyncio.Task | None = None
         stdout_buf: list[str] = []
         stderr_buf: list[str] = []
+        context_threshold_event = asyncio.Event()
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                limit=1024 * 1024,  # 1 MB — tool_result JSON can exceed default 64 KB
+                limit=1024 * 1024,
             )
 
-            heartbeat_handle = asyncio.create_task(self._heartbeat_loop(task))
             log_lock = asyncio.Lock()
+            _prev_input_tokens = 0
 
             async def _stream_to_log(
                 stream: asyncio.StreamReader,
                 buf: list[str],
                 prefix: str,
             ) -> None:
-                """Read lines from a stream and append to log file in real time."""
+                """Read lines from a stream, write to log, parse context usage."""
+                nonlocal _prev_input_tokens
                 while True:
                     try:
                         line_bytes = await stream.readline()
                     except ValueError:
-                        # Line exceeded buffer limit — skip it and continue
                         continue
                     if not line_bytes:
                         break
@@ -994,6 +1155,57 @@ class ClaudeCodeTools:
                     except OSError:
                         pass
 
+                    # Real-time context tracking from stdout JSON events
+                    if prefix == "stdout":
+                        try:
+                            obj = json.loads(line.strip())
+                            if obj.get("type") == "assistant":
+                                msg = obj.get("message", {})
+                                usage = msg.get("usage")
+                                if usage:
+                                    input_t = usage.get("input_tokens", 0)
+                                    if input_t > 0:
+                                        task.num_turns_tracked += 1
+                                        task.latest_context_tokens = input_t
+                                        if input_t > task.peak_context_tokens:
+                                            task.peak_context_tokens = input_t
+                                        # Detect compaction: context drops >50K
+                                        if _prev_input_tokens > 0 and (_prev_input_tokens - input_t) > 50_000:
+                                            task.num_compactions += 1
+                                            logger.info(
+                                                "context_compaction_detected",
+                                                task_id=task.id,
+                                                prev=_prev_input_tokens,
+                                                curr=input_t,
+                                            )
+                                        # Check threshold for auto-continuation
+                                        if not context_threshold_event.is_set():
+                                            model_limit = _get_model_context_limit(task.context_model)
+                                            if input_t >= model_limit * CONTEXT_THRESHOLD_PCT:
+                                                context_threshold_event.set()
+                                                logger.warning(
+                                                    "context_threshold_reached",
+                                                    task_id=task.id,
+                                                    input_tokens=input_t,
+                                                    limit=model_limit,
+                                                    pct=round(input_t / model_limit * 100, 1),
+                                                )
+                                        _prev_input_tokens = input_t
+                                    if not task.context_model:
+                                        task.context_model = msg.get("model")
+                        except (json.JSONDecodeError, KeyError, TypeError):
+                            pass
+
+            # Monitor for context threshold — stops container gracefully
+            async def _context_monitor() -> None:
+                await context_threshold_event.wait()
+                # Let the current turn finish before stopping
+                await asyncio.sleep(5)
+                logger.info("stopping_for_context_threshold", task_id=task.id)
+                await self._stop_container(container_name, grace_seconds=15)
+
+            monitor_handle = asyncio.create_task(_context_monitor())
+
             try:
                 await asyncio.wait_for(
                     asyncio.gather(
@@ -1005,8 +1217,6 @@ class ClaudeCodeTools:
                 )
             except asyncio.TimeoutError:
                 logger.warning("task_timeout", task_id=task.id, timeout=timeout)
-                # Graceful stop: SIGTERM first so the entrypoint can persist
-                # session data, then SIGKILL after 10s grace period.
                 await self._stop_container(container_name, grace_seconds=15)
                 task.status = "timed_out"
                 task.error = (
@@ -1015,37 +1225,56 @@ class ClaudeCodeTools:
                     f"Use claude_code.continue_task with task_id='{task.id}' "
                     f"to resume where it left off."
                 )
-                return
+                return "timed_out"
+            finally:
+                monitor_handle.cancel()
 
             stdout = "".join(stdout_buf)[:MAX_OUTPUT]
             stderr = "".join(stderr_buf)[:MAX_OUTPUT]
 
+            # Check if we stopped due to context threshold
+            if context_threshold_event.is_set() and proc.returncode in (143, -15, 137):
+                # Parse partial output for token summary
+                partial_result = self._parse_output(stdout)
+                token_summary = self._compute_token_summary(partial_result, task)
+                if task.result is None:
+                    task.result = {}
+                task.result.update(partial_result)
+                if token_summary:
+                    task.result["token_summary"] = token_summary
+
+                # Write continuation marker to log
+                ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                try:
+                    with open(task.log_file, "a") as f:
+                        f.write(
+                            f"[{ts}] [system] === AUTO-CONTINUATION "
+                            f"#{task.num_continuations + 1} — context at "
+                            f"{task.latest_context_tokens:,} tokens ===\n"
+                        )
+                except OSError:
+                    pass
+
+                return "context_threshold"
+
             if proc.returncode == 0:
                 task.result = self._parse_output(stdout)
-                token_summary = self._compute_token_summary(task.result)
+                token_summary = self._compute_token_summary(task.result, task)
                 if token_summary:
                     task.result["token_summary"] = token_summary
                 if task.mode == "plan":
                     task.status = "awaiting_input"
-                    # Extract plan content from plan file in workspace
-                    # Claude may write PLAN.md, plan.md, or other variants
                     plan_content = self._read_plan_file(task.workspace)
                     if plan_content:
                         task.result["plan_content"] = plan_content
                     if "plan_content" not in (task.result or {}):
-                        # Fallback: extract from CLI JSON result
                         for obj in (task.result.get("json_output") or []):
                             if obj.get("type") == "result" and obj.get("result"):
                                 task.result["plan_content"] = obj["result"]
                                 break
                 else:
                     task.status = "completed"
-
-                # Auto-push: push branch to remote after successful completion
-                # Also push for plan mode (awaiting_input) so PLAN.md is in the repo
-                # for subsequent phases that clone fresh.
-                if task.auto_push and task.repo_url and task.status in ("completed", "awaiting_input"):
-                    await self._auto_push_branch(task, user_mounts)
+                return "completed"
             else:
                 task.status = "failed"
                 task.error = stderr or stdout or f"Process exited with code {proc.returncode}"
@@ -1061,23 +1290,10 @@ class ClaudeCodeTools:
                     stderr=stderr[:2000],
                     stdout=stdout[:2000],
                 )
+                return "failed"
 
-        except Exception as e:
-            logger.error("task_execution_error", task_id=task.id, error=str(e))
-            task.status = "failed"
-            task.error = str(e)
         finally:
-            task.completed_at = datetime.now(timezone.utc)
-            task.save()
-            if heartbeat_handle:
-                heartbeat_handle.cancel()
             await self._remove_container(container_name)
-            logger.info(
-                "task_finished",
-                task_id=task.id,
-                status=task.status,
-                elapsed=task._elapsed(),
-            )
 
     # ------------------------------------------------------------------
     # Per-user credential management
@@ -1365,8 +1581,13 @@ class ClaudeCodeTools:
         }
 
     @staticmethod
-    def _compute_token_summary(parsed: dict) -> dict | None:
-        """Aggregate token usage from Claude CLI stream-json output."""
+    def _compute_token_summary(parsed: dict, task: Task | None = None) -> dict | None:
+        """Aggregate token usage from Claude CLI stream-json output.
+
+        When *task* is provided, uses its live context tracking data for
+        accurate peak/compaction reporting (the post-hoc ``latest_input``
+        from JSON parsing alone shows post-compaction values).
+        """
         json_output = parsed.get("json_output")
         if not json_output:
             return None
@@ -1405,17 +1626,25 @@ class ClaudeCodeTools:
             "total_output_tokens": total_output,
             "total_cache_read_tokens": total_cache_read,
             "total_cache_creation_tokens": total_cache_creation,
-            "latest_context_tokens": latest_input,
-            "num_turns": num_turns,
-            "model": model,
+            "latest_context_tokens": task.peak_context_tokens if task and task.peak_context_tokens else latest_input,
+            "peak_context_tokens": task.peak_context_tokens if task else latest_input,
+            "num_turns": task.num_turns_tracked if task and task.num_turns_tracked else num_turns,
+            "num_compactions": task.num_compactions if task else 0,
+            "num_continuations": task.num_continuations if task else 0,
+            "model": task.context_model or model if task else model,
         }
 
     async def _heartbeat_loop(self, task: Task) -> None:
-        """Update heartbeat timestamp every 30 s while the task runs."""
+        """Update heartbeat timestamp every 30 s while the task runs.
+
+        Also persists task metadata so live context tracking data is
+        available via ``task_status`` during execution.
+        """
         try:
             while True:
                 await asyncio.sleep(30)
                 task.heartbeat = datetime.now(timezone.utc)
+                task.save()
         except asyncio.CancelledError:
             pass
 

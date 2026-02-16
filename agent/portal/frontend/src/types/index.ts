@@ -1,4 +1,13 @@
 // Task types (from claude_code module)
+export interface ContextTracking {
+  peak_context_tokens: number;
+  latest_context_tokens: number;
+  num_compactions: number;
+  num_turns: number;
+  num_continuations: number;
+  context_model: string | null;
+}
+
 export interface Task {
   id: string;
   prompt: string;
@@ -18,6 +27,7 @@ export interface Task {
   error: string | null;
   log_file: string;
   elapsed_seconds: number | null;
+  context_tracking?: ContextTracking;
 }
 
 /** Map backend task response (task_id) to frontend Task (id). */
