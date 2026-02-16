@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
+from datetime import datetime, timezone
 
 import anthropic
 import structlog
@@ -13,9 +15,60 @@ from pydantic import BaseModel
 from portal.auth import PortalUser, require_auth
 from portal.services.module_client import call_tool
 from shared.config import get_settings
+from sqlalchemy import func, select
+
+from shared.database import get_session_factory
+from shared.models.project import Project
+from shared.models.project_task import ProjectTask
+from shared.models.token_usage import TokenLog
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+# Cost per 1M tokens (input, output) — mirrors core/llm_router/token_counter.py
+_MODEL_COSTS: dict[str, tuple[float, float]] = {
+    "claude-sonnet-4-20250514": (3.0, 15.0),
+    "claude-haiku-4-5-20251001": (1.0, 5.0),
+}
+
+
+async def _log_portal_tokens(
+    user_id: uuid.UUID,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    conversation_id: uuid.UUID | None = None,
+) -> None:
+    """Log token usage for direct Anthropic API calls made by the portal."""
+    try:
+        costs = _MODEL_COSTS.get(model, (3.0, 15.0))
+        cost = (input_tokens / 1_000_000) * costs[0] + (output_tokens / 1_000_000) * costs[1]
+
+        factory = get_session_factory()
+        async with factory() as session:
+            session.add(TokenLog(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                conversation_id=conversation_id,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_estimate=cost,
+                created_at=datetime.now(timezone.utc),
+            ))
+            # Also update user's monthly counter
+            from shared.models.user import User
+            from sqlalchemy import select
+            result = await session.execute(select(User).where(User.id == user_id))
+            user_record = result.scalar_one_or_none()
+            if user_record:
+                user_record.tokens_used_this_month += input_tokens + output_tokens
+            await session.commit()
+
+        logger.info("portal_token_usage", model=model, input_tokens=input_tokens,
+                     output_tokens=output_tokens, cost=round(cost, 6))
+    except Exception as e:
+        logger.error("portal_token_log_failed", error=str(e))
 
 
 def _slugify(text: str) -> str:
@@ -354,7 +407,7 @@ async def apply_plan(
 
     parse_system_prompt = """You are a project plan parser. Given a markdown project plan, extract it into structured phases and tasks.
 
-Return JSON in this exact format:
+Return ONLY valid JSON with no other text, no markdown formatting, no code blocks. Return JSON in this exact format:
 {
   "design_document": "extracted design overview text (if any)",
   "phases": [
@@ -382,10 +435,25 @@ Rules:
     try:
         response = await client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=4096,
+            max_tokens=16384,
             system=parse_system_prompt,
             messages=[{"role": "user", "content": plan_content}],
         )
+
+        # Log token usage
+        _input = response.usage.input_tokens
+        _output = response.usage.output_tokens
+        await _log_portal_tokens(
+            user_id=user.user_id,
+            model="claude-sonnet-4-20250514",
+            input_tokens=_input,
+            output_tokens=_output,
+        )
+
+        # Check if response was truncated
+        if response.stop_reason == "max_tokens":
+            logger.error("plan_parse_truncated", plan_length=len(plan_content), stop_reason=response.stop_reason)
+            raise ValueError("LLM response was truncated (max_tokens reached). Plan may be too large.")
 
         # Extract JSON from response
         response_text = response.content[0].text
@@ -394,10 +462,20 @@ Rules:
         if json_match:
             parsed = json.loads(json_match.group(1))
         else:
-            parsed = json.loads(response_text)
+            # Strip any leading/trailing whitespace or text before the JSON
+            stripped = response_text.strip()
+            # Find the first { to handle any preamble text
+            brace_idx = stripped.find("{")
+            if brace_idx > 0:
+                stripped = stripped[brace_idx:]
+            parsed = json.loads(stripped)
 
+    except ValueError:
+        raise
     except Exception as e:
-        logger.error("plan_parse_failed", error=str(e), plan_length=len(plan_content))
+        preview = response_text[:500] if "response_text" in locals() else "no response"
+        logger.error("plan_parse_failed", error=str(e), plan_length=len(plan_content),
+                     response_preview=preview)
         raise ValueError(f"Failed to parse plan: {str(e)}")
 
     # 4. Update project with design document and status
@@ -715,3 +793,94 @@ async def get_execution_status(
         "total_tasks": project_status.get("total_tasks", 0),
         "task_counts": task_counts,
     }
+
+
+@router.post("/{project_id}/sync-pr-status")
+async def sync_pr_status(
+    project_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Check merged status of PRs linked to in_review tasks and update accordingly."""
+    uid = user.user_id
+    pid = uuid.UUID(project_id)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        # Get project to find repo info
+        project = await session.execute(
+            select(Project).where(Project.id == pid, Project.user_id == uid)
+        )
+        project = project.scalar_one_or_none()
+        if not project or not project.repo_owner or not project.repo_name:
+            return {"synced": 0, "message": "Project has no linked repository"}
+
+        # Find all in_review tasks with a pr_number
+        tasks_result = await session.execute(
+            select(ProjectTask).where(
+                ProjectTask.project_id == pid,
+                ProjectTask.status == "in_review",
+                ProjectTask.pr_number.isnot(None),
+            )
+        )
+        tasks = list(tasks_result.scalars().all())
+
+        if not tasks:
+            return {"synced": 0, "message": "No in_review tasks with PRs to check"}
+
+        # Deduplicate PR numbers to minimize API calls
+        pr_numbers = {t.pr_number for t in tasks}
+        merged_prs: set[int] = set()
+
+        for pr_num in pr_numbers:
+            try:
+                pr_result = await call_tool(
+                    module="git_platform",
+                    tool_name="git_platform.get_pull_request",
+                    arguments={
+                        "owner": project.repo_owner,
+                        "repo": project.repo_name,
+                        "pr_number": pr_num,
+                    },
+                    user_id=str(uid),
+                    timeout=15.0,
+                )
+                pr_data = pr_result.get("result", {})
+                if pr_data.get("merged_at"):
+                    merged_prs.add(pr_num)
+            except Exception as e:
+                logger.warning("sync_pr_check_failed", pr_number=pr_num, error=str(e))
+
+        if not merged_prs:
+            return {"synced": 0, "message": "No merged PRs found"}
+
+        # Update tasks for merged PRs
+        now = datetime.now(timezone.utc)
+        synced = 0
+        for task in tasks:
+            if task.pr_number in merged_prs:
+                task.status = "done"
+                task.completed_at = now
+                task.updated_at = now
+                synced += 1
+
+        await session.commit()
+
+        # Check if project is now fully done
+        remaining = await session.execute(
+            select(func.count(ProjectTask.id)).where(
+                ProjectTask.project_id == pid,
+                ProjectTask.status.notin_(["done", "failed"]),
+            )
+        )
+        if remaining.scalar() == 0 and project.status != "completed":
+            project.status = "completed"
+            project.updated_at = now
+            await session.commit()
+            logger.info("project_completed", project_id=project_id, project_name=project.name)
+
+        logger.info("pr_status_synced", project_id=project_id, synced=synced, merged_prs=list(merged_prs))
+        return {
+            "synced": synced,
+            "merged_prs": list(merged_prs),
+            "project_completed": project.status == "completed",
+        }

@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 
 import structlog
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import func, select
 
 from portal.auth import PortalUser, require_auth
 from portal.services.module_client import call_tool
+from shared.database import get_session_factory
+from shared.models.project import Project
+from shared.models.project_task import ProjectTask
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/repos", tags=["repos"])
@@ -303,7 +308,7 @@ async def merge_pull_request(
     body: MergeBody = MergeBody(),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
-    """Merge a pull request."""
+    """Merge a pull request and update any linked project tasks."""
     result, err = await _safe_call(
         "git_platform",
         "git_platform.merge_pull_request",
@@ -318,7 +323,73 @@ async def merge_pull_request(
     )
     if err:
         return err
+
+    # After successful merge, transition linked project tasks in_review → done
+    if result.get("success") or result.get("result", {}).get("merged"):
+        asyncio.create_task(
+            _on_pr_merged(pr_number=pr_number, user_id=user.user_id)
+        )
+
     return result
+
+
+async def _on_pr_merged(pr_number: int, user_id) -> None:
+    """Move project tasks linked to this PR from in_review → done.
+
+    If all tasks in the project are now done, mark the project as completed.
+    """
+    try:
+        factory = get_session_factory()
+        async with factory() as session:
+            # Find tasks linked to this PR that are in_review
+            tasks_result = await session.execute(
+                select(ProjectTask).where(
+                    ProjectTask.pr_number == pr_number,
+                    ProjectTask.user_id == user_id,
+                    ProjectTask.status == "in_review",
+                )
+            )
+            tasks = list(tasks_result.scalars().all())
+
+            if not tasks:
+                return
+
+            now = datetime.now(timezone.utc)
+            project_ids = set()
+            for task in tasks:
+                task.status = "done"
+                task.completed_at = now
+                task.updated_at = now
+                project_ids.add(task.project_id)
+
+            await session.commit()
+            logger.info(
+                "tasks_marked_done_on_merge",
+                pr_number=pr_number,
+                task_count=len(tasks),
+            )
+
+            # Check if any linked projects are now fully done
+            for pid in project_ids:
+                remaining = await session.execute(
+                    select(func.count(ProjectTask.id)).where(
+                        ProjectTask.project_id == pid,
+                        ProjectTask.status.notin_(["done", "failed"]),
+                    )
+                )
+                if remaining.scalar() == 0:
+                    project = await session.get(Project, pid)
+                    if project and project.status != "completed":
+                        project.status = "completed"
+                        project.updated_at = now
+                        await session.commit()
+                        logger.info(
+                            "project_completed",
+                            project_id=str(pid),
+                            project_name=project.name,
+                        )
+    except Exception as e:
+        logger.error("on_pr_merged_failed", pr_number=pr_number, error=str(e))
 
 
 class CommentBody(BaseModel):

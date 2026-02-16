@@ -127,3 +127,11 @@ export async function startWorkflow(
     body: JSON.stringify(options || {}),
   });
 }
+
+export async function syncPrStatus(
+  projectId: string,
+): Promise<{ synced: number; merged_prs?: number[]; project_completed?: boolean }> {
+  return api(`/api/projects/${projectId}/sync-pr-status`, {
+    method: "POST",
+  });
+}

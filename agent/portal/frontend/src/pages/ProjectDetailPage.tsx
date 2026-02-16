@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap } from "lucide-react";
-import { useProjectDetail, executePhase, startWorkflow } from "@/hooks/useProjects";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest } from "lucide-react";
+import { useProjectDetail, executePhase, startWorkflow, syncPrStatus } from "@/hooks/useProjects";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PlanningTaskPanel from "@/components/projects/PlanningTaskPanel";
@@ -22,7 +22,13 @@ const PHASE_STATUS_COLORS: Record<string, string> = {
   completed: "bg-green-500/20 text-green-400",
 };
 
-function PhaseRow({ phase, projectId, onClick }: { phase: ProjectPhase; projectId: string; onClick: () => void }) {
+function PhaseRow({ phase, projectId, repoOwner, repoName, onClick }: {
+  phase: ProjectPhase;
+  projectId: string;
+  repoOwner: string | null;
+  repoName: string | null;
+  onClick: () => void;
+}) {
   const counts = phase.task_counts || {};
   const total = Object.values(counts).reduce((a, b) => a + (b || 0), 0);
   const done = counts.done || 0;
@@ -39,6 +45,18 @@ function PhaseRow({ phase, projectId, onClick }: { phase: ProjectPhase; projectI
           <span className={`text-xs px-2 py-0.5 rounded-full ${PHASE_STATUS_COLORS[phase.status] || PHASE_STATUS_COLORS.planned}`}>
             {phase.status.replace("_", " ")}
           </span>
+          {phase.pr_number && repoOwner && repoName && (
+            <a
+              href={`https://github.com/${repoOwner}/${repoName}/pull/${phase.pr_number}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-xs text-blue-400 bg-blue-500/10 rounded px-1.5 py-0.5 hover:bg-blue-500/20"
+            >
+              <GitPullRequest size={10} />
+              #{phase.pr_number}
+            </a>
+          )}
         </div>
         {phase.description && (
           <p className="text-sm text-gray-400 truncate">{phase.description}</p>
@@ -72,6 +90,19 @@ export default function ProjectDetailPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [starting, setStarting] = useState(false);
+  const syncedRef = useRef(false);
+
+  // Auto-sync PR status on page load to catch merges done outside the portal
+  useEffect(() => {
+    if (!projectId || !project || syncedRef.current) return;
+    // Only sync if project has in_review tasks
+    const hasInReview = project.phases.some((p) => (p.task_counts?.in_review || 0) > 0);
+    if (!hasInReview) return;
+    syncedRef.current = true;
+    syncPrStatus(projectId).then((result) => {
+      if (result.synced > 0) refetch();
+    }).catch(() => {});
+  }, [projectId, project, refetch]);
 
   const handleDelete = async () => {
     if (!projectId) return;
@@ -298,6 +329,8 @@ export default function ProjectDetailPage() {
                 key={phase.phase_id}
                 phase={phase}
                 projectId={project.project_id}
+                repoOwner={project.repo_owner}
+                repoName={project.repo_name}
                 onClick={() => navigate(`/projects/${project.project_id}/phases/${phase.phase_id}`)}
               />
             ))}

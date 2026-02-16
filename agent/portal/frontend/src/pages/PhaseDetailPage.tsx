@@ -148,6 +148,17 @@ export default function PhaseDetailPage() {
             <h2 className="text-lg font-semibold text-white">
               {phase?.name || "Phase"}
             </h2>
+            {phase?.pr_number && project?.repo_owner && project?.repo_name && (
+              <a
+                href={`https://github.com/${project.repo_owner}/${project.repo_name}/pull/${phase.pr_number}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-blue-400 bg-blue-500/10 rounded px-2 py-1 hover:bg-blue-500/20"
+              >
+                <GitPullRequest size={12} />
+                PR #{phase.pr_number}
+              </a>
+            )}
             <button
               onClick={refetch}
               className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"

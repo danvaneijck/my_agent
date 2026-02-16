@@ -66,7 +66,7 @@ async def _resolve_platform_channel_id(conversation_id: str) -> str | None:
         return result.scalar_one_or_none()
 
 
-async def _generate_title(conversation_id: str) -> None:
+async def _generate_title(conversation_id: str, user_id: uuid.UUID | None = None) -> None:
     """Generate an intelligent title for a conversation using LLM."""
     settings = get_settings()
     if not settings.anthropic_api_key:
@@ -91,9 +91,10 @@ async def _generate_title(conversation_id: str) -> None:
             if not first_msg:
                 return
 
+            model = "claude-haiku-4-5-20251001"
             client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
             resp = await client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model=model,
                 max_tokens=30,
                 messages=[
                     {
@@ -103,6 +104,28 @@ async def _generate_title(conversation_id: str) -> None:
                 ],
             )
             title = resp.content[0].text.strip().strip('"').strip("'")
+
+            # Log token usage
+            if user_id:
+                _input = resp.usage.input_tokens
+                _output = resp.usage.output_tokens
+                cost = (_input / 1_000_000) * 1.0 + (_output / 1_000_000) * 5.0  # haiku pricing
+                from shared.models.user import User
+                session.add(TokenLog(
+                    id=uuid.uuid4(),
+                    user_id=user_id,
+                    conversation_id=uuid.UUID(conversation_id),
+                    model=model,
+                    input_tokens=_input,
+                    output_tokens=_output,
+                    cost_estimate=cost,
+                    created_at=datetime.now(timezone.utc),
+                ))
+                user_record = (await session.execute(
+                    select(User).where(User.id == user_id)
+                )).scalar_one_or_none()
+                if user_record:
+                    user_record.tokens_used_this_month += _input + _output
 
             # Update the conversation title
             conv_result = await session.execute(
@@ -378,7 +401,7 @@ async def generate_conversation_title(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Generate an intelligent title for a conversation."""
-    await _generate_title(conversation_id)
+    await _generate_title(conversation_id, user_id=user.user_id)
     factory = get_session_factory()
     async with factory() as session:
         result = await session.execute(
@@ -414,7 +437,7 @@ async def send_chat_message(
 
     # Auto-generate title for new conversations
     if is_new and real_conv_id:
-        asyncio.create_task(_generate_title(real_conv_id))
+        asyncio.create_task(_generate_title(real_conv_id, user_id=user.user_id))
 
     return {
         "conversation_id": real_conv_id or channel_id,
@@ -495,7 +518,7 @@ async def ws_chat(websocket: WebSocket) -> None:
 
                 # Auto-generate title for new conversations
                 if is_new and real_conv_id:
-                    asyncio.create_task(_generate_title(real_conv_id))
+                    asyncio.create_task(_generate_title(real_conv_id, user_id=user.user_id))
 
             except WebSocketDisconnect:
                 raise

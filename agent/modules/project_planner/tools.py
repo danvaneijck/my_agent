@@ -48,7 +48,7 @@ def _task_to_dict(t: ProjectTask) -> dict:
     }
 
 
-def _phase_to_dict(p: ProjectPhase, task_counts: dict | None = None) -> dict:
+def _phase_to_dict(p: ProjectPhase, task_counts: dict | None = None, pr_number: int | None = None) -> dict:
     d = {
         "phase_id": str(p.id),
         "project_id": str(p.project_id),
@@ -57,6 +57,7 @@ def _phase_to_dict(p: ProjectPhase, task_counts: dict | None = None) -> dict:
         "order_index": p.order_index,
         "branch_name": p.branch_name,
         "status": p.status,
+        "pr_number": pr_number,
         "created_at": p.created_at.isoformat(),
     }
     if task_counts is not None:
@@ -263,7 +264,19 @@ class ProjectPlannerTools:
                     .group_by(ProjectTask.status)
                 )
                 counts = {row[0]: row[1] for row in counts_result.all()}
-                phase_dicts.append(_phase_to_dict(phase, task_counts=counts))
+
+                # Get PR number for this phase (all tasks share the same PR)
+                pr_result = await session.execute(
+                    select(ProjectTask.pr_number)
+                    .where(
+                        ProjectTask.phase_id == phase.id,
+                        ProjectTask.pr_number.isnot(None),
+                    )
+                    .limit(1)
+                )
+                pr_number = pr_result.scalar_one_or_none()
+
+                phase_dicts.append(_phase_to_dict(phase, task_counts=counts, pr_number=pr_number))
 
         return {
             "project_id": str(project.id),
@@ -892,8 +905,24 @@ class ProjectPlannerTools:
             if project.repo_owner and project.repo_name:
                 repo_url = f"https://github.com/{project.repo_owner}/{project.repo_name}"
 
-            branch = project.project_branch or project.default_branch
-            source_branch = project.default_branch
+            # Source branch: previous phase's branch so each phase builds on the last
+            first_phase = phases[0]
+            prev_result = await session.execute(
+                select(ProjectPhase)
+                .where(
+                    ProjectPhase.project_id == pid,
+                    ProjectPhase.order_index < first_phase.order_index,
+                )
+                .order_by(ProjectPhase.order_index.desc())
+                .limit(1)
+            )
+            prev_phase = prev_result.scalar_one_or_none()
+            if prev_phase and prev_phase.branch_name:
+                source_branch = prev_phase.branch_name
+            else:
+                source_branch = project.project_branch or project.default_branch
+
+            branch = first_phase.branch_name or project.project_branch or project.default_branch
 
             prompt = self._build_batch_prompt(
                 project.name, project.design_document, phase_dicts,
@@ -982,7 +1011,22 @@ class ProjectPlannerTools:
             prompt = exec_plan.get("prompt")
             repo_url = exec_plan.get("repo_url")
             phase_branch = target_phase.branch_name
-            source_branch = project.default_branch
+
+            # Source branch: previous phase's branch so each phase builds on the last
+            prev_result = await session.execute(
+                select(ProjectPhase)
+                .where(
+                    ProjectPhase.project_id == pid,
+                    ProjectPhase.order_index < target_phase.order_index,
+                )
+                .order_by(ProjectPhase.order_index.desc())
+                .limit(1)
+            )
+            prev_phase = prev_result.scalar_one_or_none()
+            if prev_phase and prev_phase.branch_name:
+                source_branch = prev_phase.branch_name
+            else:
+                source_branch = project.project_branch or project.default_branch
 
             # Determine if we should reuse planning task (phase 0 + planning_task_id exists + awaiting_input)
             use_continue_task = False
@@ -1187,6 +1231,9 @@ class ProjectPlannerTools:
             pr_url = None
 
             if project.repo_owner and project.repo_name and phase.branch_name:
+                # PR always targets the project branch so phases merge in order
+                pr_base = project.project_branch or project.default_branch
+
                 # Create PR via git_platform
                 pr_title = f"{project.name}: {phase.name}"
                 pr_body = f"## Phase: {phase.name}\n\n{phase.description or ''}\n\n### Tasks Completed:\n"
@@ -1203,7 +1250,7 @@ class ProjectPlannerTools:
                                 "repo": project.repo_name,
                                 "title": pr_title,
                                 "head": phase.branch_name,
-                                "base": project.default_branch,
+                                "base": pr_base,
                                 "body": pr_body,
                                 "draft": False,
                             },

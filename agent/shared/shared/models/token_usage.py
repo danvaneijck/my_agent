@@ -16,8 +16,8 @@ class TokenLog(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("conversations.id")
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id"), nullable=True
     )
     model: Mapped[str]
     input_tokens: Mapped[int]
