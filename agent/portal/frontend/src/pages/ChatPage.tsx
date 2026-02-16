@@ -152,15 +152,15 @@ export default function ChatPage() {
       <div
         className={`
           ${showHistory ? "block" : "hidden"} md:block
-          w-full md:w-64 border-r border-border bg-surface-light shrink-0
+          w-full md:w-64 border-r border-light-border dark:border-border bg-light-surface-secondary dark:bg-surface-light shrink-0
           absolute md:static inset-0 z-20 md:z-auto
         `}
       >
         <div className="p-3 border-b border-light-border dark:border-border flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-400">Conversations</span>
+          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Conversations</span>
           <button
             onClick={startNew}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+            className="p-1.5 rounded hover:bg-light-surface-tertiary dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
             title="New conversation"
           >
             <Plus size={16} />
@@ -173,8 +173,8 @@ export default function ChatPage() {
               navigate("/chat");
               setShowHistory(false);
             }}
-            className={`w-full text-left px-3 py-3 text-sm border-b border-light-border dark:border-border/50 hover:bg-surface-lighter transition-colors ${
-              !conversationId ? "bg-accent/10 text-accent-hover" : "text-gray-400"
+            className={`w-full text-left px-3 py-3 text-sm border-b border-light-border dark:border-border/50 hover:bg-light-surface-tertiary dark:hover:bg-surface-lighter transition-colors ${
+              !conversationId ? "bg-accent/10 text-accent dark:text-accent-hover" : "text-gray-700 dark:text-gray-400"
             }`}
           >
             New Chat
@@ -186,7 +186,7 @@ export default function ChatPage() {
               className={`relative group border-b border-light-border dark:border-border/50 ${
                 conversationId === conv.id
                   ? "bg-accent/10"
-                  : "hover:bg-surface-lighter"
+                  : "hover:bg-light-surface-tertiary dark:hover:bg-surface-lighter"
               }`}
             >
               {renamingId === conv.id ? (
@@ -201,19 +201,19 @@ export default function ChatPage() {
                       if (e.key === "Escape") setRenamingId(null);
                     }}
                     autoFocus
-                    className="flex-1 bg-surface text-sm text-gray-200 px-2 py-1 rounded border border-border focus:border-accent focus:ring-2 focus:ring-accent/50 outline-none min-w-0"
+                    className="flex-1 bg-white dark:bg-surface text-sm text-gray-900 dark:text-gray-200 px-2 py-1 rounded border border-light-border dark:border-border focus:border-accent focus:ring-2 focus:ring-accent/50 outline-none min-w-0"
                     aria-label="Rename conversation"
                   />
                   <button
                     onClick={() => handleRename(conv.id)}
-                    className="p-1.5 rounded hover:bg-surface-lighter text-green-400 focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="p-1.5 rounded hover:bg-light-surface-tertiary dark:hover:bg-surface-lighter text-green-600 dark:text-green-400 focus:outline-none focus:ring-2 focus:ring-accent"
                     aria-label="Confirm rename"
                   >
                     <Check size={16} />
                   </button>
                   <button
                     onClick={() => setRenamingId(null)}
-                    className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="p-1.5 rounded hover:bg-light-surface-tertiary dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent"
                     aria-label="Cancel rename"
                   >
                     <X size={16} />
@@ -231,8 +231,8 @@ export default function ChatPage() {
                     <span
                       className={`truncate flex-1 ${
                         conversationId === conv.id
-                          ? "text-accent-hover"
-                          : "text-gray-300"
+                          ? "text-accent dark:text-accent-hover"
+                          : "text-gray-700 dark:text-gray-300"
                       }`}
                     >
                       {conv.title || "Untitled conversation"}
@@ -245,7 +245,7 @@ export default function ChatPage() {
                       </span>
                     ) : null}
                   </div>
-                  <div className="text-xs text-gray-600 mt-0.5">
+                  <div className="text-xs text-gray-500 dark:text-gray-600 mt-0.5">
                     {conv.last_active_at
                       ? new Date(conv.last_active_at).toLocaleDateString()
                       : ""}
@@ -260,7 +260,7 @@ export default function ChatPage() {
                     e.stopPropagation();
                     setMenuOpenId(menuOpenId === conv.id ? null : conv.id);
                   }}
-                  className="absolute right-2 top-2 p-1 rounded hover:bg-surface-lighter text-gray-500 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute right-2 top-2 p-1 rounded hover:bg-light-surface-tertiary dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <MoreVertical size={14} />
                 </button>
@@ -270,7 +270,7 @@ export default function ChatPage() {
               {menuOpenId === conv.id && (
                 <div
                   ref={menuRef}
-                  className="absolute right-2 top-8 z-30 bg-surface-light border border-border rounded-lg shadow-xl py-1 min-w-[120px]"
+                  className="absolute right-2 top-8 z-30 bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg shadow-xl py-1 min-w-[120px]"
                 >
                   <button
                     onClick={(e) => {
@@ -279,7 +279,7 @@ export default function ChatPage() {
                       setRenamingId(conv.id);
                       setMenuOpenId(null);
                     }}
-                    className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-lighter flex items-center gap-2"
+                    className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-surface-lighter flex items-center gap-2"
                   >
                     <Pencil size={13} />
                     Rename
@@ -290,7 +290,7 @@ export default function ChatPage() {
                       setDeleteConfirm(conv.id);
                       setMenuOpenId(null);
                     }}
-                    className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-surface-lighter flex items-center gap-2"
+                    className="w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-surface-lighter flex items-center gap-2"
                   >
                     <Trash2 size={13} />
                     Delete
@@ -308,11 +308,11 @@ export default function ChatPage() {
         <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-light-border dark:border-border">
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400"
           >
             <MessageSquare size={16} />
           </button>
-          <span className="text-xs text-gray-500 truncate">
+          <span className="text-xs text-gray-600 dark:text-gray-500 truncate">
             {conversationId
               ? conversations.find((c) => c.id === conversationId)?.title ||
                 "Conversation"
