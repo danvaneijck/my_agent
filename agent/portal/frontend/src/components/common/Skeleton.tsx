@@ -1,11 +1,26 @@
+import { motion } from "framer-motion";
+import { shimmerVariants } from "@/utils/animations";
+
 interface SkeletonProps {
   className?: string;
 }
 
 export function Skeleton({ className = "" }: SkeletonProps) {
   return (
-    <div
-      className={`animate-pulse rounded bg-gray-200 dark:bg-surface-lighter/60 ${className}`}
+    <motion.div
+      className={`rounded bg-gray-200 dark:bg-surface-lighter/60 overflow-hidden ${className}`}
+      initial="initial"
+      animate="animate"
+      variants={shimmerVariants}
+      style={{
+        background: `linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255, 255, 255, 0.1) 50%,
+          transparent 100%
+        )`,
+        backgroundSize: "200% 100%",
+      }}
     />
   );
 }
