@@ -391,6 +391,466 @@ Always respect user preferences for reduced motion:
 
 ---
 
+## Framer Motion Animation System
+
+### Animation Variants
+
+The design system includes centralized animation variants using Framer Motion for consistent, performant animations. All variants are defined in `src/utils/animations.ts`.
+
+#### Page Transitions
+
+```tsx
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
+
+<motion.div
+  initial="initial"
+  animate="animate"
+  exit="exit"
+  variants={pageVariants}
+>
+  Page content
+</motion.div>
+```
+
+**Behavior**: Fade in with subtle 20px upward slide on enter (200ms), fade out with 10px downward slide on exit (150ms).
+
+#### Stagger Animations
+
+For lists and card grids that animate in sequence:
+
+```tsx
+import { motion } from "framer-motion";
+import { staggerContainerVariants, staggerItemVariants } from "@/utils/animations";
+
+<motion.div variants={staggerContainerVariants} initial="initial" animate="animate">
+  {items.map((item) => (
+    <motion.div key={item.id} variants={staggerItemVariants}>
+      {item.content}
+    </motion.div>
+  ))}
+</motion.div>
+```
+
+**Available stagger patterns**:
+- `staggerContainerVariants` + `staggerItemVariants`: Cards and grids (50ms stagger)
+- `listContainerVariants` + `listItemVariants`: Lists (30ms stagger)
+
+#### Modal/Dialog Animations
+
+```tsx
+import { motion, AnimatePresence } from "framer-motion";
+import { modalVariants } from "@/utils/animations";
+
+<AnimatePresence>
+  {isOpen && (
+    <motion.div
+      variants={modalVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+    >
+      Modal content
+    </motion.div>
+  )}
+</AnimatePresence>
+```
+
+**Behavior**: Scale from 95% to 100% with fade (200ms).
+
+#### Button Scale Effects
+
+```tsx
+import { motion } from "framer-motion";
+import { scaleVariants } from "@/utils/animations";
+
+<motion.button
+  variants={scaleVariants}
+  initial="rest"
+  whileHover="hover"
+  whileTap="tap"
+>
+  Click me
+</motion.button>
+```
+
+**Behavior**: Scale to 102% on hover, 98% on tap.
+
+#### Card Hover Effects
+
+```tsx
+import { motion } from "framer-motion";
+import { cardHoverVariants } from "@/utils/animations";
+
+<motion.div
+  variants={cardHoverVariants}
+  initial="rest"
+  whileHover="hover"
+>
+  Card content
+</motion.div>
+```
+
+**Behavior**: Lift by 2px with enhanced shadow on hover (200ms).
+
+#### Toast Notifications
+
+```tsx
+import { motion } from "framer-motion";
+import { toastVariants } from "@/utils/animations";
+
+<motion.div variants={toastVariants} initial="initial" animate="animate" exit="exit">
+  Toast message
+</motion.div>
+```
+
+**Behavior**: Slide in from top-right, slide out to the right.
+
+### Accessibility: Reduced Motion
+
+All animation variants automatically respect the user's `prefers-reduced-motion` system setting. When reduced motion is preferred, animations are disabled (duration: 0).
+
+```tsx
+import { prefersReducedMotion, getTransition } from "@/utils/animations";
+
+// Check reduced motion preference
+if (prefersReducedMotion()) {
+  // Skip animation
+}
+
+// Or use getTransition helper
+const transition = getTransition({
+  duration: 0.3,
+  ease: "easeOut"
+}); // Returns { duration: 0 } if reduced motion is preferred
+```
+
+### Spring Physics
+
+For natural, bouncy animations (sidebar slide, mobile menu):
+
+```tsx
+<motion.div
+  animate={{ x: isOpen ? 0 : "-100%" }}
+  transition={{
+    type: "spring",
+    damping: 30,
+    stiffness: 300
+  }}
+>
+  Sidebar content
+</motion.div>
+```
+
+**Common spring configurations**:
+- **Snappy**: `damping: 30, stiffness: 300` (sidebar, drawers)
+- **Smooth**: `damping: 20, stiffness: 100` (progress bars)
+- **Bouncy**: `damping: 15, stiffness: 200` (playful interactions)
+
+### Custom Easing Curves
+
+```tsx
+import { easings } from "@/utils/animations";
+
+<motion.div
+  animate={{ opacity: 1 }}
+  transition={{
+    duration: 0.3,
+    ease: easings.easeOut // [0.0, 0.0, 0.2, 1]
+  }}
+>
+  Content
+</motion.div>
+```
+
+**Available easings**:
+- `easeOut`: [0.0, 0.0, 0.2, 1] - Default, decelerating
+- `easeIn`: [0.4, 0.0, 1, 1] - Accelerating
+- `easeInOut`: [0.4, 0.0, 0.2, 1] - Smooth start and end
+- `sharp`: [0.4, 0.0, 0.6, 1] - Quick, snappy
+
+---
+
+## Component Library
+
+### Button Component
+
+Pre-built animated button with scale effects and multiple variants.
+
+**Location**: `src/components/common/Button.tsx`
+
+```tsx
+import Button from "@/components/common/Button";
+
+// Primary button
+<Button variant="primary" size="md" onClick={handleClick}>
+  Save Changes
+</Button>
+
+// Secondary button
+<Button variant="secondary" size="sm">
+  Cancel
+</Button>
+
+// Ghost button
+<Button variant="ghost" size="lg">
+  Learn More
+</Button>
+
+// Danger button
+<Button variant="danger" disabled>
+  Delete
+</Button>
+```
+
+**Variants**:
+- `primary`: Accent background with white text
+- `secondary`: Surface background with border
+- `ghost`: Transparent background, text only
+- `danger`: Red background, destructive actions
+
+**Sizes**:
+- `sm`: Small (px-3 py-1.5 text-xs)
+- `md`: Medium (px-4 py-2 text-sm) - Default
+- `lg`: Large (px-6 py-3 text-base)
+
+**Features**:
+- Automatic hover/tap scale animations
+- Disabled state support
+- Focus ring accessibility
+
+### Card Component
+
+Pre-built animated card with hover lift effect.
+
+**Location**: `src/components/common/Card.tsx`
+
+```tsx
+import Card from "@/components/common/Card";
+
+// Hoverable card
+<Card hoverable>
+  <div className="p-6">
+    <h3 className="font-semibold mb-2">Card Title</h3>
+    <p className="text-sm text-gray-400">Card content</p>
+  </div>
+</Card>
+
+// Clickable card
+<Card onClick={() => navigate('/details')} hoverable>
+  Clickable content
+</Card>
+
+// Static card (no hover)
+<Card hoverable={false}>
+  Static content
+</Card>
+```
+
+**Features**:
+- Automatic hover lift animation (2px upward)
+- Enhanced shadow on hover
+- Optional click handler
+- Theme-aware styling
+
+### StatusBadge Component
+
+Status indicator with semantic colors and animations.
+
+**Location**: `src/components/common/StatusBadge.tsx`
+
+```tsx
+import StatusBadge from "@/components/common/StatusBadge";
+
+<StatusBadge status="completed" />
+<StatusBadge status="running" stale />
+<StatusBadge status="failed" />
+```
+
+**Available statuses**:
+- `queued`: Blue
+- `running`: Yellow (with pulse animation)
+- `completed`: Green
+- `failed`: Red
+- `cancelled`: Gray
+- `awaiting_input`: Purple (with pulse animation)
+- `timed_out`: Orange
+
+**Features**:
+- Pulse animation for active states
+- Stale indicator for long-running tasks
+- Semantic color coding
+- Rounded pill design
+
+### Skeleton Component
+
+Loading skeleton with shimmer effect.
+
+**Location**: `src/components/common/Skeleton.tsx`
+
+```tsx
+import Skeleton from "@/components/common/Skeleton";
+
+<Skeleton className="h-6 w-48 mb-2" /> {/* Text line */}
+<Skeleton className="h-32 w-full" />   {/* Content block */}
+```
+
+**Features**:
+- Shimmer animation
+- Theme-aware colors
+- Respects reduced motion preference
+
+### Spinner Component
+
+Loading spinner for inline loading states.
+
+**Location**: `src/components/common/Spinner.tsx`
+
+```tsx
+import Spinner from "@/components/common/Spinner";
+
+<Spinner size="sm" />  {/* 16px */}
+<Spinner size="md" />  {/* 24px - default */}
+<Spinner size="lg" />  {/* 32px */}
+```
+
+**Features**:
+- Smooth rotation animation
+- Accent color
+- Multiple sizes
+
+### LoadingScreen Component
+
+Full-screen branded loading state.
+
+**Location**: `src/components/common/LoadingScreen.tsx`
+
+```tsx
+import LoadingScreen from "@/components/common/LoadingScreen";
+
+<LoadingScreen />
+```
+
+**Features**:
+- Nexus logo with pulse animation
+- Animated progress bar
+- Gradient background
+- Theme-aware styling
+
+### Modal Component
+
+Animated modal dialog with backdrop.
+
+**Location**: `src/components/common/Modal.tsx`
+
+```tsx
+import Modal from "@/components/common/Modal";
+
+<Modal
+  isOpen={isOpen}
+  onClose={() => setIsOpen(false)}
+  title="Confirm Action"
+  size="md"
+>
+  <p>Modal content</p>
+  <Button onClick={() => setIsOpen(false)}>Close</Button>
+</Modal>
+```
+
+**Sizes**:
+- `sm`: 400px max width
+- `md`: 500px max width (default)
+- `lg`: 600px max width
+- `xl`: 800px max width
+
+**Features**:
+- Backdrop with click-to-close
+- Scale animation on enter/exit
+- Escape key support
+- Focus trap
+- Accessible close button
+
+### EmptyState Component
+
+Placeholder for empty data states.
+
+**Location**: `src/components/common/EmptyState.tsx`
+
+```tsx
+import EmptyState from "@/components/common/EmptyState";
+import { Inbox } from "lucide-react";
+
+<EmptyState
+  icon={Inbox}
+  title="No messages"
+  description="Your inbox is empty"
+  action={
+    <Button variant="primary" onClick={handleCreate}>
+      Compose Message
+    </Button>
+  }
+/>
+```
+
+**Features**:
+- Icon support
+- Title and description
+- Optional CTA button
+- Centered layout
+
+### ProgressBar Component
+
+Animated progress indicator.
+
+**Location**: `src/components/common/ProgressBar.tsx`
+
+```tsx
+import ProgressBar from "@/components/common/ProgressBar";
+
+<ProgressBar progress={75} />
+```
+
+**Features**:
+- Spring physics animation
+- Accent color
+- Percentage-based (0-100)
+
+### ThemeToggle Component
+
+Light/dark mode switcher.
+
+**Location**: `src/components/common/ThemeToggle.tsx`
+
+```tsx
+import ThemeToggle from "@/components/common/ThemeToggle";
+
+<ThemeToggle />
+```
+
+**Features**:
+- Icon-based (Sun/Moon)
+- Persists to localStorage
+- Smooth transitions
+
+### SkipToContent Component
+
+Accessibility skip link for keyboard navigation.
+
+**Location**: `src/components/common/SkipToContent.tsx`
+
+```tsx
+import SkipToContent from "@/components/common/SkipToContent";
+
+<SkipToContent />
+```
+
+**Features**:
+- Hidden until focused
+- Jumps to main content
+- WCAG 2.1 AA compliance
+
+---
+
 ## Component Patterns
 
 ### Buttons
@@ -576,6 +1036,275 @@ Use Tailwind's built-in grid for layouts:
 
 ---
 
+## Brand Assets
+
+### Logo Files
+
+The Nexus brand identity includes the following logo assets:
+
+**Logo Icon** (`/public/logo-icon.svg`):
+- Hexagonal network node design
+- Used in sidebar, loading screens, favicons
+- Minimum size: 24×24px
+- Clear space: 8px on all sides
+
+**Usage**:
+```tsx
+// Sidebar brand
+<img src="/logo-icon.svg" alt="Nexus" className="h-7 w-7" />
+
+// Loading screen
+<img src="/logo-icon.svg" alt="Nexus" className="h-16 w-16" />
+
+// Favicon (already configured in index.html)
+```
+
+### Logo Usage Guidelines
+
+**Do's** ✅:
+- Maintain original aspect ratio
+- Provide adequate clear space (minimum 8px)
+- Use on contrasting backgrounds
+- Ensure minimum size of 24×24px for clarity
+
+**Don'ts** ❌:
+- Don't distort or stretch the logo
+- Don't rotate the logo
+- Don't apply filters or effects
+- Don't change the logo colors
+- Don't place on busy backgrounds
+
+### Brand Name
+
+**Official name**: Nexus
+
+**Usage**:
+- Always capitalize: "Nexus" (not "nexus" or "NEXUS")
+- Tag line: "Your AI orchestration platform"
+- Full brand mark: Nexus logo + "Nexus" wordmark in semibold
+
+```tsx
+// Header branding
+<div className="flex items-center gap-2.5">
+  <img src="/logo-icon.svg" alt="Nexus" className="h-7 w-7" />
+  <span className="text-lg font-semibold text-gray-900 dark:text-white">
+    Nexus
+  </span>
+</div>
+```
+
+### Favicons
+
+Configured in `index.html` with multiple sizes for different platforms:
+
+- `/favicon.svg` - SVG favicon (modern browsers)
+- `/favicon.ico` - ICO fallback (legacy browsers)
+- `/logo-192.png` - PWA icon 192×192
+- `/logo-512.png` - PWA icon 512×512
+
+### Social Media Assets
+
+When creating social media graphics or external materials:
+
+- **Primary color**: `#6366f1` (brand-500)
+- **Background**: Dark (`#1a1b23`) or white
+- **Typography**: Inter font family
+- **Tone**: Modern, intelligent, connected
+
+---
+
+## Code Splitting & Performance
+
+### Route-Based Code Splitting
+
+All pages are lazy-loaded to optimize initial bundle size:
+
+**Configuration** (`src/App.tsx`):
+```tsx
+import { lazy, Suspense } from "react";
+import LoadingScreen from "@/components/common/LoadingScreen";
+
+// Lazy load pages
+const HomePage = lazy(() => import("@/pages/HomePage"));
+const TasksPage = lazy(() => import("@/pages/TasksPage"));
+const ChatPage = lazy(() => import("@/pages/ChatPage"));
+
+// Wrap routes in Suspense
+<Suspense fallback={<LoadingScreen />}>
+  <Routes>
+    <Route path="/" element={<HomePage />} />
+    <Route path="/tasks" element={<TasksPage />} />
+    <Route path="/chat" element={<ChatPage />} />
+  </Routes>
+</Suspense>
+```
+
+### Vendor Chunk Splitting
+
+Dependencies are split into logical chunks for optimal caching:
+
+**Configuration** (`vite.config.ts`):
+```ts
+build: {
+  rollupOptions: {
+    output: {
+      manualChunks: {
+        "react-vendor": ["react", "react-dom", "react-router-dom"],
+        "framer-motion": ["framer-motion"],
+        "markdown": ["react-markdown", "remark-gfm"],
+        "lucide": ["lucide-react"],
+      },
+    },
+  },
+  chunkSizeWarningLimit: 1000,
+}
+```
+
+**Benefits**:
+- Shared vendor code cached across pages
+- Individual page chunks: 0.2 KB - 27 KB
+- Total chunks: 38+ (optimal granularity)
+- No large chunk warnings
+
+### Performance Best Practices
+
+1. **Image Optimization**:
+   - Use SVG for logos and icons
+   - Lazy load images with `loading="lazy"`
+   - Provide appropriate sizes with `srcset`
+
+2. **Animation Performance**:
+   - Prefer `transform` and `opacity` (GPU-accelerated)
+   - Avoid animating `width`, `height`, or `top`/`left`
+   - Use `will-change` sparingly
+
+3. **Bundle Size**:
+   - Monitor with `npm run build`
+   - Analyze with `npm run build -- --analyze`
+   - Tree-shake unused code
+
+4. **Caching Strategy**:
+   - Vendor chunks: Long-term cache (hash-based)
+   - Page chunks: Per-route invalidation
+   - Assets: Immutable caching
+
+---
+
+## Responsive Design Guidelines
+
+### Breakpoints
+
+Tailwind default breakpoints:
+
+| Breakpoint | Min Width | Usage |
+|------------|-----------|-------|
+| `sm` | 640px | Small tablets |
+| `md` | 768px | Tablets, small laptops |
+| `lg` | 1024px | Laptops, desktops |
+| `xl` | 1280px | Large desktops |
+| `2xl` | 1536px | Extra large screens |
+
+### Mobile-First Approach
+
+Always design for mobile first, then enhance for larger screens:
+
+```tsx
+// ✅ Mobile-first (correct)
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+  Content
+</div>
+
+// ❌ Desktop-first (avoid)
+<div className="grid grid-cols-3 lg:grid-cols-2 md:grid-cols-1">
+  Content
+</div>
+```
+
+### Touch Target Sizing
+
+All interactive elements must meet minimum touch target size:
+
+**WCAG 2.1 Level AA requirement**: 44×44px minimum
+
+```tsx
+// ✅ Adequate touch target
+<button className="p-2.5 rounded"> {/* 44×44px */}
+  <Icon size={20} />
+</button>
+
+// ❌ Too small
+<button className="p-1 rounded"> {/* 32×32px */}
+  <Icon size={14} />
+</button>
+```
+
+### Responsive Typography
+
+Use responsive text sizes for optimal readability:
+
+```tsx
+// Page heading
+<h1 className="text-2xl md:text-3xl lg:text-4xl font-bold">
+  Dashboard
+</h1>
+
+// Body text (no change needed, base size is readable)
+<p className="text-base">Content</p>
+```
+
+### Mobile Navigation
+
+The sidebar uses a mobile-optimized drawer pattern:
+
+- **Desktop** (`md:`): Persistent sidebar (224px width)
+- **Mobile** (`<md`): Slide-out drawer with backdrop
+- **Animation**: Spring physics for natural feel
+- **Accessibility**: Focus trap when open, Escape key to close
+
+```tsx
+// Mobile overlay backdrop
+<motion.div
+  className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm md:hidden"
+  onClick={onClose}
+/>
+
+// Sidebar with responsive positioning
+<motion.aside
+  className="fixed md:static inset-y-0 left-0 z-40 w-56 md:translate-x-0"
+  animate={{ x: open ? 0 : "-100%" }}
+/>
+```
+
+### Responsive Patterns
+
+**Grid Layouts**:
+```tsx
+// 1 column → 2 columns → 3 columns
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {items.map(item => <Card key={item.id}>{item.content}</Card>)}
+</div>
+```
+
+**Flex Layouts**:
+```tsx
+// Stack vertically on mobile, horizontally on desktop
+<div className="flex flex-col md:flex-row gap-4">
+  <div>Sidebar content</div>
+  <div className="flex-1">Main content</div>
+</div>
+```
+
+**Conditional Rendering**:
+```tsx
+// Show different UI based on screen size
+<div>
+  <span className="hidden md:inline">Full description</span>
+  <span className="md:hidden">Short</span>
+</div>
+```
+
+---
+
 ## Best Practices
 
 ### Do's ✅
@@ -611,6 +1340,15 @@ Use Tailwind's built-in grid for layouts:
 ---
 
 ## Changelog
+
+### v1.1.0 (2026-02-16)
+- Added Framer Motion animation system documentation
+- Documented all pre-built components (Button, Card, Modal, etc.)
+- Added brand asset usage guidelines
+- Documented code splitting and performance optimization
+- Added responsive design patterns and mobile navigation
+- Enhanced accessibility guidelines with touch target requirements
+- Added component library reference
 
 ### v1.0.0 (2026-02-16)
 - Initial design system documentation
