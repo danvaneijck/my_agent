@@ -1,7 +1,11 @@
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { pageVariants, listContainerVariants, listItemVariants } from "@/utils/animations";
 import { GitPullRequest, RefreshCw } from "lucide-react";
 import { usePullRequests } from "@/hooks/usePullRequests";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { PullRequestsListSkeleton } from "@/components/common/Skeleton";
+import EmptyState from "@/components/common/EmptyState";
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return "";
@@ -19,11 +23,18 @@ function timeAgo(dateStr: string | null): string {
 }
 
 export default function PullRequestsPage() {
+  usePageTitle("Pull Requests");
   const { pullRequests, loading, error, refetch } = usePullRequests();
   const navigate = useNavigate();
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <motion.div
+      className="p-4 md:p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Header */}
       <div className="flex items-center gap-3">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -53,14 +64,23 @@ export default function PullRequestsPage() {
       {loading && pullRequests.length === 0 ? (
         <PullRequestsListSkeleton />
       ) : pullRequests.length === 0 ? (
-        <div className="text-center py-16 text-gray-500 text-sm">
-          No open pull requests across your repositories
-        </div>
+        <EmptyState
+          icon={GitPullRequest}
+          title="No open pull requests"
+          description="There are no open pull requests across your repositories. Pull requests will appear here when created."
+        />
       ) : (
-        <div className="bg-surface-light border border-border rounded-xl overflow-hidden divide-y divide-border/50">
+        <motion.div
+          className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden divide-y divide-light-border dark:divide-border/50"
+          initial="initial"
+          animate="animate"
+          variants={listContainerVariants}
+        >
           {pullRequests.map((pr) => (
-            <button
+            <motion.button
               key={`${pr.owner}/${pr.repo}#${pr.number}`}
+              variants={listItemVariants}
+              layout
               onClick={() => navigate(`/pulls/${pr.owner}/${pr.repo}/${pr.number}`)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors text-left"
             >
@@ -99,10 +119,10 @@ export default function PullRequestsPage() {
                   {pr.created_at && <span>{timeAgo(pr.created_at)}</span>}
                 </div>
               </div>
-            </button>
+            </motion.button>
           ))}
-        </div>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }

@@ -5,6 +5,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import SkipToContent from "@/components/common/SkipToContent";
+import EnvironmentBadge from "@/components/common/EnvironmentBadge";
 import { connectWs } from "@/api/websocket";
 import { api } from "@/api/client";
 import type { Conversation, WsNotification } from "@/types";
@@ -148,6 +150,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-full flex">
+      <SkipToContent />
+      <EnvironmentBadge />
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -160,7 +164,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           title={title}
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
         />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main id="main-content" className="flex-1 overflow-auto" tabIndex={-1}>
+          {children}
+        </main>
       </div>
 
       {/* Notification toasts */}
@@ -169,10 +175,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {toasts.map((toast) => (
             <div
               key={toast.id}
-              className="pointer-events-auto bg-surface-light border border-accent/30 rounded-lg p-4 shadow-xl animate-in fade-in slide-in-from-top-2 max-w-lg w-full mx-4"
+              className="pointer-events-auto bg-white dark:bg-surface-light border border-accent/30 rounded-lg p-4 shadow-xl animate-in fade-in slide-in-from-top-2 max-w-lg w-full mx-4"
             >
               <div className="flex items-start gap-3">
-                <div className="flex-1 text-sm text-gray-200 break-words max-h-60 overflow-y-auto prose prose-invert prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-1 prose-pre:my-1 prose-pre:bg-black/30 prose-code:text-accent-hover max-w-none">
+                <div className="flex-1 text-sm text-gray-700 dark:text-gray-200 break-words max-h-60 overflow-y-auto prose dark:prose-invert prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-1 prose-pre:my-1 prose-pre:bg-gray-100 dark:prose-pre:bg-black/30 prose-code:text-accent dark:prose-code:text-accent-hover max-w-none">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {toast.content}
                   </ReactMarkdown>
@@ -184,17 +190,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         navigate(`/chat/${toast.conversationId}`);
                         dismissToast(toast.id);
                       }}
-                      className="p-1 rounded hover:bg-surface-lighter text-accent hover:text-accent-hover"
+                      className="p-2 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-accent hover:text-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
                       title="View in chat"
+                      aria-label="View in chat"
                     >
-                      <MessageSquare size={14} />
+                      <MessageSquare size={16} />
                     </button>
                   )}
                   <button
                     onClick={() => dismissToast(toast.id)}
-                    className="p-0.5 rounded hover:bg-surface-lighter text-gray-500 hover:text-gray-300"
+                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-accent"
+                    aria-label="Dismiss notification"
                   >
-                    <X size={14} />
+                    <X size={16} />
                   </button>
                 </div>
               </div>

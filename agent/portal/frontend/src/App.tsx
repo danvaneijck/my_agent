@@ -1,25 +1,32 @@
-import { useState, useEffect } from "react";
-import { Routes, Route } from "react-router-dom";
+import { useState, useEffect, lazy, Suspense } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { getToken, setToken, setUser, clearAuth, api } from "@/api/client";
+import ErrorBoundary from "@/components/common/ErrorBoundary";
+import LoadingScreen from "@/components/common/LoadingScreen";
 import Layout from "@/components/layout/Layout";
-import TasksPage from "@/pages/TasksPage";
-import ChatPage from "@/pages/ChatPage";
-import FilesPage from "@/pages/FilesPage";
-import CodePage from "@/pages/CodePage";
-import SchedulePage from "@/pages/SchedulePage";
-import DeploymentsPage from "@/pages/DeploymentsPage";
-import TaskDetailPage from "@/pages/TaskDetailPage";
-import ReposPage from "@/pages/ReposPage";
-import RepoDetailPage from "@/pages/RepoDetailPage";
-import PullRequestsPage from "@/pages/PullRequestsPage";
-import PullRequestDetailPage from "@/pages/PullRequestDetailPage";
-import SettingsPage from "@/pages/SettingsPage";
-import UsagePage from "@/pages/UsagePage";
-import ProjectsPage from "@/pages/ProjectsPage";
-import ProjectDetailPage from "@/pages/ProjectDetailPage";
-import PhaseDetailPage from "@/pages/PhaseDetailPage";
-import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
-import HomePage from "@/pages/HomePage";
+
+// Lazy load all page components for code splitting
+const HomePage = lazy(() => import("@/pages/HomePage"));
+const TasksPage = lazy(() => import("@/pages/TasksPage"));
+const TaskDetailPage = lazy(() => import("@/pages/TaskDetailPage"));
+const ChatPage = lazy(() => import("@/pages/ChatPage"));
+const FilesPage = lazy(() => import("@/pages/FilesPage"));
+const CodePage = lazy(() => import("@/pages/CodePage"));
+const SchedulePage = lazy(() => import("@/pages/SchedulePage"));
+const DeploymentsPage = lazy(() => import("@/pages/DeploymentsPage"));
+const ReposPage = lazy(() => import("@/pages/ReposPage"));
+const RepoDetailPage = lazy(() => import("@/pages/RepoDetailPage"));
+const PullRequestsPage = lazy(() => import("@/pages/PullRequestsPage"));
+const PullRequestDetailPage = lazy(() => import("@/pages/PullRequestDetailPage"));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
+const UsagePage = lazy(() => import("@/pages/UsagePage"));
+const ProjectsPage = lazy(() => import("@/pages/ProjectsPage"));
+const ProjectDetailPage = lazy(() => import("@/pages/ProjectDetailPage"));
+const PhaseDetailPage = lazy(() => import("@/pages/PhaseDetailPage"));
+const ProjectTaskDetailPage = lazy(() => import("@/pages/ProjectTaskDetailPage"));
+const ShowcasePage = lazy(() => import("@/pages/ShowcasePage"));
+const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 interface AuthProvider {
   name: string;
@@ -55,34 +62,82 @@ function LoginScreen() {
   };
 
   return (
-    <div className="h-full flex items-center justify-center p-4">
-      <div className="bg-surface-light border border-border rounded-xl p-8 w-full max-w-sm space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-white">Agent Portal</h1>
-          <p className="text-sm text-gray-400 mt-2">Sign in to continue</p>
-        </div>
-        {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+    <div className="h-full flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <motion.div
+        className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-2xl shadow-xl dark:shadow-2xl p-8 w-full max-w-md space-y-6"
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.0, 0.0, 0.2, 1] }}
+      >
+        {/* Logo and Branding */}
+        <motion.div
+          className="text-center space-y-3"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          <div className="flex justify-center mb-4">
+            <img
+              src="/logo-icon.svg"
+              alt="Nexus"
+              className="h-16 w-16"
+            />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Nexus</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Your AI orchestration platform
+          </p>
+        </motion.div>
+
+        {error && (
+          <motion.div
+            className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-lg p-3"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <p className="text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
+          </motion.div>
+        )}
 
         {discovering ? (
-          <div className="flex justify-center py-4">
-            <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <div className="flex justify-center py-8">
+            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
         ) : providers.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center">
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
             No authentication providers configured.
           </p>
         ) : (
-          <div className="space-y-3">
+          <motion.div
+            className="space-y-3"
+            initial="initial"
+            animate="animate"
+            variants={{
+              initial: {},
+              animate: {
+                transition: {
+                  staggerChildren: 0.1,
+                  delayChildren: 0.2,
+                },
+              },
+            }}
+          >
             {providers.map((p) => (
-              <button
+              <motion.button
                 key={p.name}
                 onClick={() => handleLogin(p.name)}
                 disabled={loading}
-                className={`w-full py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
+                variants={{
+                  initial: { opacity: 0, y: 10 },
+                  animate: { opacity: 1, y: 0 },
+                }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className={`w-full py-3 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm hover:shadow-md ${
                   p.name === "discord"
                     ? "bg-[#5865F2] hover:bg-[#4752C4] text-white"
                     : p.name === "google"
-                    ? "bg-white text-gray-800 hover:bg-gray-100 border border-gray-300"
+                    ? "bg-white text-gray-800 hover:bg-gray-50 border border-gray-300"
                     : "bg-accent hover:bg-accent-hover text-white"
                 }`}
               >
@@ -100,11 +155,21 @@ function LoginScreen() {
                   </svg>
                 )}
                 {loading ? "Redirecting..." : `Sign in with ${p.label}`}
-              </button>
+              </motion.button>
             ))}
-          </div>
+          </motion.div>
         )}
-      </div>
+
+        {/* Footer */}
+        <motion.p
+          className="text-xs text-center text-gray-500 dark:text-gray-400 pt-4 border-t border-light-border dark:border-border"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+        >
+          Secure authentication powered by OAuth 2.0
+        </motion.p>
+      </motion.div>
     </div>
   );
 }
@@ -175,6 +240,7 @@ function AuthCallback() {
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const location = useLocation();
 
   useEffect(() => {
     // Let the callback routes handle themselves
@@ -208,11 +274,7 @@ export default function App() {
   }
 
   if (authenticated === null) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!authenticated) {
@@ -220,28 +282,36 @@ export default function App() {
   }
 
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/tasks" element={<TasksPage />} />
-        <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
-        <Route path="/chat" element={<ChatPage />} />
-        <Route path="/chat/:conversationId" element={<ChatPage />} />
-        <Route path="/files" element={<FilesPage />} />
-        <Route path="/repos" element={<ReposPage />} />
-        <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
-        <Route path="/pulls" element={<PullRequestsPage />} />
-        <Route path="/pulls/:owner/:repo/:number" element={<PullRequestDetailPage />} />
-        <Route path="/code" element={<CodePage />} />
-        <Route path="/schedule" element={<SchedulePage />} />
-        <Route path="/deployments" element={<DeploymentsPage />} />
-        <Route path="/usage" element={<UsagePage />} />
-        <Route path="/projects" element={<ProjectsPage />} />
-        <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-        <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
-        <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Routes>
-    </Layout>
+    <ErrorBoundary>
+      <Layout>
+        <Suspense fallback={<LoadingScreen />}>
+          <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/chat/:conversationId" element={<ChatPage />} />
+              <Route path="/files" element={<FilesPage />} />
+              <Route path="/repos" element={<ReposPage />} />
+              <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
+              <Route path="/pulls" element={<PullRequestsPage />} />
+              <Route path="/pulls/:owner/:repo/:number" element={<PullRequestDetailPage />} />
+              <Route path="/code" element={<CodePage />} />
+              <Route path="/schedule" element={<SchedulePage />} />
+              <Route path="/deployments" element={<DeploymentsPage />} />
+              <Route path="/usage" element={<UsagePage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+              <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
+              <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/showcase" element={<ShowcasePage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </AnimatePresence>
+        </Suspense>
+      </Layout>
+    </ErrorBoundary>
   );
 }

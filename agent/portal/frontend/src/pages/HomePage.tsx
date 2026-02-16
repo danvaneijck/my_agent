@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
   Home,
   RefreshCw,
@@ -14,6 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import type { AnthropicUsageData } from "@/hooks/useDashboard";
 import type {
   ProjectSummary,
@@ -22,6 +24,7 @@ import type {
   Deployment,
 } from "@/types";
 import { Skeleton } from "@/components/common/Skeleton";
+import { pageVariants, staggerContainerVariants, staggerItemVariants } from "@/utils/animations";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -146,9 +149,9 @@ function DashboardCard({
   headerAction?: React.ReactNode;
 }) {
   return (
-    <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-border">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <Icon size={16} className="text-accent" />
           {title}
         </h3>
@@ -237,7 +240,7 @@ function ProjectsCard({
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as ProjectStatusFilter)}
-            className="bg-surface border border-border rounded-lg px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-accent"
+            className="bg-white dark:bg-surface border border-light-border dark:border-border rounded-lg px-2 py-1 text-xs text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent"
             aria-label="Filter projects by status"
           >
             <option value="">All</option>
@@ -269,7 +272,7 @@ function ProjectsCard({
           No projects{statusFilter ? ` with status "${statusFilter}"` : ""}
         </div>
       ) : (
-        <div className="divide-y divide-border/50">
+        <div className="divide-y divide-light-border dark:divide-border/50">
           {filtered.map((project) => {
             const pct =
               project.total_tasks > 0
@@ -281,11 +284,11 @@ function ProjectsCard({
               <button
                 key={project.project_id}
                 onClick={() => navigate(`/projects/${project.project_id}`)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-lighter/50 transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors text-left"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-200 truncate">
+                    <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
                       {project.name}
                     </span>
                     <Badge
@@ -382,7 +385,7 @@ function TasksCard({
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as TaskSortOption)}
-            className="bg-surface border border-border rounded-lg px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-accent"
+            className="bg-white dark:bg-surface border border-light-border dark:border-border rounded-lg px-2 py-1 text-xs text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent"
             aria-label="Sort tasks"
           >
             <option value="recent">Recent</option>
@@ -412,7 +415,7 @@ function TasksCard({
             <span className="text-xs text-accent font-medium">Active Task</span>
             <Badge status={nextTask.status} colorMap={TASK_STATUS_COLORS} />
           </div>
-          <p className="text-sm text-gray-300 line-clamp-1">{nextTask.prompt}</p>
+          <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-1">{nextTask.prompt}</p>
           <button
             onClick={() => navigate(`/tasks/${nextTask.id}`)}
             className="text-xs text-accent hover:text-accent-hover mt-1 flex items-center gap-1"
@@ -426,16 +429,16 @@ function TasksCard({
           No tasks yet
         </div>
       ) : (
-        <div className="divide-y divide-border/50">
+        <div className="divide-y divide-light-border dark:divide-border/50">
           {sorted.map((task) => (
             <button
               key={task.id}
               onClick={() => navigate(`/tasks/${task.id}`)}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-lighter/50 transition-colors text-left"
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors text-left"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-200 truncate">
+                  <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
                     {task.prompt.length > 60
                       ? task.prompt.slice(0, 60) + "..."
                       : task.prompt}
@@ -524,7 +527,7 @@ function PullRequestsCard({
           No pull requests
         </div>
       ) : (
-        <div className="divide-y divide-border/50">
+        <div className="divide-y divide-light-border dark:divide-border/50">
           {recent.map((pr) => {
             const state =
               pr.state === "closed" && pr.merged_at ? "merged" : pr.state;
@@ -534,7 +537,7 @@ function PullRequestsCard({
                 onClick={() =>
                   navigate(`/pulls/${pr.owner}/${pr.repo}/${pr.number}`)
                 }
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-lighter/50 transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors text-left"
               >
                 <GitPullRequest
                   size={16}
@@ -548,7 +551,7 @@ function PullRequestsCard({
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-200 truncate">
+                    <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
                       {pr.title}
                     </span>
                     {pr.draft && (
@@ -631,7 +634,7 @@ function DeploymentsCard({
           No deployments
         </div>
       ) : (
-        <div className="divide-y divide-border/50">
+        <div className="divide-y divide-light-border dark:divide-border/50">
           {deployments.slice(0, 5).map((d) => (
             <div
               key={d.deploy_id}
@@ -639,7 +642,7 @@ function DeploymentsCard({
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-200 truncate">
+                  <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
                     {d.project_name}
                   </span>
                   <Badge
@@ -760,28 +763,28 @@ function UsageCard({
           </div>
 
           {/* Monthly stats */}
-          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
+          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-light-border dark:border-border">
             <div>
               <p className="text-xs text-gray-400">Monthly Cost</p>
-              <p className="text-sm font-semibold text-white mt-0.5">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">
                 {formatCost(usage.this_month.cost)}
               </p>
             </div>
             <div>
               <p className="text-xs text-gray-400">Requests</p>
-              <p className="text-sm font-semibold text-white mt-0.5">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">
                 {usage.this_month.requests.toLocaleString()}
               </p>
             </div>
             <div>
               <p className="text-xs text-gray-400">Input Tokens</p>
-              <p className="text-sm font-semibold text-white mt-0.5">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">
                 {formatNumber(usage.this_month.input_tokens)}
               </p>
             </div>
             <div>
               <p className="text-xs text-gray-400">Output Tokens</p>
-              <p className="text-sm font-semibold text-white mt-0.5">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">
                 {formatNumber(usage.this_month.output_tokens)}
               </p>
             </div>
@@ -862,7 +865,7 @@ function ClaudeCodeUsageCard({
           {data.five_hour && (
             <div>
               <div className="flex items-baseline justify-between mb-1.5">
-                <span className="text-sm text-gray-300">5 Hour</span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">5 Hour</span>
                 <span className={`text-lg font-bold ${utilizationTextColor(data.five_hour.utilization_percent)}`}>
                   {Math.round(data.five_hour.utilization_percent)}%
                 </span>
@@ -881,7 +884,7 @@ function ClaudeCodeUsageCard({
           {data.seven_day && (
             <div>
               <div className="flex items-baseline justify-between mb-1.5">
-                <span className="text-sm text-gray-300">7 Day</span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">7 Day</span>
                 <span className={`text-lg font-bold ${utilizationTextColor(data.seven_day.utilization_percent)}`}>
                   {Math.round(data.seven_day.utilization_percent)}%
                 </span>
@@ -1022,20 +1025,20 @@ function ProjectTasksCard({
       )}
       {activeProjects.length > 0 && (
         <>
-          <div className="px-4 py-2 border-t border-border">
+          <div className="px-4 py-2 border-t border-light-border dark:border-border">
             <p className="text-xs text-gray-400 font-medium">
               Projects with active tasks
             </p>
           </div>
-          <div className="divide-y divide-border/50">
+          <div className="divide-y divide-light-border dark:divide-border/50">
             {activeProjects.map((p) => (
               <button
                 key={p.project_id}
                 onClick={() => navigate(`/projects/${p.project_id}`)}
-                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-surface-lighter/50 transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors text-left"
               >
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm text-gray-200 truncate block">
+                  <span className="text-sm text-gray-800 dark:text-gray-200 truncate block">
                     {p.name}
                   </span>
                   <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
@@ -1071,9 +1074,9 @@ function DashboardSkeleton() {
       {Array.from({ length: 7 }).map((_, i) => (
         <div
           key={i}
-          className="bg-surface-light border border-border rounded-xl overflow-hidden"
+          className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden"
         >
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-light-border dark:border-border">
             <Skeleton className="h-4 w-4" />
             <Skeleton className="h-4 w-24" />
           </div>
@@ -1101,6 +1104,7 @@ function DashboardSkeleton() {
 // ---------------------------------------------------------------------------
 
 export default function HomePage() {
+  usePageTitle("Dashboard");
   const dashboard = useDashboard();
   const [autoRefresh, setAutoRefresh] = useState(false);
 
@@ -1112,7 +1116,13 @@ export default function HomePage() {
   }, [autoRefresh, dashboard.refetch]);
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto">
+    <motion.div
+      className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -1125,7 +1135,7 @@ export default function HomePage() {
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               autoRefresh
                 ? "bg-accent/15 text-accent-hover"
-                : "text-gray-400 hover:text-gray-200 hover:bg-surface-lighter"
+                : "text-gray-400 hover:text-gray-800 dark:text-gray-200 hover:bg-surface-lighter"
             }`}
             title={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh (30s)"}
             aria-label="Toggle auto-refresh"
@@ -1134,7 +1144,7 @@ export default function HomePage() {
           </button>
           <button
             onClick={dashboard.refetch}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-800 dark:text-gray-200 transition-colors"
             title="Refresh dashboard"
             aria-label="Refresh dashboard"
           >
@@ -1155,45 +1165,64 @@ export default function HomePage() {
       dashboard.tasks.length === 0 ? (
         <DashboardSkeleton />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ProjectsCard
-            projects={dashboard.projects}
-            loading={dashboard.loading}
-            error={dashboard.errors.projects}
-          />
-          <TasksCard
-            tasks={dashboard.tasks}
-            loading={dashboard.loading}
-            error={dashboard.errors.tasks}
-          />
-          <ProjectTasksCard
-            projects={dashboard.projects}
-            loading={dashboard.loading}
-            error={dashboard.errors.projects}
-          />
-          <PullRequestsCard
-            pullRequests={dashboard.pullRequests}
-            count={dashboard.prCount}
-            loading={dashboard.loading}
-            error={dashboard.errors.pullRequests}
-          />
-          <DeploymentsCard
-            deployments={dashboard.deployments}
-            loading={dashboard.loading}
-            error={dashboard.errors.deployments}
-          />
-          <UsageCard
-            usage={dashboard.usage}
-            loading={dashboard.loading}
-            error={dashboard.errors.usage}
-          />
-          <ClaudeCodeUsageCard
-            data={dashboard.anthropicUsage}
-            loading={dashboard.loading}
-            error={dashboard.errors.anthropicUsage}
-          />
-        </div>
+        <motion.div
+          className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+          initial="initial"
+          animate="animate"
+          variants={staggerContainerVariants}
+        >
+          <motion.div variants={staggerItemVariants}>
+            <ProjectsCard
+              projects={dashboard.projects}
+              loading={dashboard.loading}
+              error={dashboard.errors.projects}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <TasksCard
+              tasks={dashboard.tasks}
+              loading={dashboard.loading}
+              error={dashboard.errors.tasks}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <ProjectTasksCard
+              projects={dashboard.projects}
+              loading={dashboard.loading}
+              error={dashboard.errors.projects}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <PullRequestsCard
+              pullRequests={dashboard.pullRequests}
+              count={dashboard.prCount}
+              loading={dashboard.loading}
+              error={dashboard.errors.pullRequests}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <DeploymentsCard
+              deployments={dashboard.deployments}
+              loading={dashboard.loading}
+              error={dashboard.errors.deployments}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <UsageCard
+              usage={dashboard.usage}
+              loading={dashboard.loading}
+              error={dashboard.errors.usage}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <ClaudeCodeUsageCard
+              data={dashboard.anthropicUsage}
+              loading={dashboard.loading}
+              error={dashboard.errors.anthropicUsage}
+            />
+          </motion.div>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }

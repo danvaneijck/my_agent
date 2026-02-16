@@ -1,8 +1,12 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
+import { pageVariants, listContainerVariants, listItemVariants } from "@/utils/animations";
 import { useNavigate } from "react-router-dom";
 import { FolderKanban, RefreshCw, Plus } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import NewProjectModal from "@/components/projects/NewProjectModal";
+import EmptyState from "@/components/common/EmptyState";
 import type { ProjectSummary } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -21,7 +25,7 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
   return (
     <button
       onClick={onClick}
-      className="bg-surface-light border border-border rounded-xl p-4 text-left hover:border-border-light transition-colors w-full"
+      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-border-light transition-colors w-full"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <h3 className="font-medium text-white truncate">{project.name}</h3>
@@ -74,13 +78,20 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
 }
 
 export default function ProjectsPage() {
+  usePageTitle("Projects");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [showNewProject, setShowNewProject] = useState(false);
   const { projects, loading, error, refetch } = useProjects(statusFilter || undefined);
   const navigate = useNavigate();
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <motion.div
+      className="p-4 md:p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -100,7 +111,7 @@ export default function ProjectsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-surface-light border border-border rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-accent"
+            className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-accent"
           >
             <option value="">All statuses</option>
             <option value="planning">Planning</option>
@@ -130,7 +141,7 @@ export default function ProjectsPage() {
       {loading && projects.length === 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-surface-light border border-border rounded-xl p-4 animate-pulse">
+            <div key={i} className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 animate-pulse">
               <div className="h-5 bg-surface-lighter/60 rounded w-2/3 mb-3" />
               <div className="h-4 bg-surface-lighter/60 rounded w-full mb-2" />
               <div className="h-4 bg-surface-lighter/60 rounded w-1/2 mb-3" />
@@ -139,28 +150,31 @@ export default function ProjectsPage() {
           ))}
         </div>
       ) : projects.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <FolderKanban size={40} className="mx-auto mb-3 opacity-50" />
-          <p>No projects yet</p>
-          <p className="text-sm mt-1 mb-4">Create your first project to get started</p>
-          <button
-            onClick={() => setShowNewProject(true)}
-            className="bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1.5"
-          >
-            <Plus size={16} />
-            New Project
-          </button>
-        </div>
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet"
+          description="Create your first project to start planning and tracking your work with AI-powered execution."
+          action={{
+            label: "Create Project",
+            onClick: () => setShowNewProject(true),
+          }}
+        />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"
+          initial="initial"
+          animate="animate"
+          variants={listContainerVariants}
+        >
           {projects.map((project) => (
-            <ProjectCard
-              key={project.project_id}
-              project={project}
-              onClick={() => navigate(`/projects/${project.project_id}`)}
-            />
+            <motion.div key={project.project_id} variants={listItemVariants} layout>
+              <ProjectCard
+                project={project}
+                onClick={() => navigate(`/projects/${project.project_id}`)}
+              />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       <NewProjectModal
@@ -172,6 +186,6 @@ export default function ProjectsPage() {
           navigate(`/projects/${projectId}`);
         }}
       />
-    </div>
+    </motion.div>
   );
 }

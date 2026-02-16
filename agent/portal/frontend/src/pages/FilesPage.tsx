@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
 import { RefreshCw, Search } from "lucide-react";
 import { api } from "@/api/client";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import FileList from "@/components/files/FileList";
 import FileUpload from "@/components/files/FileUpload";
 import FilePreview from "@/components/files/FilePreview";
@@ -8,6 +11,7 @@ import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { FileInfo } from "@/types";
 
 export default function FilesPage() {
+  usePageTitle("Files");
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -48,7 +52,13 @@ export default function FilesPage() {
     : files;
 
   return (
-    <div className="flex flex-col md:flex-row h-full">
+    <motion.div
+      className="flex flex-col md:flex-row h-full"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* File list panel */}
       <div className="flex-1 flex flex-col min-w-0 border-r border-border">
         <div className="p-4 space-y-3 shrink-0">
@@ -63,7 +73,8 @@ export default function FilesPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search files..."
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
+                className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
+                aria-label="Search files"
               />
             </div>
             <button
@@ -111,6 +122,6 @@ export default function FilesPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </motion.div>
   );
 }

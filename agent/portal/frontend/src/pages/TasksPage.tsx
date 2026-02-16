@@ -1,11 +1,15 @@
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
+import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
 import { useTasks } from "@/hooks/useTasks";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import TaskList from "@/components/tasks/TaskList";
 import NewTaskForm from "@/components/tasks/NewTaskForm";
+import { pageVariants } from "@/utils/animations";
 
 export default function TasksPage() {
+  usePageTitle("Claude Code Tasks");
   const { tasks, loading, error, refetch } = useTasks();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -27,7 +31,13 @@ export default function TasksPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <motion.div
+      className="p-4 md:p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -60,9 +70,9 @@ export default function TasksPage() {
       )}
 
       {/* Task list */}
-      <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <TaskList tasks={tasks} />
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
   ArrowLeft,
   GitBranch,
@@ -17,7 +18,9 @@ import {
 } from "lucide-react";
 import { api } from "@/api/client";
 import { useRepoDetail } from "@/hooks/useRepoDetail";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import NewTaskModal from "@/components/tasks/NewTaskModal";
+import { pageVariants } from "@/utils/animations";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { GitRepo } from "@/types";
 
@@ -52,6 +55,7 @@ function formatRelativeDate(dateStr: string | null): string {
 
 export default function RepoDetailPage() {
   const { owner = "", repo = "" } = useParams<{ owner: string; repo: string }>();
+  usePageTitle(`${owner}/${repo}`);
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("branches");
   const [repoMeta, setRepoMeta] = useState<GitRepo | null>(null);
@@ -218,7 +222,13 @@ export default function RepoDetailPage() {
   ];
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <motion.div
+      className="p-4 md:p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -277,7 +287,7 @@ export default function RepoDetailPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border">
+      <div className="flex gap-1 border-b border-light-border dark:border-border">
         {tabs.map(({ key, label, icon: Icon, count }) => (
           <button
             key={key}
@@ -302,7 +312,7 @@ export default function RepoDetailPage() {
       </div>
 
       {/* Tab content */}
-      <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         {loading && branches.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
@@ -319,7 +329,7 @@ export default function RepoDetailPage() {
                 ) : (
                   <>
                     {/* Sort header */}
-                    <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-surface-lighter/30">
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-light-border dark:border-border bg-surface-lighter/30">
                       <button
                         onClick={() => toggleSort("name")}
                         className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-gray-200 uppercase tracking-wider transition-colors"
@@ -341,7 +351,7 @@ export default function RepoDetailPage() {
                       </div>
                     </div>
                     {/* Branch rows */}
-                    <div className="divide-y divide-border/50">
+                    <div className="divide-y divide-light-border dark:divide-border/50">
                       {sortedBranches.map((branch) => (
                         <div
                           key={branch.name}
@@ -408,7 +418,7 @@ export default function RepoDetailPage() {
 
             {/* Pull Requests */}
             {tab === "pulls" && (
-              <div className="divide-y divide-border/50">
+              <div className="divide-y divide-light-border dark:divide-border/50">
                 {pullRequests.length === 0 ? (
                   <div className="text-center py-12 text-gray-500 text-sm">
                     No open pull requests
@@ -468,7 +478,7 @@ export default function RepoDetailPage() {
 
             {/* Issues */}
             {tab === "issues" && (
-              <div className="divide-y divide-border/50">
+              <div className="divide-y divide-light-border dark:divide-border/50">
                 {issues.length === 0 ? (
                   <div className="text-center py-12 text-gray-500 text-sm">
                     No open issues
@@ -550,7 +560,7 @@ export default function RepoDetailPage() {
       {/* Create PR Modal */}
       {createPROpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-surface-light border border-border rounded-xl p-6 max-w-md w-full space-y-4">
+          <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 max-w-md w-full space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">Open Pull Request</h3>
               <button
@@ -657,6 +667,6 @@ export default function RepoDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

@@ -1,8 +1,12 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
+import { pageVariants } from "@/utils/animations";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, Search, RefreshCw, Lock, Star } from "lucide-react";
 import { useRepos } from "@/hooks/useRepos";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { ReposGridSkeleton } from "@/components/common/Skeleton";
+import EmptyState from "@/components/common/EmptyState";
 
 const LANG_COLORS: Record<string, string> = {
   Python: "bg-blue-500",
@@ -35,6 +39,7 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default function ReposPage() {
+  usePageTitle("Repositories");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const { repos, loading, error, refetch } = useRepos(debouncedSearch);
@@ -59,7 +64,13 @@ export default function ReposPage() {
     : repos;
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <motion.div
+      className="p-4 md:p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -69,8 +80,9 @@ export default function ReposPage() {
           </h2>
           <button
             onClick={refetch}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-2 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
             title="Refresh"
+            aria-label="Refresh repositories"
           >
             <RefreshCw size={16} />
           </button>
@@ -90,7 +102,8 @@ export default function ReposPage() {
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search repositories..."
-            className="pl-9 pr-3 py-2 w-full sm:w-72 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
+            className="pl-9 pr-3 py-2 w-full sm:w-72 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
+            aria-label="Search repositories"
           />
         </div>
       </div>
@@ -106,16 +119,22 @@ export default function ReposPage() {
       {loading && repos.length === 0 ? (
         <ReposGridSkeleton />
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-500 text-sm">
-          {search ? "No repositories match your search" : "No repositories found"}
-        </div>
+        <EmptyState
+          icon={GitBranch}
+          title={search ? "No repositories found" : "No repositories yet"}
+          description={
+            search
+              ? `No repositories match "${search}". Try a different search term.`
+              : "Connect your GitHub or Bitbucket account to start managing repositories."
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {filtered.map((repo) => (
             <button
               key={repo.full_name}
               onClick={() => navigate(`/repos/${repo.owner}/${repo.repo}`)}
-              className="bg-surface-light border border-border rounded-xl p-4 text-left hover:border-accent/50 hover:bg-surface-lighter/50 transition-all group"
+              className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-accent/50 hover:bg-surface-lighter/50 transition-all group"
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="min-w-0">
@@ -163,6 +182,6 @@ export default function ReposPage() {
           ))}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

@@ -17,6 +17,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "@/api/client";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { GitPullRequest as PRType } from "@/types";
 
@@ -39,6 +40,7 @@ export default function PullRequestDetailPage() {
     repo: string;
     number: string;
   }>();
+  usePageTitle(`PR #${number} - ${owner}/${repo}`);
   const navigate = useNavigate();
   const prNumber = parseInt(number, 10);
 
@@ -251,7 +253,7 @@ export default function PullRequestDetailPage() {
 
           {/* Description */}
           {pr.body && (
-            <div className="bg-surface-light border border-border rounded-xl p-4">
+            <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
               <div className="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-pre:bg-black/30 prose-code:text-accent-hover">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {pr.body}
@@ -262,8 +264,8 @@ export default function PullRequestDetailPage() {
 
           {/* Changed files */}
           {pr.files && pr.files.length > 0 && (
-            <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
+            <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-light-border dark:border-border flex items-center gap-2">
                 <FileText size={16} className="text-gray-400" />
                 <span className="text-sm font-medium text-gray-200">
                   Changed files
@@ -272,7 +274,7 @@ export default function PullRequestDetailPage() {
                   {pr.files.length}
                 </span>
               </div>
-              <div className="divide-y divide-border/50">
+              <div className="divide-y divide-light-border dark:divide-border/50">
                 {pr.files.map((file) => (
                   <div
                     key={file.filename}
@@ -313,8 +315,8 @@ export default function PullRequestDetailPage() {
 
           {/* Comments */}
           {pr.review_comments && pr.review_comments.length > 0 && (
-            <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
+            <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-light-border dark:border-border flex items-center gap-2">
                 <MessageSquare size={16} className="text-gray-400" />
                 <span className="text-sm font-medium text-gray-200">
                   Review comments
@@ -323,7 +325,7 @@ export default function PullRequestDetailPage() {
                   {pr.review_comments.length}
                 </span>
               </div>
-              <div className="divide-y divide-border/50">
+              <div className="divide-y divide-light-border dark:divide-border/50">
                 {pr.review_comments.map((c, i) => (
                   <div key={i} className="px-4 py-3">
                     <div className="flex items-center gap-2 mb-1.5">
@@ -352,7 +354,7 @@ export default function PullRequestDetailPage() {
 
           {/* Add comment */}
           {pr.state === "open" && (
-            <div className="bg-surface-light border border-border rounded-xl p-4 space-y-3">
+            <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <MessageSquare size={16} className="text-gray-400" />
                 <span className="text-sm font-medium text-gray-200">
@@ -381,7 +383,7 @@ export default function PullRequestDetailPage() {
 
           {/* Merge section */}
           {pr.state === "open" && (
-            <div className="bg-surface-light border border-border rounded-xl p-4">
+            <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm">
                   <GitMerge size={16} className="text-gray-400" />

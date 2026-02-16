@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { ArrowLeft, RefreshCw, GitBranch, GitPullRequest, ExternalLink, AlertCircle, RotateCcw } from "lucide-react";
 import { useProjectDetail, usePhaseTasks, retryPhase } from "@/hooks/useProjects";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { api } from "@/api/client";
 import type { ProjectTask } from "@/types";
+import { pageVariants } from "@/utils/animations";
 
 const COLUMNS = [
   { key: "todo", label: "To Do", color: "border-gray-500" },
@@ -35,7 +38,7 @@ function TaskCard({
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={() => navigate(`/projects/${projectId}/tasks/${task.task_id}`)}
-      className="bg-surface border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border-light transition-colors"
+      className="bg-gray-100 dark:bg-surface border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border-light transition-colors"
     >
       <p className="text-sm font-medium text-white mb-1">{task.title}</p>
 
@@ -114,6 +117,7 @@ export default function PhaseDetailPage() {
   };
 
   const phase = project?.phases.find((p) => p.phase_id === phaseId);
+  usePageTitle(phase ? `${phase.name} - ${project?.name}` : "Phase");
 
   const columns = COLUMNS.map((col) => ({
     ...col,
@@ -144,7 +148,13 @@ export default function PhaseDetailPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <motion.div
+      className="p-4 md:p-6 space-y-4"
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      variants={pageVariants}
+    >
       {/* Back nav */}
       <button
         onClick={() => navigate(`/projects/${projectId}`)}
@@ -198,7 +208,7 @@ export default function PhaseDetailPage() {
       {loading && tasks.length === 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-surface-light border border-border rounded-xl p-3 animate-pulse">
+            <div key={i} className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-3 animate-pulse">
               <div className="h-4 bg-surface-lighter/60 rounded w-1/2 mb-3" />
               <div className="space-y-2">
                 <div className="h-20 bg-surface-lighter/60 rounded" />
@@ -223,7 +233,7 @@ export default function PhaseDetailPage() {
                 dragOver === col.key ? "ring-2 ring-accent/50 bg-accent/5" : ""
               }`}
             >
-              <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+              <div className="px-3 py-2 border-b border-light-border dark:border-border flex items-center justify-between">
                 <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                   {col.label}
                 </h3>
@@ -279,6 +289,6 @@ export default function PhaseDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

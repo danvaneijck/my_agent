@@ -3,24 +3,50 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Portal</title>
+<title>Nexus Admin Portal</title>
+
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+<!-- Inter Font -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
 <style>
   :root {
+    /* Dark mode colors (default) */
     --bg: #0f1117;
     --surface: #1a1d27;
     --surface2: #242836;
     --border: #2e3346;
     --text: #e1e4ed;
     --text-dim: #8b90a0;
-    --accent: #6c8cff;
+    --accent: #6366f1;
     --green: #4ade80;
     --yellow: #fbbf24;
     --red: #f87171;
     --orange: #fb923c;
   }
+
+  html.light {
+    /* Light mode colors */
+    --bg: #f9fafb;
+    --surface: #ffffff;
+    --surface2: #f3f4f6;
+    --border: #e5e7eb;
+    --text: #111827;
+    --text-dim: #6b7280;
+    --accent: #6366f1;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --orange: #f97316;
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     background: var(--bg); color: var(--text); line-height: 1.5;
   }
   .header {
@@ -189,13 +215,31 @@
   .login-error { color: var(--red); font-size: 13px; margin-top: 10px; display: none; }
   .app-content { display: none; }
   .app-content.visible { display: block; }
+
+  /* Theme toggle */
+  .theme-toggle {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); padding: 6px 10px; border-radius: 6px;
+    cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;
+    transition: all 0.2s; text-decoration: none;
+  }
+  .theme-toggle:hover { background: var(--border); }
+  .theme-icon { width: 16px; height: 16px; }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>Admin Portal</h1>
+  <div style="display:flex;align-items:center;gap:12px">
+    <img src="/logo-icon.svg" alt="Nexus" style="height:24px;width:24px">
+    <h1>Nexus Admin Portal</h1>
+  </div>
   <div class="header-nav">
+    <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle">
+      <svg class="theme-icon" id="theme-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+      </svg>
+    </button>
     <a href="/">Dashboard</a>
     <a href="#" id="logout-btn" onclick="logout()" style="display:none">Logout</a>
   </div>
@@ -204,7 +248,7 @@
 <!-- Login Gate -->
 <div id="login-gate" class="login-gate">
   <div class="login-box">
-    <h2>Admin Access</h2>
+    <h2>Nexus Admin Access</h2>
     <p>Enter admin API key to continue</p>
     <input type="password" id="admin-key-input" placeholder="ADMIN_API_KEY" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn btn-primary" onclick="doLogin()">Authenticate</button>
@@ -470,6 +514,44 @@
 <div id="toast-container"></div>
 
 <script>
+// ---- Theme Management (synced with portal) ----
+function getTheme() {
+  return localStorage.getItem('theme') || 'dark';
+}
+
+function setTheme(newTheme) {
+  localStorage.setItem('theme', newTheme);
+  applyTheme(newTheme);
+}
+
+function applyTheme(theme) {
+  const html = document.documentElement;
+  const icon = document.getElementById('theme-icon');
+
+  if (theme === 'light') {
+    html.classList.add('light');
+    if (icon) {
+      // Sun icon for light mode
+      icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />';
+    }
+  } else {
+    html.classList.remove('light');
+    if (icon) {
+      // Moon icon for dark mode
+      icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />';
+    }
+  }
+}
+
+function toggleTheme() {
+  const currentTheme = getTheme();
+  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+  setTheme(newTheme);
+}
+
+// Initialize theme on page load
+applyTheme(getTheme());
+
 // ---- Auth ----
 function getAdminKey() { return sessionStorage.getItem('admin_api_key') || ''; }
 

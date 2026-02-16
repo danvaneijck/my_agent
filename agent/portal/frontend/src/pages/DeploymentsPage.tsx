@@ -1,4 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { pageVariants, listContainerVariants, listItemVariants } from "@/utils/animations";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import EmptyState from "@/components/common/EmptyState";
 import {
   RefreshCw,
   Rocket,
@@ -140,7 +144,7 @@ function LogViewer({ deployId, serviceName }: { deployId: string; serviceName?: 
   }, [fetchLogs]);
 
   return (
-    <div className="bg-surface rounded-lg p-3 mt-2">
+    <div className="bg-gray-100 dark:bg-surface rounded-lg p-3 mt-2">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-gray-400">
           {serviceName ? `${serviceName} logs` : "Container Logs"}
@@ -174,10 +178,10 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
       <div className="text-xs text-gray-400 font-medium">
         Services ({services.length})
       </div>
-      <div className="bg-surface rounded-lg overflow-hidden">
+      <div className="bg-gray-100 dark:bg-surface rounded-lg overflow-hidden">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-border text-gray-500">
+            <tr className="border-b border-light-border dark:border-border text-gray-500">
               <th className="text-left px-3 py-2 font-medium">Service</th>
               <th className="text-left px-3 py-2 font-medium">Status</th>
               <th className="text-left px-3 py-2 font-medium">Ports</th>
@@ -185,9 +189,19 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
               <th className="text-right px-3 py-2 font-medium">Logs</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border/50">
+          <motion.tbody
+            className="divide-y divide-light-border dark:divide-border/50"
+            initial="initial"
+            animate="animate"
+            variants={listContainerVariants}
+          >
             {services.map((svc) => (
-              <tr key={svc.name} className="hover:bg-surface-lighter/50">
+              <motion.tr
+                key={svc.name}
+                className="hover:bg-surface-lighter/50"
+                variants={listItemVariants}
+                layout
+              >
                 <td className="px-3 py-2 font-mono text-gray-200">{svc.name}</td>
                 <td className="px-3 py-2">
                   <StatusBadge status={svc.status} />
@@ -226,9 +240,9 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
                     <FileText size={14} />
                   </button>
                 </td>
-              </tr>
+              </motion.tr>
             ))}
-          </tbody>
+          </motion.tbody>
         </table>
       </div>
       {selectedService && (
@@ -307,9 +321,9 @@ function EnvVarEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-surface-light border border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-border">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <Settings size={16} className="text-accent" />
             Environment Variables
@@ -367,7 +381,7 @@ function EnvVarEditor({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-light-border dark:border-border">
           <button
             onClick={() => handleSave(false)}
             disabled={saving}
@@ -579,6 +593,7 @@ function DeploymentCard({
 // ---- Main page ----
 
 export default function DeploymentsPage() {
+  usePageTitle("Deployments");
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<StatusFilter>("all");
@@ -720,24 +735,28 @@ export default function DeploymentsPage() {
       </div>
 
       {/* Deployment list */}
-      <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         {loading && deployments.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-gray-600 text-sm">
-            {deployments.length === 0
-              ? "No deployments found"
-              : "No deployments match the selected filter"}
-          </div>
+          <EmptyState
+            icon={Rocket}
+            title={deployments.length === 0 ? "No deployments yet" : "No matching deployments"}
+            description={
+              deployments.length === 0
+                ? "Deploy your first application to get started with live hosting and monitoring."
+                : "No deployments match the selected filter. Try adjusting your filters."
+            }
+          />
         ) : (
           <>
             {/* Desktop table */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-gray-500 text-xs uppercase tracking-wider">
+                  <tr className="border-b border-light-border dark:border-border text-gray-500 text-xs uppercase tracking-wider">
                     <th className="text-left px-4 py-3 font-medium">ID</th>
                     <th className="text-left px-4 py-3 font-medium">Name</th>
                     <th className="text-left px-4 py-3 font-medium">Type</th>
@@ -747,7 +766,7 @@ export default function DeploymentsPage() {
                     <th className="text-right px-4 py-3 font-medium">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/50">
+                <tbody className="divide-y divide-light-border dark:divide-border/50">
                   {filtered.map((d) => (
                     <DeploymentRow
                       key={d.deploy_id}
@@ -764,7 +783,7 @@ export default function DeploymentsPage() {
             </div>
 
             {/* Mobile cards */}
-            <div className="md:hidden divide-y divide-border/50">
+            <div className="md:hidden divide-y divide-light-border dark:divide-border/50">
               {filtered.map((d) => (
                 <DeploymentCard
                   key={d.deploy_id}
