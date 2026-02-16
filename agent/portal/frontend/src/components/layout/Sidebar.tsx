@@ -60,7 +60,20 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
         `}
       >
         <div className="flex items-center justify-between h-14 px-4 border-b border-light-border dark:border-border">
-          <span className="text-lg font-semibold text-gray-900 dark:text-white">Agent Portal</span>
+          <NavLink
+            to="/"
+            className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
+            onClick={onClose}
+          >
+            <img
+              src="/logo-icon.svg"
+              alt="Nexus"
+              className="h-7 w-7"
+            />
+            <span className="text-lg font-semibold text-gray-900 dark:text-white">
+              Nexus
+            </span>
+          </NavLink>
           <button
             onClick={onClose}
             className="md:hidden p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400"
