@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
-import { pageVariants } from "@/utils/animations";
 import { useParams, useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import {
@@ -149,13 +147,7 @@ export default function ChatPage() {
   }, [totalUnread]);
 
   return (
-    <motion.div
-      className="flex h-full"
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      variants={pageVariants}
-    >
+    <div className="flex h-full">
       {/* Conversation sidebar */}
       <div
         className={`
@@ -346,6 +338,6 @@ export default function ChatPage() {
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         onCancel={() => setDeleteConfirm(null)}
       />
-    </motion.div>
+    </div>
   );
 }
