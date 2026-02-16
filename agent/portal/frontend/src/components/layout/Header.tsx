@@ -1,5 +1,6 @@
 import { Menu, LogOut } from "lucide-react";
 import { clearAuth, getUser } from "@/api/client";
+import ThemeToggle from "@/components/common/ThemeToggle";
 
 interface HeaderProps {
   title: string;
@@ -20,10 +21,11 @@ export default function Header({ title, onMenuToggle }: HeaderProps) {
         </button>
         <h1 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h1>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         {user && (
-          <span className="text-sm text-gray-600 dark:text-gray-400">{user.username}</span>
+          <span className="text-sm text-gray-600 dark:text-gray-400 hidden sm:block">{user.username}</span>
         )}
+        <ThemeToggle />
         <button
           onClick={() => {
             clearAuth();

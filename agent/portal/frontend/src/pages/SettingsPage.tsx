@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { ShieldOff } from "lucide-react";
+import { ShieldOff, Sun, Moon, Monitor } from "lucide-react";
 import { api } from "@/api/client";
+import { useTheme } from "@/contexts/ThemeContext";
 import CredentialCard from "@/components/settings/CredentialCard";
 import ConnectedAccounts from "@/components/settings/ConnectedAccounts";
 
-type Tab = "profile" | "accounts" | "credentials";
+type Tab = "appearance" | "profile" | "accounts" | "credentials";
 
 interface ProfileData {
   user_id: string;
@@ -38,12 +39,13 @@ interface ConnectedAccount {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>("credentials");
+  const [tab, setTab] = useState<Tab>("appearance");
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [services, setServices] = useState<ServiceCredentialInfo[]>([]);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
+  const { theme, setTheme, resolvedTheme } = useTheme();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -83,9 +85,31 @@ export default function SettingsPage() {
   }, [fetchData]);
 
   const tabs: { key: Tab; label: string }[] = [
+    { key: "appearance", label: "Appearance" },
     { key: "credentials", label: "Credentials" },
     { key: "accounts", label: "Connected Accounts" },
     { key: "profile", label: "Profile" },
+  ];
+
+  const themeOptions = [
+    {
+      value: "light" as const,
+      label: "Light",
+      description: "Light mode for daytime use",
+      icon: Sun,
+    },
+    {
+      value: "dark" as const,
+      label: "Dark",
+      description: "Dark mode for reduced eye strain",
+      icon: Moon,
+    },
+    {
+      value: "system" as const,
+      label: "System",
+      description: "Follow your system preference",
+      icon: Monitor,
+    },
   ];
 
   return (
@@ -113,6 +137,79 @@ export default function SettingsPage() {
         </div>
       ) : (
         <>
+          {/* Appearance tab */}
+          {tab === "appearance" && (
+            <div className="space-y-6">
+              <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                  Theme
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                  Choose how Nexus looks to you. Select a single theme, or sync
+                  with your system and automatically switch between day and night
+                  themes.
+                </p>
+
+                <div className="space-y-3">
+                  {themeOptions.map((option) => {
+                    const Icon = option.icon;
+                    const isSelected = theme === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        onClick={() => setTheme(option.value)}
+                        className={`w-full flex items-start gap-4 p-4 rounded-lg border-2 transition-all ${
+                          isSelected
+                            ? "border-accent bg-accent/5"
+                            : "border-light-border dark:border-border hover:border-accent/50 hover:bg-gray-50 dark:hover:bg-surface-lighter/50"
+                        }`}
+                      >
+                        <div
+                          className={`p-2 rounded-lg ${
+                            isSelected
+                              ? "bg-accent/15 text-accent"
+                              : "bg-gray-100 dark:bg-surface-lighter text-gray-600 dark:text-gray-400"
+                          }`}
+                        >
+                          <Icon size={20} />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              {option.label}
+                            </span>
+                            {isSelected && (
+                              <svg
+                                className="w-4 h-4 text-accent"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            {option.description}
+                          </p>
+                          {isSelected && theme === "system" && (
+                            <p className="text-xs text-accent mt-2">
+                              Currently: {resolvedTheme === "dark" ? "Dark" : "Light"}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Profile tab */}
           {tab === "profile" && profile && (
             <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4">
