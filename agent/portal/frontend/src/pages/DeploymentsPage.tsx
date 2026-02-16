@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { pageVariants, listContainerVariants, listItemVariants } from "@/utils/animations";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import EmptyState from "@/components/common/EmptyState";
 import {
   RefreshCw,
   Rocket,
@@ -591,6 +593,7 @@ function DeploymentCard({
 // ---- Main page ----
 
 export default function DeploymentsPage() {
+  usePageTitle("Deployments");
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<StatusFilter>("all");
@@ -738,11 +741,15 @@ export default function DeploymentsPage() {
             <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-gray-600 text-sm">
-            {deployments.length === 0
-              ? "No deployments found"
-              : "No deployments match the selected filter"}
-          </div>
+          <EmptyState
+            icon={Rocket}
+            title={deployments.length === 0 ? "No deployments yet" : "No matching deployments"}
+            description={
+              deployments.length === 0
+                ? "Deploy your first application to get started with live hosting and monitoring."
+                : "No deployments match the selected filter. Try adjusting your filters."
+            }
+          />
         ) : (
           <>
             {/* Desktop table */}

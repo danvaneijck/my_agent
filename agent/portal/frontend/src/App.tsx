@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { getToken, setToken, setUser, clearAuth, api } from "@/api/client";
+import ErrorBoundary from "@/components/common/ErrorBoundary";
+import LoadingScreen from "@/components/common/LoadingScreen";
 import Layout from "@/components/layout/Layout";
 import TasksPage from "@/pages/TasksPage";
 import ChatPage from "@/pages/ChatPage";
@@ -21,6 +23,7 @@ import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import PhaseDetailPage from "@/pages/PhaseDetailPage";
 import ProjectTaskDetailPage from "@/pages/ProjectTaskDetailPage";
 import HomePage from "@/pages/HomePage";
+import NotFoundPage from "@/pages/NotFoundPage";
 
 interface AuthProvider {
   name: string;
@@ -268,11 +271,7 @@ export default function App() {
   }
 
   if (authenticated === null) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!authenticated) {
@@ -280,30 +279,33 @@ export default function App() {
   }
 
   return (
-    <Layout>
-      <AnimatePresence mode="wait">
-        <Routes location={location} key={location.pathname}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/chat/:conversationId" element={<ChatPage />} />
-          <Route path="/files" element={<FilesPage />} />
-          <Route path="/repos" element={<ReposPage />} />
-          <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
-          <Route path="/pulls" element={<PullRequestsPage />} />
-          <Route path="/pulls/:owner/:repo/:number" element={<PullRequestDetailPage />} />
-          <Route path="/code" element={<CodePage />} />
-          <Route path="/schedule" element={<SchedulePage />} />
-          <Route path="/deployments" element={<DeploymentsPage />} />
-          <Route path="/usage" element={<UsagePage />} />
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-          <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
-          <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
-      </AnimatePresence>
-    </Layout>
+    <ErrorBoundary>
+      <Layout>
+        <AnimatePresence mode="wait">
+          <Routes location={location} key={location.pathname}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+            <Route path="/files" element={<FilesPage />} />
+            <Route path="/repos" element={<ReposPage />} />
+            <Route path="/repos/:owner/:repo" element={<RepoDetailPage />} />
+            <Route path="/pulls" element={<PullRequestsPage />} />
+            <Route path="/pulls/:owner/:repo/:number" element={<PullRequestDetailPage />} />
+            <Route path="/code" element={<CodePage />} />
+            <Route path="/schedule" element={<SchedulePage />} />
+            <Route path="/deployments" element={<DeploymentsPage />} />
+            <Route path="/usage" element={<UsagePage />} />
+            <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+            <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
+            <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </AnimatePresence>
+      </Layout>
+    </ErrorBoundary>
   );
 }

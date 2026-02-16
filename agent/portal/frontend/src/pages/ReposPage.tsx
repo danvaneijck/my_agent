@@ -4,7 +4,9 @@ import { pageVariants } from "@/utils/animations";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, Search, RefreshCw, Lock, Star } from "lucide-react";
 import { useRepos } from "@/hooks/useRepos";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { ReposGridSkeleton } from "@/components/common/Skeleton";
+import EmptyState from "@/components/common/EmptyState";
 
 const LANG_COLORS: Record<string, string> = {
   Python: "bg-blue-500",
@@ -37,6 +39,7 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default function ReposPage() {
+  usePageTitle("Repositories");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const { repos, loading, error, refetch } = useRepos(debouncedSearch);
@@ -114,9 +117,15 @@ export default function ReposPage() {
       {loading && repos.length === 0 ? (
         <ReposGridSkeleton />
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-500 text-sm">
-          {search ? "No repositories match your search" : "No repositories found"}
-        </div>
+        <EmptyState
+          icon={GitBranch}
+          title={search ? "No repositories found" : "No repositories yet"}
+          description={
+            search
+              ? `No repositories match "${search}". Try a different search term.`
+              : "Connect your GitHub or Bitbucket account to start managing repositories."
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {filtered.map((repo) => (

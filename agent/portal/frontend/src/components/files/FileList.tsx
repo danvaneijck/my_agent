@@ -1,4 +1,5 @@
 import { FileText, Image, FileCode, File as FileIcon, Trash2 } from "lucide-react";
+import EmptyState from "@/components/common/EmptyState";
 import type { FileInfo } from "@/types";
 
 function getFileIcon(mime: string | null) {
@@ -26,9 +27,11 @@ interface FileListProps {
 export default function FileList({ files, onSelect, onDelete, selectedId }: FileListProps) {
   if (files.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        No files yet. Upload one to get started.
-      </div>
+      <EmptyState
+        icon={FileIcon}
+        title="No files yet"
+        description="Upload files to store, manage, and share them with your AI agents."
+      />
     );
   }
 

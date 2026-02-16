@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { pageVariants } from "@/utils/animations";
 import { useParams, useNavigate } from "react-router-dom";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import {
   Plus,
   MessageSquare,
@@ -17,6 +18,7 @@ import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { Conversation } from "@/types";
 
 export default function ChatPage() {
+  usePageTitle("Chat");
   const { conversationId } = useParams<{ conversationId: string }>();
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<Conversation[]>([]);

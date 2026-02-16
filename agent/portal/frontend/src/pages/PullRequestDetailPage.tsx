@@ -17,6 +17,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "@/api/client";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { GitPullRequest as PRType } from "@/types";
 
@@ -39,6 +40,7 @@ export default function PullRequestDetailPage() {
     repo: string;
     number: string;
   }>();
+  usePageTitle(`PR #${number} - ${owner}/${repo}`);
   const navigate = useNavigate();
   const prNumber = parseInt(number, 10);
 

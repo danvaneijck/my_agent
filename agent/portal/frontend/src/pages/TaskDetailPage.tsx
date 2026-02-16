@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, XCircle, Clock, FolderOpen, Trash2, Brain } from "lucide-react";
 import { api } from "@/api/client";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import StatusBadge from "@/components/common/StatusBadge";
 import RepoLabel from "@/components/common/RepoLabel";
 import TaskLogViewer from "@/components/tasks/TaskLogViewer";
@@ -49,6 +50,7 @@ export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const [task, setTask] = useState<Task | null>(null);
+  usePageTitle(task ? `Task ${task.prompt.slice(0, 30)}...` : "Task");
   const [loading, setLoading] = useState(true);
   const [showCancel, setShowCancel] = useState(false);
   const [showDelete, setShowDelete] = useState(false);

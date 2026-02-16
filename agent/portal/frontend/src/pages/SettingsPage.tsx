@@ -4,6 +4,7 @@ import { pageVariants } from "@/utils/animations";
 import { ShieldOff, Sun, Moon, Monitor } from "lucide-react";
 import { api } from "@/api/client";
 import { useTheme } from "@/contexts/ThemeContext";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import CredentialCard from "@/components/settings/CredentialCard";
 import ConnectedAccounts from "@/components/settings/ConnectedAccounts";
 
@@ -41,6 +42,7 @@ interface ConnectedAccount {
 }
 
 export default function SettingsPage() {
+  usePageTitle("Settings");
   const [tab, setTab] = useState<Tab>("appearance");
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [services, setServices] = useState<ServiceCredentialInfo[]>([]);

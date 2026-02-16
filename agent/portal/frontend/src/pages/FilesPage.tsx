@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { pageVariants } from "@/utils/animations";
 import { RefreshCw, Search } from "lucide-react";
 import { api } from "@/api/client";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import FileList from "@/components/files/FileList";
 import FileUpload from "@/components/files/FileUpload";
 import FilePreview from "@/components/files/FilePreview";
@@ -10,6 +11,7 @@ import ConfirmDialog from "@/components/common/ConfirmDialog";
 import type { FileInfo } from "@/types";
 
 export default function FilesPage() {
+  usePageTitle("Files");
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

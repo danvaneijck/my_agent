@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw, CheckCircle, Archive } from "lucide-react";
 import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase } from "@/hooks/useProjects";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PlanningTaskPanel from "@/components/projects/PlanningTaskPanel";
@@ -101,6 +102,7 @@ function PhaseRow({ phase, projectId, repoOwner, repoName, onClick, onRetry }: {
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { project, loading, error, refetch } = useProjectDetail(projectId);
+  usePageTitle(project ? project.name : "Project");
   const navigate = useNavigate();
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);

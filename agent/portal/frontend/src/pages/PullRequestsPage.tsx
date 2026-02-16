@@ -3,7 +3,9 @@ import { motion } from "framer-motion";
 import { pageVariants, listContainerVariants, listItemVariants } from "@/utils/animations";
 import { GitPullRequest, RefreshCw } from "lucide-react";
 import { usePullRequests } from "@/hooks/usePullRequests";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { PullRequestsListSkeleton } from "@/components/common/Skeleton";
+import EmptyState from "@/components/common/EmptyState";
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return "";
@@ -21,6 +23,7 @@ function timeAgo(dateStr: string | null): string {
 }
 
 export default function PullRequestsPage() {
+  usePageTitle("Pull Requests");
   const { pullRequests, loading, error, refetch } = usePullRequests();
   const navigate = useNavigate();
 
@@ -61,9 +64,11 @@ export default function PullRequestsPage() {
       {loading && pullRequests.length === 0 ? (
         <PullRequestsListSkeleton />
       ) : pullRequests.length === 0 ? (
-        <div className="text-center py-16 text-gray-500 text-sm">
-          No open pull requests across your repositories
-        </div>
+        <EmptyState
+          icon={GitPullRequest}
+          title="No open pull requests"
+          description="There are no open pull requests across your repositories. Pull requests will appear here when created."
+        />
       ) : (
         <motion.div
           className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden divide-y divide-light-border dark:divide-border/50"

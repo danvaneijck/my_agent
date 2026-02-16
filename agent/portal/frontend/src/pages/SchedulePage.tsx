@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { pageVariants } from "@/utils/animations";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import {
   RefreshCw,
   Clock,
@@ -352,6 +353,7 @@ function JobCard({
 type StatusFilter = "all" | "active" | "completed" | "failed" | "cancelled";
 
 export default function SchedulePage() {
+  usePageTitle("Scheduled Jobs");
   const [jobs, setJobs] = useState<ScheduledJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<StatusFilter>("all");

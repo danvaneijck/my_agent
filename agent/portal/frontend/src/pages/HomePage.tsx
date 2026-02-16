@@ -15,6 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import type { AnthropicUsageData } from "@/hooks/useDashboard";
 import type {
   ProjectSummary,
@@ -1103,6 +1104,7 @@ function DashboardSkeleton() {
 // ---------------------------------------------------------------------------
 
 export default function HomePage() {
+  usePageTitle("Dashboard");
   const dashboard = useDashboard();
   const [autoRefresh, setAutoRefresh] = useState(false);
 

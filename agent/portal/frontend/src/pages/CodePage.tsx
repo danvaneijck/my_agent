@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { pageVariants } from "@/utils/animations";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import {
   Folder,
   File,
@@ -81,6 +82,7 @@ function CopyableId({ id, truncate = false }: { id: string; truncate?: boolean }
 }
 
 export default function CodePage() {
+  usePageTitle("Code");
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);

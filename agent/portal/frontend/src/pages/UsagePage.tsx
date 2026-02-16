@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { pageVariants } from "@/utils/animations";
 import { BarChart3, RefreshCw } from "lucide-react";
 import { api } from "@/api/client";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { UsagePageSkeleton } from "@/components/common/Skeleton";
 
 // ---------------------------------------------------------------------------
@@ -352,6 +353,7 @@ function UsageBar({
 // ---------------------------------------------------------------------------
 
 export default function UsagePage() {
+  usePageTitle("Usage");
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [history, setHistory] = useState<UsageHistory | null>(null);
   const [anthropic, setAnthropic] = useState<AnthropicUsageData | null>(null);

@@ -3,11 +3,13 @@ import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
 import { useTasks } from "@/hooks/useTasks";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import TaskList from "@/components/tasks/TaskList";
 import NewTaskForm from "@/components/tasks/NewTaskForm";
 import { pageVariants } from "@/utils/animations";
 
 export default function TasksPage() {
+  usePageTitle("Claude Code Tasks");
   const { tasks, loading, error, refetch } = useTasks();
   const [searchParams, setSearchParams] = useSearchParams();
 

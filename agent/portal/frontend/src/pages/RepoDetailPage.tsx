@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { api } from "@/api/client";
 import { useRepoDetail } from "@/hooks/useRepoDetail";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import NewTaskModal from "@/components/tasks/NewTaskModal";
 import { pageVariants } from "@/utils/animations";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
@@ -54,6 +55,7 @@ function formatRelativeDate(dateStr: string | null): string {
 
 export default function RepoDetailPage() {
   const { owner = "", repo = "" } = useParams<{ owner: string; repo: string }>();
+  usePageTitle(`${owner}/${repo}`);
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("branches");
   const [repoMeta, setRepoMeta] = useState<GitRepo | null>(null);

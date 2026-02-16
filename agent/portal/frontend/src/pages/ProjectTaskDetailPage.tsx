@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, GitBranch, GitPullRequest, ExternalLink, Clock, AlertCircle } from "lucide-react";
 import { api } from "@/api/client";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import type { ProjectTask } from "@/types";
 
 const STATUS_BADGE: Record<string, string> = {
@@ -21,6 +22,7 @@ export default function ProjectTaskDetailPage() {
   const { projectId, taskId } = useParams<{ projectId: string; taskId: string }>();
   const navigate = useNavigate();
   const [task, setTask] = useState<ProjectTask | null>(null);
+  usePageTitle(task ? task.title : "Project Task");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
