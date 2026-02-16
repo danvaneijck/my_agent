@@ -793,16 +793,35 @@ class ProjectPlannerTools:
         """Assemble a combined prompt for a single claude_code.run_task call."""
         lines: list[str] = [
             f'You are implementing a project called "{project_name}".',
-            "Implement ALL of the following phases and tasks in order.",
-            "Commit after completing each logical unit of work with clear messages referencing the phase/task.",
-            "Run any existing tests after your changes to make sure nothing is broken.",
+            "",
+            "# Project Plan",
+            "",
+            "There should be a PLAN.md (or plan.md) file in the root of this repository",
+            "containing the full project plan. **Read it first** to understand the overall",
+            "goals, architecture decisions, and how your current work fits into the",
+            "bigger picture.",
             "",
         ]
 
+        # Include inline plan as fallback in case PLAN.md is not in the repo
         if design_document:
-            lines.append("## Design Document\n")
-            lines.append(design_document)
+            lines.append("If PLAN.md is not present, here is the full plan for reference:")
             lines.append("")
+            lines.append("<project-plan>")
+            lines.append(design_document)
+            lines.append("</project-plan>")
+            lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
+        # Current phase tasks to implement
+        lines.append("# Your Tasks")
+        lines.append("")
+        lines.append("Implement ONLY the following tasks. Do not work on tasks from other phases.")
+        lines.append("Commit after completing each logical unit of work with clear messages referencing the phase/task.")
+        lines.append("Run any existing tests after your changes to make sure nothing is broken.")
+        lines.append("")
 
         for phase in phases:
             lines.append(f"## {phase['name']}")
@@ -819,7 +838,8 @@ class ProjectPlannerTools:
             lines.append("")
 
         lines.append("## Instructions")
-        lines.append("- Work through each phase sequentially.")
+        lines.append("- Read PLAN.md first for full context about the project design and goals.")
+        lines.append("- Implement ONLY the tasks listed above under 'Your Tasks'.")
         lines.append("- Within each phase, implement tasks in the order listed.")
         lines.append("- Make sure all tests pass before finishing.")
         return "\n".join(lines)
@@ -1307,11 +1327,15 @@ class ProjectPlannerTools:
         workflow_id: str | None = None,
         auto_push: bool = True,
         timeout: int = 1800,
+        platform: str | None = None,
+        platform_channel_id: str | None = None,
         user_id: str | None = None,
     ) -> dict:
         """Start automated sequential phase execution with scheduler workflow chaining."""
         if not user_id:
             raise ValueError("user_id is required")
+        if not platform or not platform_channel_id:
+            raise ValueError("platform and platform_channel_id are required for workflow scheduling")
 
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
@@ -1381,6 +1405,8 @@ class ProjectPlannerTools:
                         "on_success_message": on_success_message,
                         "on_complete": "resume_conversation",
                         "workflow_id": workflow_id,
+                        "platform": platform,
+                        "platform_channel_id": platform_channel_id,
                     },
                     "user_id": user_id,
                 }

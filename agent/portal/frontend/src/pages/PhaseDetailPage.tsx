@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, GitBranch, GitPullRequest, ExternalLink, AlertCircle } from "lucide-react";
-import { useProjectDetail, usePhaseTasks } from "@/hooks/useProjects";
+import { ArrowLeft, RefreshCw, GitBranch, GitPullRequest, ExternalLink, AlertCircle, RotateCcw } from "lucide-react";
+import { useProjectDetail, usePhaseTasks, retryPhase } from "@/hooks/useProjects";
 import { api } from "@/api/client";
 import type { ProjectTask } from "@/types";
 
@@ -100,6 +100,18 @@ export default function PhaseDetailPage() {
   const { tasks, loading, error, refetch } = usePhaseTasks(projectId, phaseId);
   const navigate = useNavigate();
   const [dragOver, setDragOver] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = async () => {
+    if (!projectId || !phaseId) return;
+    setRetrying(true);
+    try {
+      await retryPhase(projectId, phaseId);
+      navigate(`/projects/${projectId}`);
+    } catch {
+      setRetrying(false);
+    }
+  };
 
   const phase = project?.phases.find((p) => p.phase_id === phaseId);
 
@@ -241,10 +253,18 @@ export default function PhaseDetailPage() {
       {/* Failed tasks */}
       {failedTasks.length > 0 && (
         <div className="bg-red-500/5 border border-red-500/20 rounded-xl overflow-hidden">
-          <div className="px-4 py-2 border-b border-red-500/20">
+          <div className="px-4 py-2 border-b border-red-500/20 flex items-center justify-between">
             <h3 className="text-xs font-medium text-red-400 uppercase tracking-wider">
               Failed ({failedTasks.length})
             </h3>
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="inline-flex items-center gap-1.5 text-xs text-red-400 hover:text-white px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+            >
+              <RotateCcw size={12} className={retrying ? "animate-spin" : ""} />
+              {retrying ? "Retrying..." : "Retry Failed Tasks"}
+            </button>
           </div>
           <div className="p-2 space-y-2">
             {failedTasks.map((task) => (

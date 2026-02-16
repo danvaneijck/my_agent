@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Clock, ExternalLink, Pause, CheckCircle, AlertCircle } from "lucide-react";
+import { Clock, ExternalLink, Pause, CheckCircle, AlertCircle, RotateCcw } from "lucide-react";
 import { api } from "@/api/client";
+import { retryPhase } from "@/hooks/useProjects";
 
 interface ExecutionStatus {
   project_id: string;
@@ -40,6 +41,7 @@ export default function ProjectExecutionPanel({
   const [status, setStatus] = useState<ExecutionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [pausing, setPausing] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -47,33 +49,15 @@ export default function ProjectExecutionPanel({
         const data = await api<ExecutionStatus>(`/api/projects/${projectId}/execution-status`);
         setStatus(data);
 
-        // Check if we should auto-advance
+        // When the claude task finishes, refresh the parent so it picks up
+        // the new state. The scheduler handles phase progression for automated
+        // workflows; manual mode is one-phase-at-a-time by design.
         if (
           data.current_phase &&
           data.claude_task_status?.status === "completed" &&
           data.project_status === "active"
         ) {
-          // Current phase completed, check if there are more phases to execute
-          const totalTasks = data.total_tasks;
-          const doneTasks = data.task_counts.done || 0;
-          const doingTasks = data.task_counts.doing || 0;
-
-          if (doneTasks + doingTasks < totalTasks) {
-            // More tasks to do, start next phase
-            try {
-              await api(`/api/projects/${projectId}/execute-phase`, {
-                method: "POST",
-                body: JSON.stringify({ auto_push: true }),
-              });
-              // Polling will pick up the new phase
-            } catch {
-              // Failed to start next phase, just refresh
-              onExecutionComplete();
-            }
-          } else {
-            // All tasks complete
-            onExecutionComplete();
-          }
+          onExecutionComplete();
         }
       } catch {
         // Silent fail
@@ -143,7 +127,55 @@ export default function ProjectExecutionPanel({
   }
 
   const isRunning = claudeTask?.status === "running" || claudeTask?.status === "queued";
+  const isFailed = claudeTask?.status === "failed" || claudeTask?.status === "timed_out" || claudeTask?.status === "cancelled";
   const isPaused = status.project_status === "paused";
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      await retryPhase(projectId, currentPhase.phase_id);
+      onExecutionComplete();
+    } catch {
+      // Error
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  // Show failure state when claude task has failed
+  if (isFailed) {
+    return (
+      <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertCircle size={20} />
+            <h3 className="text-sm font-medium">
+              Failed: {currentPhase.name}
+            </h3>
+          </div>
+          {status.claude_task_id && (
+            <a
+              href={`/tasks/${status.claude_task_id}`}
+              className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+            >
+              View Task <ExternalLink size={12} />
+            </a>
+          )}
+        </div>
+        <p className="text-sm text-gray-400">
+          The task {claudeTask?.status || "failed"}. You can retry to re-run the failed tasks.
+        </p>
+        <button
+          onClick={handleRetry}
+          disabled={retrying}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/30 hover:text-white transition-colors disabled:opacity-50"
+        >
+          <RotateCcw size={16} className={retrying ? "animate-spin" : ""} />
+          {retrying ? "Retrying..." : "Retry Failed Tasks"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-surface-light border border-border rounded-xl p-4 space-y-4">

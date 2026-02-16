@@ -135,3 +135,21 @@ export async function syncPrStatus(
     method: "POST",
   });
 }
+
+export async function syncPhaseStatus(
+  projectId: string,
+): Promise<{ synced: number }> {
+  return api(`/api/projects/${projectId}/sync-phase-status`, {
+    method: "POST",
+  });
+}
+
+export async function retryPhase(
+  projectId: string,
+  phaseId: string,
+): Promise<{ success: boolean; message?: string; workflow_id?: string }> {
+  return api(`/api/projects/${projectId}/retry-phase`, {
+    method: "POST",
+    body: JSON.stringify({ phase_id: phaseId }),
+  });
+}

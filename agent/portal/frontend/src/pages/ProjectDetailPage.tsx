@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest } from "lucide-react";
-import { useProjectDetail, executePhase, startWorkflow, syncPrStatus } from "@/hooks/useProjects";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw, CheckCircle, Archive } from "lucide-react";
+import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase } from "@/hooks/useProjects";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PlanningTaskPanel from "@/components/projects/PlanningTaskPanel";
@@ -22,12 +22,13 @@ const PHASE_STATUS_COLORS: Record<string, string> = {
   completed: "bg-green-500/20 text-green-400",
 };
 
-function PhaseRow({ phase, projectId, repoOwner, repoName, onClick }: {
+function PhaseRow({ phase, projectId, repoOwner, repoName, onClick, onRetry }: {
   phase: ProjectPhase;
   projectId: string;
   repoOwner: string | null;
   repoName: string | null;
   onClick: () => void;
+  onRetry?: () => void;
 }) {
   const counts = phase.task_counts || {};
   const total = Object.values(counts).reduce((a, b) => a + (b || 0), 0);
@@ -73,7 +74,21 @@ function PhaseRow({ phase, projectId, repoOwner, repoName, onClick }: {
             <div className="flex gap-2 text-xs">
               {(counts.doing || 0) > 0 && <span className="text-yellow-400">{counts.doing} doing</span>}
               {(counts.in_review || 0) > 0 && <span className="text-blue-400">{counts.in_review} review</span>}
-              {(counts.failed || 0) > 0 && <span className="text-red-400">{counts.failed} failed</span>}
+              {(counts.failed || 0) > 0 && (
+                <>
+                  <span className="text-red-400">{counts.failed} failed</span>
+                  {onRetry && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onRetry(); }}
+                      className="inline-flex items-center gap-1 text-xs text-red-400 hover:text-white px-1.5 py-0.5 rounded bg-red-500/10 hover:bg-red-500/30 transition-colors"
+                      title="Retry failed tasks"
+                    >
+                      <RotateCcw size={10} />
+                      Retry
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}
@@ -90,18 +105,37 @@ export default function ProjectDetailPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [showReapply, setShowReapply] = useState(false);
+  const [reapplyPrompt, setReapplyPrompt] = useState("");
+  const [reapplying, setReapplying] = useState(false);
+  const [reapplyProgress, setReapplyProgress] = useState("");
+  const [retryingPhase, setRetryingPhase] = useState<string | null>(null);
   const syncedRef = useRef(false);
 
-  // Auto-sync PR status on page load to catch merges done outside the portal
+  // Auto-sync on page load: fix stuck phases + catch merged PRs
   useEffect(() => {
     if (!projectId || !project || syncedRef.current) return;
-    // Only sync if project has in_review tasks
-    const hasInReview = project.phases.some((p) => (p.task_counts?.in_review || 0) > 0);
-    if (!hasInReview) return;
     syncedRef.current = true;
-    syncPrStatus(projectId).then((result) => {
-      if (result.synced > 0) refetch();
-    }).catch(() => {});
+
+    const syncs: Promise<{ synced: number }>[] = [];
+
+    // Sync stuck in_progress phases whose claude tasks have finished
+    const hasInProgress = project.phases.some((p) => p.status === "in_progress");
+    if (hasInProgress) {
+      syncs.push(syncPhaseStatus(projectId));
+    }
+
+    // Sync merged PRs for in_review tasks
+    const hasInReview = project.phases.some((p) => (p.task_counts?.in_review || 0) > 0);
+    if (hasInReview) {
+      syncs.push(syncPrStatus(projectId));
+    }
+
+    if (syncs.length > 0) {
+      Promise.all(syncs).then((results) => {
+        if (results.some((r) => r.synced > 0)) refetch();
+      }).catch(() => {});
+    }
   }, [projectId, project, refetch]);
 
   const handleDelete = async () => {
@@ -158,6 +192,57 @@ export default function ProjectDetailPage() {
       // Error
     } finally {
       setStarting(false);
+    }
+  };
+
+  const handleSetStatus = async (newStatus: string) => {
+    if (!projectId) return;
+    try {
+      await api(`/api/projects/${projectId}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      refetch();
+    } catch {
+      // Error
+    }
+  };
+
+  const handleRetryPhase = async (phaseId: string) => {
+    if (!projectId) return;
+    setRetryingPhase(phaseId);
+    try {
+      await retryPhase(projectId, phaseId);
+      refetch();
+    } catch {
+      // Error
+    } finally {
+      setRetryingPhase(null);
+    }
+  };
+
+  const handleReapplyPlan = async () => {
+    if (!projectId || !project?.design_document) return;
+    setReapplying(true);
+    setReapplyProgress("Clearing existing phases...");
+    try {
+      await api(`/api/projects/${projectId}/clear-phases`, { method: "POST" });
+      setReapplyProgress("Parsing plan with AI...");
+      await api(`/api/projects/${projectId}/apply-plan`, {
+        method: "POST",
+        body: JSON.stringify({
+          plan_content: project.design_document,
+          custom_prompt: reapplyPrompt || undefined,
+        }),
+      });
+      setReapplyProgress("Done!");
+      setShowReapply(false);
+      setReapplyPrompt("");
+      refetch();
+    } catch (e) {
+      setReapplyProgress(`Error: ${e instanceof Error ? e.message : "Failed"}`);
+    } finally {
+      setReapplying(false);
     }
   };
 
@@ -219,6 +304,33 @@ export default function ProjectDetailPage() {
             >
               <RefreshCw size={16} />
             </button>
+            {project.status !== "completed" && project.status !== "archived" && (
+              <button
+                onClick={() => handleSetStatus("completed")}
+                className="p-1.5 rounded hover:bg-green-500/20 text-gray-400 hover:text-green-400"
+                title="Mark as completed"
+              >
+                <CheckCircle size={16} />
+              </button>
+            )}
+            {project.status === "completed" && (
+              <button
+                onClick={() => handleSetStatus("archived")}
+                className="p-1.5 rounded hover:bg-gray-500/20 text-gray-400 hover:text-gray-300"
+                title="Archive project"
+              >
+                <Archive size={16} />
+              </button>
+            )}
+            {(project.status === "completed" || project.status === "archived") && (
+              <button
+                onClick={() => handleSetStatus("active")}
+                className="p-1.5 rounded hover:bg-green-500/20 text-gray-400 hover:text-green-400"
+                title="Reopen project"
+              >
+                <Play size={16} />
+              </button>
+            )}
             <button
               onClick={() => setShowDelete(true)}
               className="p-1.5 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400"
@@ -313,10 +425,20 @@ export default function ProjectDetailPage() {
 
       {/* Phases */}
       <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h3 className="text-sm font-medium text-gray-300">
             Phases ({project.phases.length})
           </h3>
+          {project.design_document && (
+            <button
+              onClick={() => setShowReapply(true)}
+              className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 px-2 py-1 rounded hover:bg-surface-lighter transition-colors"
+              title="Clear phases and re-apply the plan with optional modifications"
+            >
+              <RotateCcw size={12} />
+              Re-apply Plan
+            </button>
+          )}
         </div>
         {project.phases.length === 0 ? (
           <div className="px-4 py-8 text-center text-gray-500 text-sm">
@@ -332,6 +454,11 @@ export default function ProjectDetailPage() {
                 repoOwner={project.repo_owner}
                 repoName={project.repo_name}
                 onClick={() => navigate(`/projects/${project.project_id}/phases/${phase.phase_id}`)}
+                onRetry={
+                  (phase.task_counts?.failed || 0) > 0 && !project.phases.some(p => p.status === "in_progress")
+                    ? () => handleRetryPhase(phase.phase_id)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -361,6 +488,69 @@ export default function ProjectDetailPage() {
         onConfirm={handleDelete}
         onCancel={() => setShowDelete(false)}
       />
+
+      {/* Re-apply Plan Modal */}
+      {showReapply && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-surface-light border border-border rounded-xl p-6 max-w-lg w-full space-y-4">
+            <h3 className="text-lg font-semibold text-white">Re-apply Plan</h3>
+            <p className="text-sm text-gray-400">
+              This will clear all existing phases and tasks, then re-parse the plan.
+              Optionally provide instructions to modify how the plan is structured.
+            </p>
+
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">
+                Custom instructions (optional)
+              </label>
+              <textarea
+                value={reapplyPrompt}
+                onChange={(e) => setReapplyPrompt(e.target.value)}
+                placeholder='e.g., "Condense into 3 phases", "Split phase 2 into smaller tasks", "Group by file type instead of feature"'
+                rows={3}
+                disabled={reapplying}
+                className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent resize-none disabled:opacity-50"
+              />
+            </div>
+
+            {reapplying && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <RefreshCw size={14} className="animate-spin" />
+                  {reapplyProgress}
+                </div>
+                <div className="h-1.5 bg-surface rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent rounded-full transition-all duration-1000"
+                    style={{
+                      width: reapplyProgress.includes("Clearing") ? "30%" :
+                             reapplyProgress.includes("Parsing") ? "70%" :
+                             reapplyProgress.includes("Done") ? "100%" : "10%",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowReapply(false); setReapplyPrompt(""); setReapplyProgress(""); }}
+                disabled={reapplying}
+                className="px-4 py-2 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReapplyPlan}
+                disabled={reapplying}
+                className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
+              >
+                {reapplying ? "Applying..." : "Clear & Re-apply"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -373,6 +373,18 @@ MANIFEST = ModuleManifest(
                     description="Per-phase timeout in seconds (default 1800)",
                     required=False,
                 ),
+                ToolParameter(
+                    name="platform",
+                    type="string",
+                    description="Platform for notifications (e.g. 'web', 'discord'). Required for workflow scheduling.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="platform_channel_id",
+                    type="string",
+                    description="Channel ID for notifications. For web portal, use the user's UUID.",
+                    required=False,
+                ),
             ],
             required_permission="user",
         ),
