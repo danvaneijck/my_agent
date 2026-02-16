@@ -86,7 +86,7 @@ export default function ProjectTaskDetailPage() {
 
       {/* Description */}
       {task.description && (
-        <div className="bg-surface-light border border-border rounded-xl p-4">
+        <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
           <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Description</h3>
           <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans">{task.description}</pre>
         </div>
@@ -94,14 +94,14 @@ export default function ProjectTaskDetailPage() {
 
       {/* Acceptance Criteria */}
       {task.acceptance_criteria && (
-        <div className="bg-surface-light border border-border rounded-xl p-4">
+        <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
           <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Acceptance Criteria</h3>
           <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans">{task.acceptance_criteria}</pre>
         </div>
       )}
 
       {/* Git & Integration Info */}
-      <div className="bg-surface-light border border-border rounded-xl p-4 space-y-3">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
         <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Integration</h3>
 
         {task.branch_name && (
@@ -151,7 +151,7 @@ export default function ProjectTaskDetailPage() {
       )}
 
       {/* Timestamps */}
-      <div className="bg-surface-light border border-border rounded-xl p-4 space-y-2">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-2">
         <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Timeline</h3>
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Clock size={12} />

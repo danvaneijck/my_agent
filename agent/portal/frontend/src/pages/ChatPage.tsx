@@ -154,7 +154,7 @@ export default function ChatPage() {
           absolute md:static inset-0 z-20 md:z-auto
         `}
       >
-        <div className="p-3 border-b border-border flex items-center justify-between">
+        <div className="p-3 border-b border-light-border dark:border-border flex items-center justify-between">
           <span className="text-sm font-medium text-gray-400">Conversations</span>
           <button
             onClick={startNew}
@@ -171,7 +171,7 @@ export default function ChatPage() {
               navigate("/chat");
               setShowHistory(false);
             }}
-            className={`w-full text-left px-3 py-3 text-sm border-b border-border/50 hover:bg-surface-lighter transition-colors ${
+            className={`w-full text-left px-3 py-3 text-sm border-b border-light-border dark:border-border/50 hover:bg-surface-lighter transition-colors ${
               !conversationId ? "bg-accent/10 text-accent-hover" : "text-gray-400"
             }`}
           >
@@ -181,7 +181,7 @@ export default function ChatPage() {
           {conversations.map((conv) => (
             <div
               key={conv.id}
-              className={`relative group border-b border-border/50 ${
+              className={`relative group border-b border-light-border dark:border-border/50 ${
                 conversationId === conv.id
                   ? "bg-accent/10"
                   : "hover:bg-surface-lighter"
@@ -300,7 +300,7 @@ export default function ChatPage() {
       {/* Chat area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile toggle */}
-        <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-border">
+        <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b border-light-border dark:border-border">
           <button
             onClick={() => setShowHistory(!showHistory)}
             className="p-1.5 rounded hover:bg-surface-lighter text-gray-400"

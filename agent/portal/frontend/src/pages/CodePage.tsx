@@ -213,7 +213,7 @@ export default function CodePage() {
     <div className="flex h-full">
       {/* Task/workspace list panel */}
       <div className="w-72 shrink-0 border-r border-border flex flex-col bg-surface-light">
-        <div className="p-3 space-y-2 shrink-0 border-b border-border">
+        <div className="p-3 space-y-2 shrink-0 border-b border-light-border dark:border-border">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-white flex items-center gap-2">
               <Code2 size={16} className="text-accent" />
@@ -263,7 +263,7 @@ export default function CodePage() {
             filtered.map((task) => (
               <div
                 key={task.id}
-                className={`relative group border-b border-border/50 hover:bg-surface-lighter transition-colors ${
+                className={`relative group border-b border-light-border dark:border-border/50 hover:bg-surface-lighter transition-colors ${
                   selectedTask?.id === task.id ? "bg-surface-lighter" : ""
                 }`}
               >
@@ -307,7 +307,7 @@ export default function CodePage() {
       {selectedTask ? (
         <div className="flex-1 flex flex-col min-w-0">
           {/* Task info bar */}
-          <div className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 bg-surface border-b border-light-border dark:border-border shrink-0">
             <div className="flex items-center gap-3 min-w-0">
               <span className="text-xs shrink-0">
                 <CopyableId id={selectedTask.id} />
@@ -339,7 +339,7 @@ export default function CodePage() {
           </div>
 
           {/* Breadcrumb navigation */}
-          <div className="flex items-center gap-1 px-3 py-2 bg-surface border-b border-border text-xs text-gray-400 overflow-x-auto shrink-0">
+          <div className="flex items-center gap-1 px-3 py-2 bg-surface border-b border-light-border dark:border-border text-xs text-gray-400 overflow-x-auto shrink-0">
             <button
               onClick={() => {
                 setCurrentPath("");
@@ -421,7 +421,7 @@ export default function CodePage() {
                 </div>
               ) : selectedFile ? (
                 <div className="flex flex-col h-full">
-                  <div className="flex items-center justify-between px-4 py-2 bg-surface/50 border-b border-border text-xs text-gray-500 shrink-0">
+                  <div className="flex items-center justify-between px-4 py-2 bg-surface/50 border-b border-light-border dark:border-border text-xs text-gray-500 shrink-0">
                     <span>{selectedFile.path}</span>
                     <div className="flex items-center gap-3">
                       {!selectedFile.binary &&

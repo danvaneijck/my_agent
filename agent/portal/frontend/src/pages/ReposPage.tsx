@@ -115,7 +115,7 @@ export default function ReposPage() {
             <button
               key={repo.full_name}
               onClick={() => navigate(`/repos/${repo.owner}/${repo.repo}`)}
-              className="bg-surface-light border border-border rounded-xl p-4 text-left hover:border-accent/50 hover:bg-surface-lighter/50 transition-all group"
+              className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-accent/50 hover:bg-surface-lighter/50 transition-all group"
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="min-w-0">

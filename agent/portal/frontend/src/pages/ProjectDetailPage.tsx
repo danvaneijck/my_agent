@@ -251,7 +251,7 @@ export default function ProjectDetailPage() {
       <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
         <div className="h-6 bg-surface-lighter/60 rounded w-1/3" />
         <div className="h-4 bg-surface-lighter/60 rounded w-2/3" />
-        <div className="bg-surface-light border border-border rounded-xl p-4 space-y-3">
+        <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-14 bg-surface-lighter/60 rounded" />
           ))}
@@ -353,7 +353,7 @@ export default function ProjectDetailPage() {
 
       {/* Overall progress */}
       {totalTasks > 0 && (
-        <div className="bg-surface-light border border-border rounded-xl p-4">
+        <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
           <div className="flex justify-between text-sm text-gray-400 mb-2">
             <span>Overall Progress</span>
             <span>{doneTasks}/{totalTasks} tasks ({overallPct}%)</span>
@@ -424,8 +424,8 @@ export default function ProjectDetailPage() {
       )}
 
       {/* Phases */}
-      <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-light-border dark:border-border flex items-center justify-between">
           <h3 className="text-sm font-medium text-gray-300">
             Phases ({project.phases.length})
           </h3>
@@ -445,7 +445,7 @@ export default function ProjectDetailPage() {
             No phases yet
           </div>
         ) : (
-          <div className="divide-y divide-border/50">
+          <div className="divide-y divide-light-border dark:divide-border/50">
             {project.phases.map((phase) => (
               <PhaseRow
                 key={phase.phase_id}
@@ -467,12 +467,12 @@ export default function ProjectDetailPage() {
 
       {/* Design Document */}
       {project.design_document && (
-        <details className="bg-surface-light border border-border rounded-xl overflow-hidden">
+        <details className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
           <summary className="px-4 py-3 cursor-pointer hover:bg-surface-lighter/50 transition-colors flex items-center gap-2 text-sm font-medium text-gray-300">
             <FileText size={16} />
             Design Document
           </summary>
-          <div className="px-4 py-3 border-t border-border">
+          <div className="px-4 py-3 border-t border-light-border dark:border-border">
             <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
               {project.design_document}
             </pre>
@@ -492,7 +492,7 @@ export default function ProjectDetailPage() {
       {/* Re-apply Plan Modal */}
       {showReapply && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-surface-light border border-border rounded-xl p-6 max-w-lg w-full space-y-4">
+          <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 max-w-lg w-full space-y-4">
             <h3 className="text-lg font-semibold text-white">Re-apply Plan</h3>
             <p className="text-sm text-gray-400">
               This will clear all existing phases and tasks, then re-parse the plan.

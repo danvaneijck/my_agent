@@ -456,7 +456,7 @@ export default function SchedulePage() {
       </div>
 
       {/* Job list */}
-      <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         {loading && jobs.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
@@ -471,7 +471,7 @@ export default function SchedulePage() {
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-gray-500 text-xs uppercase tracking-wider">
+                  <tr className="border-b border-light-border dark:border-border text-gray-500 text-xs uppercase tracking-wider">
                     <th className="text-left px-4 py-3 font-medium">ID</th>
                     <th className="text-left px-4 py-3 font-medium">Type</th>
                     <th className="text-left px-4 py-3 font-medium">Target</th>
@@ -493,7 +493,7 @@ export default function SchedulePage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/50">
+                <tbody className="divide-y divide-light-border dark:divide-border/50">
                   {/* Workflow groups first */}
                   {workflows.map((group) => (
                     <WorkflowGroupView
@@ -516,7 +516,7 @@ export default function SchedulePage() {
             </div>
 
             {/* Mobile cards */}
-            <div className="md:hidden divide-y divide-border/50">
+            <div className="md:hidden divide-y divide-light-border dark:divide-border/50">
               {/* Workflow groups */}
               {workflows.map((group) => (
                 <div key={group.workflow_id}>

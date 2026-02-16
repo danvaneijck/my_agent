@@ -115,7 +115,7 @@ export default function SettingsPage() {
         <>
           {/* Profile tab */}
           {tab === "profile" && profile && (
-            <div className="bg-surface-light border border-border rounded-xl p-6 space-y-4">
+            <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4">
               <h2 className="text-lg font-semibold text-white">Profile</h2>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
@@ -165,7 +165,7 @@ export default function SettingsPage() {
 
               {/* Connected platforms summary */}
               {accounts.length > 0 && (
-                <div className="pt-4 border-t border-border">
+                <div className="pt-4 border-t border-light-border dark:border-border">
                   <span className="text-sm text-gray-400">Connected Platforms</span>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {accounts.map((account) => (

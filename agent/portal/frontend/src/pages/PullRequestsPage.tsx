@@ -57,7 +57,7 @@ export default function PullRequestsPage() {
           No open pull requests across your repositories
         </div>
       ) : (
-        <div className="bg-surface-light border border-border rounded-xl overflow-hidden divide-y divide-border/50">
+        <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden divide-y divide-light-border dark:divide-border/50">
           {pullRequests.map((pr) => (
             <button
               key={`${pr.owner}/${pr.repo}#${pr.number}`}

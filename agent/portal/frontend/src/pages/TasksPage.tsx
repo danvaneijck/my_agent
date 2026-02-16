@@ -60,7 +60,7 @@ export default function TasksPage() {
       )}
 
       {/* Task list */}
-      <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <TaskList tasks={tasks} />
       </div>
     </div>

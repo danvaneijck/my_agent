@@ -120,7 +120,7 @@ export default function TaskDetailPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 md:px-6 border-b border-border space-y-3 shrink-0">
+      <div className="p-4 md:px-6 border-b border-light-border dark:border-border space-y-3 shrink-0">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate("/")}
@@ -231,7 +231,7 @@ export default function TaskDetailPage() {
       </div>
 
       {/* View mode tabs */}
-      <div className="flex border-b border-border shrink-0">
+      <div className="flex border-b border-light-border dark:border-border shrink-0">
         {(["output", "logs", "files"] as const).map((mode) => (
           <button
             key={mode}

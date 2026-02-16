@@ -108,7 +108,7 @@ function BudgetCard({ summary }: { summary: UsageSummary }) {
     : 0;
 
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-6 space-y-4">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4">
       <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
         Monthly Budget
       </h3>
@@ -134,7 +134,7 @@ function BudgetCard({ summary }: { summary: UsageSummary }) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 border-t border-border">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 border-t border-light-border dark:border-border">
         <Stat
           label="This Month Cost"
           value={formatCost(summary.this_month.cost)}
@@ -159,7 +159,7 @@ function ModelBreakdown({ models }: { models: ModelUsage[] }) {
   const maxTokens = Math.max(...models.map((m) => m.total_tokens), 1);
 
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-6">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6">
       <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
         API Usage by Model (Last 30 Days)
       </h3>
@@ -191,7 +191,7 @@ function ModelBreakdown({ models }: { models: ModelUsage[] }) {
 function DailyHistory({ daily }: { daily: DailyUsage[] }) {
   if (daily.length === 0) {
     return (
-      <div className="bg-surface-light border border-border rounded-xl p-6 text-center text-gray-500 text-sm">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 text-center text-gray-500 text-sm">
         No usage data for the last 30 days.
       </div>
     );
@@ -200,8 +200,8 @@ function DailyHistory({ daily }: { daily: DailyUsage[] }) {
   const reversed = [...daily].reverse();
 
   return (
-    <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
-      <div className="p-4 border-b border-border">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
+      <div className="p-4 border-b border-light-border dark:border-border">
         <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
           Daily History (Last 30 Days)
         </h3>
@@ -209,7 +209,7 @@ function DailyHistory({ daily }: { daily: DailyUsage[] }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-gray-500 text-xs uppercase tracking-wider">
+            <tr className="border-b border-light-border dark:border-border text-gray-500 text-xs uppercase tracking-wider">
               <th className="text-left px-4 py-2.5 font-medium">Date</th>
               <th className="text-right px-4 py-2.5 font-medium">Input</th>
               <th className="text-right px-4 py-2.5 font-medium">Output</th>
@@ -218,7 +218,7 @@ function DailyHistory({ daily }: { daily: DailyUsage[] }) {
               <th className="text-right px-4 py-2.5 font-medium">Requests</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border/50">
+          <tbody className="divide-y divide-light-border dark:divide-border/50">
             {reversed.map((d) => (
               <tr
                 key={d.date}
@@ -254,7 +254,7 @@ function DailyHistory({ daily }: { daily: DailyUsage[] }) {
 function AnthropicUsageSection({ data }: { data: AnthropicUsageData }) {
   if (!data.available) {
     return (
-      <div className="bg-surface-light border border-border rounded-xl p-6">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6">
         <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-3">
           Claude Code Usage
         </h3>
@@ -270,7 +270,7 @@ function AnthropicUsageSection({ data }: { data: AnthropicUsageData }) {
   }
 
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-6 space-y-5">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-5">
       <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
         Claude Code Usage
       </h3>

@@ -21,7 +21,7 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
   return (
     <button
       onClick={onClick}
-      className="bg-surface-light border border-border rounded-xl p-4 text-left hover:border-border-light transition-colors w-full"
+      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-border-light transition-colors w-full"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <h3 className="font-medium text-white truncate">{project.name}</h3>
@@ -100,7 +100,7 @@ export default function ProjectsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-surface-light border border-border rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-accent"
+            className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-accent"
           >
             <option value="">All statuses</option>
             <option value="planning">Planning</option>
@@ -130,7 +130,7 @@ export default function ProjectsPage() {
       {loading && projects.length === 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-surface-light border border-border rounded-xl p-4 animate-pulse">
+            <div key={i} className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 animate-pulse">
               <div className="h-5 bg-surface-lighter/60 rounded w-2/3 mb-3" />
               <div className="h-4 bg-surface-lighter/60 rounded w-full mb-2" />
               <div className="h-4 bg-surface-lighter/60 rounded w-1/2 mb-3" />
