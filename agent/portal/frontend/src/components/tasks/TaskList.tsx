@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { Clock, ArrowUp, ArrowDown, ChevronRight, ChevronDown, Layers, Copy, Check } from "lucide-react";
 import StatusBadge from "@/components/common/StatusBadge";
 import RepoLabel from "@/components/common/RepoLabel";
 import type { Task } from "@/types";
+import { listContainerVariants, listItemVariants } from "@/utils/animations";
 
 function isStale(task: Task): boolean {
   if (task.status !== "running" || !task.heartbeat) return false;
@@ -210,36 +212,55 @@ export default function TaskList({ tasks }: TaskListProps) {
               </th>
             </tr>
           </thead>
-          <tbody>
+          <motion.tbody
+            initial="initial"
+            animate="animate"
+            variants={listContainerVariants}
+          >
             {chains.map((chain) => {
               const isChain = chain.tasks.length > 1;
               const chainId = chain.root.id;
               const isOpen = expanded.has(chainId);
 
               return (
-                <ChainRows
+                <motion.tr
                   key={chainId}
-                  chain={chain}
-                  isChain={isChain}
-                  isOpen={isOpen}
-                  onToggle={(e) => toggleExpand(chainId, e)}
-                  onNavigate={(id) => navigate(`/tasks/${id}`)}
-                />
+                  variants={listItemVariants}
+                  layout
+                  style={{ display: "contents" }}
+                >
+                  <ChainRows
+                    chain={chain}
+                    isChain={isChain}
+                    isOpen={isOpen}
+                    onToggle={(e) => toggleExpand(chainId, e)}
+                    onNavigate={(id) => navigate(`/tasks/${id}`)}
+                  />
+                </motion.tr>
               );
             })}
-          </tbody>
+          </motion.tbody>
         </table>
       </div>
 
       {/* Mobile cards */}
-      <div className="md:hidden space-y-3 p-4">
+      <motion.div
+        className="md:hidden space-y-3 p-4"
+        initial="initial"
+        animate="animate"
+        variants={listContainerVariants}
+      >
         {chains.map((chain) => {
           const isChain = chain.tasks.length > 1;
           const chainId = chain.root.id;
           const isOpen = expanded.has(chainId);
 
           return (
-            <div key={chainId}>
+            <motion.div
+              key={chainId}
+              variants={listItemVariants}
+              layout
+            >
               {/* Chain / standalone card */}
               <div
                 onClick={() => navigate(`/tasks/${chain.latest.id}`)}
@@ -309,10 +330,10 @@ export default function TaskList({ tasks }: TaskListProps) {
                   ))}
                 </div>
               )}
-            </div>
+            </motion.div>
           );
         })}
-      </div>
+      </motion.div>
     </>
   );
 }

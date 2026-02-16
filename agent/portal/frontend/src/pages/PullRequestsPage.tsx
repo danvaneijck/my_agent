@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { pageVariants } from "@/utils/animations";
+import { pageVariants, listContainerVariants, listItemVariants } from "@/utils/animations";
 import { GitPullRequest, RefreshCw } from "lucide-react";
 import { usePullRequests } from "@/hooks/usePullRequests";
 import { PullRequestsListSkeleton } from "@/components/common/Skeleton";
@@ -65,10 +65,17 @@ export default function PullRequestsPage() {
           No open pull requests across your repositories
         </div>
       ) : (
-        <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden divide-y divide-light-border dark:divide-border/50">
+        <motion.div
+          className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden divide-y divide-light-border dark:divide-border/50"
+          initial="initial"
+          animate="animate"
+          variants={listContainerVariants}
+        >
           {pullRequests.map((pr) => (
-            <button
+            <motion.button
               key={`${pr.owner}/${pr.repo}#${pr.number}`}
+              variants={listItemVariants}
+              layout
               onClick={() => navigate(`/pulls/${pr.owner}/${pr.repo}/${pr.number}`)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors text-left"
             >
@@ -107,9 +114,9 @@ export default function PullRequestsPage() {
                   {pr.created_at && <span>{timeAgo(pr.created_at)}</span>}
                 </div>
               </div>
-            </button>
+            </motion.button>
           ))}
-        </div>
+        </motion.div>
       )}
     </motion.div>
   );

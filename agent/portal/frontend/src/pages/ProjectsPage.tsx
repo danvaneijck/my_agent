@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { pageVariants } from "@/utils/animations";
+import { pageVariants, listContainerVariants, listItemVariants } from "@/utils/animations";
 import { useNavigate } from "react-router-dom";
 import { FolderKanban, RefreshCw, Plus } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
@@ -160,15 +160,21 @@ export default function ProjectsPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"
+          initial="initial"
+          animate="animate"
+          variants={listContainerVariants}
+        >
           {projects.map((project) => (
-            <ProjectCard
-              key={project.project_id}
-              project={project}
-              onClick={() => navigate(`/projects/${project.project_id}`)}
-            />
+            <motion.div key={project.project_id} variants={listItemVariants} layout>
+              <ProjectCard
+                project={project}
+                onClick={() => navigate(`/projects/${project.project_id}`)}
+              />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       <NewProjectModal

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { pageVariants } from "@/utils/animations";
+import { pageVariants, listContainerVariants, listItemVariants } from "@/utils/animations";
 import {
   RefreshCw,
   Rocket,
@@ -193,9 +193,19 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
               <th className="text-right px-3 py-2 font-medium">Logs</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-light-border dark:divide-border/50">
+          <motion.tbody
+            className="divide-y divide-light-border dark:divide-border/50"
+            initial="initial"
+            animate="animate"
+            variants={listContainerVariants}
+          >
             {services.map((svc) => (
-              <tr key={svc.name} className="hover:bg-surface-lighter/50">
+              <motion.tr
+                key={svc.name}
+                className="hover:bg-surface-lighter/50"
+                variants={listItemVariants}
+                layout
+              >
                 <td className="px-3 py-2 font-mono text-gray-200">{svc.name}</td>
                 <td className="px-3 py-2">
                   <StatusBadge status={svc.status} />
@@ -234,9 +244,9 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
                     <FileText size={14} />
                   </button>
                 </td>
-              </tr>
+              </motion.tr>
             ))}
-          </tbody>
+          </motion.tbody>
         </table>
       </div>
       {selectedService && (
