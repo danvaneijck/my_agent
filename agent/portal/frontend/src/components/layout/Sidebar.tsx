@@ -58,18 +58,19 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
       </AnimatePresence>
 
       {/* Sidebar with slide animation */}
-      <motion.aside
-        initial={false}
-        animate={{
-          x: open ? 0 : "-100%",
-        }}
-        transition={{
-          type: "spring",
-          damping: 30,
-          stiffness: 300,
-        }}
-        className="fixed inset-y-0 left-0 z-40 w-56 bg-white dark:bg-surface-light border-r border-light-border dark:border-border md:translate-x-0 md:static md:z-auto"
-      >
+      <aside className="md:block md:static md:z-auto w-56 bg-white dark:bg-surface-light border-r border-light-border dark:border-border">
+        <motion.div
+          initial={false}
+          animate={{
+            x: open ? 0 : "-100%",
+          }}
+          transition={{
+            type: "spring",
+            damping: 30,
+            stiffness: 300,
+          }}
+          className="fixed inset-y-0 left-0 z-40 w-56 bg-white dark:bg-surface-light border-r border-light-border dark:border-border md:static md:translate-x-0"
+        >
         <div className="flex items-center justify-between h-14 px-4 border-b border-light-border dark:border-border">
           <NavLink
             to="/"
@@ -148,7 +149,8 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
             </motion.div>
           ))}
         </motion.nav>
-      </motion.aside>
+        </motion.div>
+      </aside>
     </>
   );
 }
