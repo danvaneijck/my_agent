@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw } from "lucide-react";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw, CheckCircle, Archive } from "lucide-react";
 import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase } from "@/hooks/useProjects";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
@@ -195,6 +195,19 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const handleSetStatus = async (newStatus: string) => {
+    if (!projectId) return;
+    try {
+      await api(`/api/projects/${projectId}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      refetch();
+    } catch {
+      // Error
+    }
+  };
+
   const handleRetryPhase = async (phaseId: string) => {
     if (!projectId) return;
     setRetryingPhase(phaseId);
@@ -291,6 +304,33 @@ export default function ProjectDetailPage() {
             >
               <RefreshCw size={16} />
             </button>
+            {project.status !== "completed" && project.status !== "archived" && (
+              <button
+                onClick={() => handleSetStatus("completed")}
+                className="p-1.5 rounded hover:bg-green-500/20 text-gray-400 hover:text-green-400"
+                title="Mark as completed"
+              >
+                <CheckCircle size={16} />
+              </button>
+            )}
+            {project.status === "completed" && (
+              <button
+                onClick={() => handleSetStatus("archived")}
+                className="p-1.5 rounded hover:bg-gray-500/20 text-gray-400 hover:text-gray-300"
+                title="Archive project"
+              >
+                <Archive size={16} />
+              </button>
+            )}
+            {(project.status === "completed" || project.status === "archived") && (
+              <button
+                onClick={() => handleSetStatus("active")}
+                className="p-1.5 rounded hover:bg-green-500/20 text-gray-400 hover:text-green-400"
+                title="Reopen project"
+              >
+                <Play size={16} />
+              </button>
+            )}
             <button
               onClick={() => setShowDelete(true)}
               className="p-1.5 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400"
