@@ -1,0 +1,4 @@
+[05:55:45] [stderr] Unable to find image 'my-claude-code-image:latest' locally
+[05:55:47] [stderr] docker: Error response from daemon: pull access denied for my-claude-code-image, repository does not exist or may require 'docker login': denied: requested access to the resource is denied
+[05:55:47] [stderr] 
+[05:55:47] [stderr] Run 'docker run --help' for more information
