@@ -184,17 +184,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         navigate(`/chat/${toast.conversationId}`);
                         dismissToast(toast.id);
                       }}
-                      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-accent hover:text-accent-hover"
+                      className="p-2 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-accent hover:text-accent-hover focus:outline-none focus:ring-2 focus:ring-accent"
                       title="View in chat"
+                      aria-label="View in chat"
                     >
-                      <MessageSquare size={14} />
+                      <MessageSquare size={16} />
                     </button>
                   )}
                   <button
                     onClick={() => dismissToast(toast.id)}
-                    className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-accent"
+                    aria-label="Dismiss notification"
                   >
-                    <X size={14} />
+                    <X size={16} />
                   </button>
                 </div>
               </div>

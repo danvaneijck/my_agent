@@ -15,7 +15,8 @@ export default function Header({ title, onMenuToggle }: HeaderProps) {
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuToggle}
-          className="md:hidden p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400"
+          className="md:hidden p-2.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent"
+          aria-label="Open navigation menu"
         >
           <Menu size={20} />
         </button>
@@ -31,8 +32,9 @@ export default function Header({ title, onMenuToggle }: HeaderProps) {
             clearAuth();
             window.location.reload();
           }}
-          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+          className="p-2.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent"
           title="Sign out"
+          aria-label="Sign out"
         >
           <LogOut size={18} />
         </button>
