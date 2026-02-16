@@ -209,19 +209,22 @@ export default function ChatPage() {
                       if (e.key === "Escape") setRenamingId(null);
                     }}
                     autoFocus
-                    className="flex-1 bg-surface text-sm text-gray-200 px-2 py-1 rounded border border-border focus:border-accent outline-none min-w-0"
+                    className="flex-1 bg-surface text-sm text-gray-200 px-2 py-1 rounded border border-border focus:border-accent focus:ring-2 focus:ring-accent/50 outline-none min-w-0"
+                    aria-label="Rename conversation"
                   />
                   <button
                     onClick={() => handleRename(conv.id)}
-                    className="p-1 rounded hover:bg-surface-lighter text-green-400"
+                    className="p-1.5 rounded hover:bg-surface-lighter text-green-400 focus:outline-none focus:ring-2 focus:ring-accent"
+                    aria-label="Confirm rename"
                   >
-                    <Check size={14} />
+                    <Check size={16} />
                   </button>
                   <button
                     onClick={() => setRenamingId(null)}
-                    className="p-1 rounded hover:bg-surface-lighter text-gray-400"
+                    className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent"
+                    aria-label="Cancel rename"
                   >
-                    <X size={14} />
+                    <X size={16} />
                   </button>
                 </div>
               ) : (

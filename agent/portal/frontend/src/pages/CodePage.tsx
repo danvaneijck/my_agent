@@ -249,7 +249,8 @@ export default function CodePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search tasks..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-md bg-surface border border-border text-white text-xs placeholder-gray-500 focus:outline-none focus:border-accent"
+              className="w-full pl-8 pr-3 py-1.5 rounded-md bg-surface border border-border text-white text-xs placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
+              aria-label="Search tasks"
             />
           </div>
         </div>

@@ -80,8 +80,9 @@ export default function ReposPage() {
           </h2>
           <button
             onClick={refetch}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-2 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
             title="Refresh"
+            aria-label="Refresh repositories"
           >
             <RefreshCw size={16} />
           </button>
@@ -101,7 +102,8 @@ export default function ReposPage() {
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search repositories..."
-            className="pl-9 pr-3 py-2 w-full sm:w-72 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
+            className="pl-9 pr-3 py-2 w-full sm:w-72 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
+            aria-label="Search repositories"
           />
         </div>
       </div>

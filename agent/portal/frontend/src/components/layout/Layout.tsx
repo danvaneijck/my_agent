@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import SkipToContent from "@/components/common/SkipToContent";
 import { connectWs } from "@/api/websocket";
 import { api } from "@/api/client";
 import type { Conversation, WsNotification } from "@/types";
@@ -148,6 +149,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-full flex">
+      <SkipToContent />
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -160,7 +162,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           title={title}
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
         />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main id="main-content" className="flex-1 overflow-auto" tabIndex={-1}>
+          {children}
+        </main>
       </div>
 
       {/* Notification toasts */}
