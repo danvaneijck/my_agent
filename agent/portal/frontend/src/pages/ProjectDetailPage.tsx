@@ -116,8 +116,13 @@ export default function ProjectDetailPage() {
   // Must be called before early returns to comply with Rules of Hooks
   const sortedPhases = useMemo(() => {
     if (!project) return [];
-    return [...project.phases].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
-  }, [project]);
+    const sorted = [...project.phases].sort((a, b) => {
+      const aIndex = a.order_index ?? 999;
+      const bIndex = b.order_index ?? 999;
+      return aIndex - bIndex;
+    });
+    return sorted;
+  }, [project?.phases]);
 
   // Auto-sync on page load: fix stuck phases + catch merged PRs
   useEffect(() => {
@@ -463,9 +468,9 @@ export default function ProjectDetailPage() {
           </div>
         ) : (
           <div className="divide-y divide-light-border dark:divide-border/50">
-            {sortedPhases.map((phase) => (
+            {sortedPhases.map((phase, index) => (
               <PhaseRow
-                key={phase.phase_id}
+                key={`${phase.order_index}-${phase.phase_id}`}
                 phase={phase}
                 projectId={project.project_id}
                 repoOwner={project.repo_owner}
