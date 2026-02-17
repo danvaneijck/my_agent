@@ -99,7 +99,9 @@ class BitbucketProvider(GitProvider):
         params: dict = {"pagelen": min(per_page, 100), "role": "member"}
         if search:
             params["q"] = f'name ~ "{search}"'
-        # Bitbucket sorts by -updated_on by default for /repositories endpoint
+        # Map sort parameter to Bitbucket field names
+        if sort == "updated":
+            params["sort"] = "-updated_on"  # - prefix means descending
         data = await self._get("/repositories", **params)
         repos = [
             {
