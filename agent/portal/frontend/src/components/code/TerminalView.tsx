@@ -314,7 +314,7 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
     ws.onerror = (event) => {
       setStatus("error");
       setErrorMessage("Failed to connect to terminal. The workspace container may not be running.");
-      logger.error("terminal_ws_error", event);
+      console.error("terminal_ws_error", event);
     };
 
     ws.onclose = (event) => {
