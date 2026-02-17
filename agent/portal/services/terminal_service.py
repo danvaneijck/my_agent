@@ -17,6 +17,7 @@ logger = structlog.get_logger()
 # Session timeout in seconds (30 minutes of inactivity)
 SESSION_TIMEOUT = 1800
 HEARTBEAT_INTERVAL = 60  # Check for inactive sessions every minute
+MAX_SESSIONS_PER_TASK = 10  # Maximum concurrent sessions per task
 
 
 @dataclass
@@ -100,15 +101,18 @@ class TerminalService:
         """
         try:
             container = self.docker_client.containers.get(container_id)
+            container.reload()  # Refresh container state
             if container.status != "running":
                 raise ValueError(
-                    f"Container {container_id} exists but is not running (status: {container.status})"
+                    f"Container exists but is {container.status}. Start the workspace first."
                 )
             return container
         except docker.errors.NotFound:
-            raise ValueError(f"Container {container_id} not found")
+            raise ValueError(f"Container not found. The workspace may have been deleted.")
+        except docker.errors.APIError as e:
+            raise ValueError(f"Docker API error: {str(e)}")
         except Exception as e:
-            raise ValueError(f"Error accessing container: {e}")
+            raise ValueError(f"Failed to access container: {str(e)}")
 
     async def create_session(
         self,
@@ -142,6 +146,14 @@ class TerminalService:
                 task_id=task_id,
             )
             return existing
+
+        # Check session limit per task
+        task_sessions = self.get_task_sessions(task_id)
+        if len(task_sessions) >= MAX_SESSIONS_PER_TASK:
+            raise ValueError(
+                f"Maximum of {MAX_SESSIONS_PER_TASK} concurrent terminal sessions reached for this task. "
+                f"Close some terminals before opening new ones."
+            )
 
         # Get and validate container
         container = self.get_container(container_id)

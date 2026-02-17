@@ -152,6 +152,10 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
   const historyIndexRef = useRef<number>(-1);
   const currentLineRef = useRef<string>("");
 
+  // Output buffer for rate limiting
+  const outputBufferRef = useRef<string[]>([]);
+  const flushTimerRef = useRef<number | null>(null);
+
   // Load theme preference from localStorage on mount
   useEffect(() => {
     try {
@@ -261,15 +265,42 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       setStatus("connecting");
     };
 
+    // Flush buffered output to terminal
+    const flushOutput = () => {
+      if (outputBufferRef.current.length > 0 && xtermRef.current) {
+        const combined = outputBufferRef.current.join("");
+        xtermRef.current.write(combined);
+        outputBufferRef.current = [];
+      }
+      flushTimerRef.current = null;
+    };
+
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
 
         if (message.type === "ready") {
           setStatus("connected");
-          term.focus();
+          // Show welcome message
+          term.writeln("\x1b[32m✓ Connected to workspace terminal\x1b[0m");
+          term.writeln("\x1b[90mTip: Use arrow keys to navigate command history\x1b[0m");
+          term.writeln("");
+          // Auto-focus terminal on ready
+          setTimeout(() => term.focus(), 100);
         } else if (message.type === "output") {
-          term.write(message.data);
+          // Buffer output and flush periodically to prevent UI freezing
+          outputBufferRef.current.push(message.data);
+
+          // Flush immediately if buffer is large (>100 chunks)
+          if (outputBufferRef.current.length > 100) {
+            if (flushTimerRef.current !== null) {
+              clearTimeout(flushTimerRef.current);
+            }
+            flushOutput();
+          } else if (flushTimerRef.current === null) {
+            // Otherwise flush after 16ms (roughly one frame)
+            flushTimerRef.current = window.setTimeout(flushOutput, 16);
+          }
         } else if (message.type === "error") {
           setStatus("error");
           setErrorMessage(message.message || "Unknown error");
@@ -280,14 +311,19 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       }
     };
 
-    ws.onerror = () => {
+    ws.onerror = (event) => {
       setStatus("error");
-      setErrorMessage("WebSocket connection error");
+      setErrorMessage("Failed to connect to terminal. The workspace container may not be running.");
+      logger.error("terminal_ws_error", event);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setStatus("disconnected");
-      term.writeln("\r\n\x1b[33mConnection closed\x1b[0m\r\n");
+      const reason = event.code === 1000 ? "Session ended" : "Connection lost";
+      term.writeln(`\r\n\x1b[33m${reason}\x1b[0m\r\n`);
+      if (event.code !== 1000) {
+        setErrorMessage(`Connection closed unexpectedly (code: ${event.code})`);
+      }
     };
 
     // Handle terminal input with command history support
@@ -388,14 +424,27 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       disposable.dispose();
       ws.close();
       term.dispose();
+
+      // Clear any pending flush timers
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current);
+      }
+      outputBufferRef.current = [];
     };
   }, [taskId, sessionId, currentTheme]);
 
   const handleReconnect = () => {
     setStatus("connecting");
     setErrorMessage("");
-    // Force re-render by closing and reopening
-    onClose?.();
+    // Close WebSocket if still open
+    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      wsRef.current.close();
+    }
+    // Trigger re-mount by changing currentTheme temporarily then back
+    // This forces the useEffect to re-run and create a new connection
+    const theme = currentTheme;
+    setCurrentTheme("");
+    setTimeout(() => setCurrentTheme(theme), 10);
   };
 
   const handleChangeTheme = (themeName: string) => {
@@ -460,8 +509,13 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
               : "bg-gray-800 text-gray-400"
           }`}
         >
-          <span>
-            {status === "connecting" && "Connecting to terminal..."}
+          <span className="flex items-center gap-2">
+            {status === "connecting" && (
+              <>
+                <div className="w-3 h-3 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                Connecting to terminal...
+              </>
+            )}
             {status === "error" && `Error: ${errorMessage}`}
             {status === "disconnected" && "Disconnected from terminal"}
           </span>

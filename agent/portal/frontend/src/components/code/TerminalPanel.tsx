@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { X, Minimize2, Maximize2, Terminal as TerminalIcon, Plus, Upload } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import TerminalView from "./TerminalView";
 import { api } from "@/api/client";
 
@@ -42,7 +43,8 @@ export default function TerminalPanel({
 
   const handleAddTerminal = () => {
     if (tabs.length >= MAX_TERMINALS) {
-      return; // Max terminals reached
+      alert(`Maximum of ${MAX_TERMINALS} terminals reached. Close an existing terminal to open a new one.`);
+      return;
     }
 
     const newTab: TerminalTab = {
@@ -79,13 +81,23 @@ export default function TerminalPanel({
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Check file size (max 50MB)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      alert(`File is too large. Maximum size is 50MB, but ${file.name} is ${(file.size / 1024 / 1024).toFixed(1)}MB.`);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+
     setUploading(true);
     try {
       // Upload file to workspace
       const formData = new FormData();
       formData.append("file", file);
 
-      await api(`/api/tasks/${taskId}/workspace/upload`, {
+      const response = await api(`/api/tasks/${taskId}/workspace/upload`, {
         method: "POST",
         body: formData,
       });
@@ -95,10 +107,17 @@ export default function TerminalPanel({
         fileInputRef.current.value = "";
       }
 
-      // TODO: Optionally inject an 'ls' command into the terminal to show the uploaded file
-      console.log(`File ${file.name} uploaded successfully`);
+      // Check response
+      const result = await response.json();
+      if (result.success) {
+        console.log(`File ${file.name} uploaded successfully to workspace`);
+      } else {
+        throw new Error(result.message || "Upload failed");
+      }
     } catch (error) {
       console.error("File upload failed:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      alert(`Failed to upload file: ${errorMessage}`);
     } finally {
       setUploading(false);
     }
@@ -107,7 +126,11 @@ export default function TerminalPanel({
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      transition={{ duration: 0.2 }}
       className={`flex flex-col bg-surface border-t border-border ${
         isMaximized ? "fixed inset-0 z-50" : ""
       }`}
@@ -163,7 +186,7 @@ export default function TerminalPanel({
             onClick={handleUploadClick}
             disabled={uploading}
             className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-white transition-colors disabled:opacity-50"
-            title="Upload file to workspace"
+            title={uploading ? "Uploading..." : "Upload file to workspace (max 50MB)"}
           >
             <Upload size={14} className={uploading ? "animate-pulse" : ""} />
           </button>
@@ -212,6 +235,6 @@ export default function TerminalPanel({
         onChange={handleFileUpload}
         className="hidden"
       />
-    </div>
+    </motion.div>
   );
 }

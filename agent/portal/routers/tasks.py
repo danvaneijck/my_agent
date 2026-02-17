@@ -407,9 +407,10 @@ async def ws_terminal(
         workspace = container_info.get("workspace")
 
         if not container_id:
+            error_msg = container_info.get('message', 'Workspace container not found')
             await websocket.send_json({
                 "type": "error",
-                "message": f"Container not available: {container_info.get('message', 'Container not found')}",
+                "message": f"Terminal unavailable: {error_msg}. The task may have been deleted or not yet started.",
             })
             await websocket.close()
             return
@@ -417,7 +418,7 @@ async def ws_terminal(
         if container_status != "running":
             await websocket.send_json({
                 "type": "error",
-                "message": f"Container is not running (status: {container_status})",
+                "message": f"Container is not running (status: {container_status}). Start the task first, then open the terminal.",
             })
             await websocket.close()
             return
