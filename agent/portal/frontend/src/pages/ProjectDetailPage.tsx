@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw, CheckCircle, Archive } from "lucide-react";
 import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase } from "@/hooks/useProjects";
@@ -273,15 +273,20 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const totalTasks = project.phases.reduce((sum, p) => {
+  // Sort phases by order_index to ensure consistent top-to-bottom ordering
+  const sortedPhases = useMemo(() => {
+    return [...project.phases].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+  }, [project.phases]);
+
+  const totalTasks = sortedPhases.reduce((sum, p) => {
     const counts = p.task_counts || {};
     return sum + Object.values(counts).reduce((a, b) => a + (b || 0), 0);
   }, 0);
-  const doneTasks = project.phases.reduce((sum, p) => sum + (p.task_counts?.done || 0), 0);
+  const doneTasks = sortedPhases.reduce((sum, p) => sum + (p.task_counts?.done || 0), 0);
   const overallPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   // Aggregate all task counts for overall progress bar
-  const overallTaskCounts = project.phases.reduce((acc, p) => {
+  const overallTaskCounts = sortedPhases.reduce((acc, p) => {
     const counts = p.task_counts || {};
     return {
       todo: (acc.todo || 0) + (counts.todo || 0),
@@ -437,7 +442,7 @@ export default function ProjectDetailPage() {
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-light-border dark:border-border flex items-center justify-between">
           <h3 className="text-sm font-medium text-gray-300">
-            Phases ({project.phases.length})
+            Phases ({sortedPhases.length})
           </h3>
           {project.design_document && (
             <button
@@ -450,29 +455,27 @@ export default function ProjectDetailPage() {
             </button>
           )}
         </div>
-        {project.phases.length === 0 ? (
+        {sortedPhases.length === 0 ? (
           <div className="px-4 py-8 text-center text-gray-500 text-sm">
             No phases yet
           </div>
         ) : (
           <div className="divide-y divide-light-border dark:divide-border/50">
-            {[...project.phases]
-              .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
-              .map((phase) => (
-                <PhaseRow
-                  key={phase.phase_id}
-                  phase={phase}
-                  projectId={project.project_id}
-                  repoOwner={project.repo_owner}
-                  repoName={project.repo_name}
-                  onClick={() => navigate(`/projects/${project.project_id}/phases/${phase.phase_id}`)}
-                  onRetry={
-                    (phase.task_counts?.failed || 0) > 0 && !project.phases.some(p => p.status === "in_progress")
-                      ? () => handleRetryPhase(phase.phase_id)
-                      : undefined
-                  }
-                />
-              ))}
+            {sortedPhases.map((phase) => (
+              <PhaseRow
+                key={phase.phase_id}
+                phase={phase}
+                projectId={project.project_id}
+                repoOwner={project.repo_owner}
+                repoName={project.repo_name}
+                onClick={() => navigate(`/projects/${project.project_id}/phases/${phase.phase_id}`)}
+                onRetry={
+                  (phase.task_counts?.failed || 0) > 0 && !sortedPhases.some(p => p.status === "in_progress")
+                    ? () => handleRetryPhase(phase.phase_id)
+                    : undefined
+                }
+              />
+            ))}
           </div>
         )}
       </div>
