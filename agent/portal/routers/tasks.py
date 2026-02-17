@@ -328,6 +328,10 @@ async def delete_workspace(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Delete a task's workspace and all associated tasks."""
+    # Clean up terminal container if it exists
+    terminal_service = get_terminal_service()
+    await terminal_service.cleanup_terminal_container(task_id)
+
     result = await call_tool(
         module="claude_code",
         tool_name="claude_code.delete_workspace",
@@ -336,6 +340,17 @@ async def delete_workspace(
         timeout=30.0,
     )
     return result.get("result", {})
+
+
+@router.delete("/{task_id}/terminal")
+async def stop_terminal_container(
+    task_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Stop and remove the on-demand terminal container for a task."""
+    terminal_service = get_terminal_service()
+    await terminal_service.cleanup_terminal_container(task_id)
+    return {"success": True, "message": f"Terminal container for task {task_id} stopped"}
 
 
 @router.delete("")
@@ -390,7 +405,7 @@ async def ws_terminal(
     socket = None
 
     try:
-        # Get container information for the task
+        # Get workspace information for the task
         logger.info("terminal_ws_connect", task_id=task_id, user_id=str(user.user_id))
 
         result = await call_tool(
@@ -402,29 +417,45 @@ async def ws_terminal(
         )
 
         container_info = result.get("result", {})
-        container_id = container_info.get("container_id")
-        container_status = container_info.get("status")
         workspace = container_info.get("workspace")
 
-        if not container_id:
-            error_msg = container_info.get('message', 'Workspace container not found')
-            # Clean up the error message if it already has punctuation
-            if error_msg.endswith('.'):
-                error_msg = error_msg[:-1]
+        if not workspace:
             await websocket.send_json({
                 "type": "error",
-                "message": f"Terminal unavailable: {error_msg}. Please ensure the task is running before opening the terminal.",
+                "message": "Workspace not found. The task may not have been created yet or was deleted.",
             })
             await websocket.close()
             return
 
-        if container_status != "running":
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Container is not running (status: {container_status}). Start the task first, then open the terminal.",
-            })
-            await websocket.close()
-            return
+        # Check if task has an active container, otherwise create on-demand terminal
+        task_container_id = container_info.get("container_id")
+        task_container_status = container_info.get("status")
+
+        if task_container_id and task_container_status == "running":
+            # Use the existing task container
+            container_id = task_container_id
+            logger.info(
+                "using_task_container",
+                task_id=task_id,
+                container_id=container_id,
+            )
+        else:
+            # Create or reuse on-demand terminal container
+            logger.info(
+                "creating_on_demand_terminal",
+                task_id=task_id,
+                workspace=workspace,
+            )
+            container_id, status = await terminal_service.get_or_create_terminal_container(
+                task_id=task_id,
+                workspace_path=workspace,
+            )
+            logger.info(
+                "using_terminal_container",
+                task_id=task_id,
+                container_id=container_id,
+                status=status,
+            )
 
         # Create terminal session
         session = await terminal_service.create_session(
@@ -432,7 +463,7 @@ async def ws_terminal(
             container_id=container_id,
             user_id=str(user.user_id),
             task_id=task_id,
-            working_dir=workspace,
+            working_dir=f"/tmp/claude_tasks/{task_id}",
         )
 
         # Attach to session and get socket
