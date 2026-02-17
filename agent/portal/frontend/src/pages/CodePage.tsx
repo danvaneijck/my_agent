@@ -14,6 +14,7 @@ import {
   Copy,
   Check,
   Trash2,
+  Terminal,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -23,6 +24,7 @@ import { api } from "@/api/client";
 import StatusBadge from "@/components/common/StatusBadge";
 import RepoLabel from "@/components/common/RepoLabel";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import TerminalPanel from "@/components/code/TerminalPanel";
 import type { Task, WorkspaceEntry, WorkspaceFileContent } from "@/types";
 import { mapTask } from "@/types";
 
@@ -100,6 +102,10 @@ export default function CodePage() {
   const [viewMode, setViewMode] = useState<"raw" | "preview">("raw");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  // Terminal state
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalHeight, setTerminalHeight] = useState(400);
+
   const fetchTasks = useCallback(async () => {
     try {
       const data = await api<{ tasks: Array<Record<string, unknown>> }>(
@@ -155,6 +161,7 @@ export default function CodePage() {
     setCurrentPath("");
     setSelectedFile(null);
     setEntries([]);
+    setTerminalOpen(false); // Close terminal when switching workspaces
   };
 
   const handleDeleteWorkspace = async (taskId: string) => {
@@ -332,6 +339,18 @@ export default function CodePage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
+                onClick={() => setTerminalOpen(!terminalOpen)}
+                className={`flex items-center gap-1 text-xs transition-colors ${
+                  terminalOpen
+                    ? "text-accent-hover"
+                    : "text-accent hover:text-accent-hover"
+                }`}
+                title={terminalOpen ? "Close terminal" : "Open terminal"}
+              >
+                <Terminal size={12} />
+                Terminal
+              </button>
+              <button
                 onClick={() => navigate(`/tasks/${selectedTask.id}`)}
                 className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
                 title="View task details"
@@ -376,9 +395,11 @@ export default function CodePage() {
             ))}
           </div>
 
-          <div className="flex flex-1 min-h-0">
-            {/* File listing */}
-            <div className="w-64 shrink-0 border-r border-border overflow-auto">
+          <div className={`flex ${terminalOpen ? "flex-col" : "flex-row"} flex-1 min-h-0`}>
+            {/* File browser section */}
+            <div className={`flex ${terminalOpen ? "flex-row" : "flex-1"} min-h-0 ${terminalOpen ? "flex-1" : ""}`}>
+              {/* File listing */}
+              <div className="w-64 shrink-0 border-r border-border overflow-auto">
               {currentPath && (
                 <button
                   onClick={navigateUp}
@@ -501,6 +522,16 @@ export default function CodePage() {
                 </div>
               )}
             </div>
+            </div>
+
+            {/* Terminal panel */}
+            {terminalOpen && selectedTask && (
+              <TerminalPanel
+                taskId={selectedTask.id}
+                onClose={() => setTerminalOpen(false)}
+                initialHeight={terminalHeight}
+              />
+            )}
           </div>
         </div>
       ) : (

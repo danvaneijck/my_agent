@@ -104,6 +104,8 @@ async def execute(call: ToolCall) -> ToolResult:
             result = await tools.browse_workspace(**args)
         elif tool_name == "read_workspace_file":
             result = await tools.read_workspace_file(**args)
+        elif tool_name == "get_task_container":
+            result = await tools.get_task_container(**args)
         elif tool_name == "git_status":
             result = await tools.git_status(**args)
         elif tool_name == "git_push":

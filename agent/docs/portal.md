@@ -23,6 +23,7 @@ The portal uses two communication paths:
 
 - **Chat**: WebSocket at `/ws/chat`. The backend POSTs to core (blocking, up to 180s), sends heartbeats every 10s while waiting, and pushes the response when ready.
 - **Task logs**: WebSocket at `/api/tasks/{id}/logs/ws`. The backend polls the claude-code module's `task_logs` endpoint every 1.5s using offset-based pagination, pushing only new lines to the client.
+- **Interactive Terminal**: WebSocket at `/api/tasks/{id}/terminal/ws`. Provides full bidirectional terminal access to workspace containers with support for multiple concurrent sessions, command history, themes, and file uploads.
 
 ---
 
@@ -43,7 +44,8 @@ agent/portal/
 ├── services/
 │   ├── module_client.py    # Generic HTTP client for module /execute calls
 │   ├── core_client.py      # HTTP client for core /message
-│   └── log_streamer.py     # WS task log polling + push logic
+│   ├── log_streamer.py     # WS task log polling + push logic
+│   └── terminal_service.py # Terminal session management + Docker exec
 └── frontend/
     ├── package.json
     ├── vite.config.ts
@@ -70,6 +72,7 @@ agent/portal/
             ├── tasks/          # TaskList, TaskLogViewer, NewTaskForm, ContinueTaskForm
             ├── chat/           # ChatView, MessageBubble, ChatInput
             ├── files/          # FileList, FileUpload, FilePreview
+            ├── code/           # TerminalPanel, TerminalView (xterm.js integration)
             └── common/         # StatusBadge, ConfirmDialog
 ```
 
@@ -94,7 +97,11 @@ All REST endpoints require the `X-Portal-Key` header. WebSocket endpoints accept
 | GET | `/api/tasks/{id}/logs` | Get logs `?tail=100&offset=0` |
 | POST | `/api/tasks/{id}/continue` | Continue task `{prompt, timeout?}` |
 | DELETE | `/api/tasks/{id}` | Cancel running task |
+| GET | `/api/tasks/{id}/workspace` | Browse workspace files `?path=subdir` |
+| GET | `/api/tasks/{id}/workspace/file` | Read workspace file `?path=file.py` |
+| POST | `/api/tasks/{id}/workspace/upload` | Upload file to workspace (multipart) |
 | WS | `/api/tasks/{id}/logs/ws` | Real-time log streaming |
+| WS | `/api/tasks/{id}/terminal/ws` | Interactive terminal (with `?session_id`) |
 
 ### Chat
 | Method | Path | Description |
@@ -112,6 +119,91 @@ All REST endpoints require the `X-Portal-Key` header. WebSocket endpoints accept
 | GET | `/api/files/{id}` | File metadata + text content |
 | GET | `/api/files/{id}/download` | Stream file from MinIO |
 | DELETE | `/api/files/{id}` | Delete file |
+
+---
+
+## Terminal
+
+The portal provides an interactive terminal feature for direct access to workspace containers. This enables developers to run commands, inspect files, and debug issues without leaving the browser.
+
+### Features
+
+- **Multiple terminal tabs**: Open up to 5 concurrent terminal sessions per task
+- **Command history**: Navigate previous commands with arrow keys (↑/↓), persisted in sessionStorage
+- **Themes**: 5 color schemes (Dark, Light, Monokai, Dracula, Solarized Dark) with localStorage persistence
+- **File upload**: Drag and drop files directly into the workspace
+- **Keyboard shortcuts**: Full terminal features including Ctrl+C, Ctrl+D, tab completion
+- **Session isolation**: Each terminal tab has its own bash session with independent working directory and environment
+
+### Architecture
+
+The terminal is built on:
+- **Frontend**: xterm.js v5.5 with FitAddon and WebLinksAddon
+- **Backend**: FastAPI WebSocket + Docker SDK exec API
+- **PTY**: Interactive bash shell with `tty=True` for proper terminal control codes
+
+### WebSocket Protocol
+
+**Client → Server:**
+```json
+{"type": "input", "data": "ls -la\n"}
+{"type": "resize", "rows": 40, "cols": 120}
+```
+
+**Server → Client:**
+```json
+{"type": "ready"}
+{"type": "output", "data": "total 64\ndrwxr-xr-x..."}
+{"type": "error", "message": "Container is not running"}
+```
+
+### Session Management
+
+- **Session timeout**: 30 minutes of inactivity
+- **Max sessions per task**: 10 concurrent terminals
+- **Cleanup**: Background task runs every 60 seconds to clean up expired sessions
+- **Activity tracking**: Keystrokes and output updates refresh the inactivity timer
+
+### Error Handling
+
+The terminal handles common edge cases:
+- Container not running → error banner with "Start the task first" message
+- Container deleted → error banner with reconnect button
+- WebSocket disconnect → auto-reconnect with status indicator
+- Output buffering → batches terminal writes to prevent UI freezing (16ms debounce)
+
+### File Upload
+
+Files can be uploaded to the workspace via the upload button (max 50MB):
+
+1. User clicks upload icon, selects file
+2. Frontend sends multipart POST to `/api/tasks/{id}/workspace/upload`
+3. Backend creates temp file, packages as tar archive
+4. Docker SDK `put_archive()` extracts to workspace
+5. File appears in current directory (run `ls` to verify)
+
+### Usage
+
+From the task detail page:
+
+1. Click "Open Terminal" button (only shown when container is running)
+2. Terminal panel appears at bottom of screen
+3. Use "+" button to open additional tabs (up to 5)
+4. Click palette icon to change theme
+5. Click upload icon to add files to workspace
+6. Click maximize icon for full-screen terminal
+7. Close individual tabs with X button, or close panel with top-right X
+
+### Development
+
+Terminal components:
+- `frontend/src/components/code/TerminalPanel.tsx` — tab management, file upload, layout
+- `frontend/src/components/code/TerminalView.tsx` — xterm.js integration, WebSocket, themes
+- `portal/services/terminal_service.py` — Docker exec session lifecycle
+- `portal/routers/tasks.py` — WebSocket endpoint at `ws_terminal()`
+
+Tests:
+- `portal/tests/test_terminal.py` — 30+ test cases covering session management, error handling, cleanup
 
 ---
 

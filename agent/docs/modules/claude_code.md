@@ -15,6 +15,7 @@ Coding tasks via Claude Code CLI running in Docker containers. Supports git oper
 | `claude_code.get_task_chain` | Get all tasks in a plan chain | admin |
 | `claude_code.browse_workspace` | List files in task workspace | admin |
 | `claude_code.read_workspace_file` | Read a file from workspace | admin |
+| `claude_code.get_task_container` | Get container info for terminal access | admin |
 | `claude_code.git_status` | Get git status of workspace | admin |
 | `claude_code.git_push` | Push workspace branch to remote | admin |
 
@@ -84,6 +85,23 @@ Coding tasks via Claude Code CLI running in Docker containers. Supports git oper
 - The workspace path is the contract with `deployer.deploy` — pass it directly as `project_path`
 - Dockerfile installs Docker CLI for managing sibling containers via mounted Docker socket
 - Task timeout defaults to 1800s (30 min) — avoid setting lower unless explicitly requested
+
+## Interactive Terminal Access
+
+The portal provides interactive terminal access to workspace containers via WebSocket. This allows developers to:
+- Inspect workspace files directly with shell commands
+- Run git operations (status, diff, log, push)
+- Test code execution in the same environment Claude Code uses
+- Debug issues by exploring the filesystem and running diagnostic commands
+- Upload files via drag-and-drop interface
+
+See [Portal Documentation](../portal.md#terminal) for terminal features and usage.
+
+**Container Requirements:**
+- Container must be in `running` status
+- Container ID is retrieved via `get_task_container` tool
+- Terminal creates Docker exec instances with `/bin/bash` and `tty=True`
+- Working directory is set to the workspace path (`/tmp/claude_tasks/{task_id}/`)
 
 ## Workflow Integration
 

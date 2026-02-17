@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import uuid
+
 import structlog
-from fastapi import APIRouter, Depends, Query, WebSocket
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, UploadFile, File
 
 from portal.auth import PortalUser, require_auth, verify_ws_auth
 from portal.services.log_streamer import stream_task_logs
 from portal.services.module_client import call_tool, check_module_health
+from portal.services.terminal_service import get_terminal_service
 from pydantic import BaseModel
 from shared.config import get_settings
 from shared.credential_store import CredentialStore
@@ -223,6 +228,84 @@ async def read_workspace_file(
     return result.get("result", {})
 
 
+@router.post("/{task_id}/workspace/upload")
+async def upload_workspace_file(
+    task_id: str,
+    file: UploadFile = File(...),
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Upload a file to a task's workspace."""
+    import tempfile
+    import os
+    import docker
+
+    # Read file content
+    content = await file.read()
+
+    # Save to temporary file on host
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        # Get container info
+        workspace_result = await call_tool(
+            module="claude_code",
+            tool_name="claude_code.get_task_container",
+            arguments={"task_id": task_id},
+            user_id=str(user.user_id),
+            timeout=15.0,
+        )
+
+        container_info = workspace_result.get("result", {})
+        container_id = container_info.get("container_id")
+        workspace = container_info.get("workspace", "")
+
+        if not container_id or not workspace:
+            return {"success": False, "message": "Container or workspace not found"}
+
+        # Copy file to container using Docker API
+        docker_client = docker.from_env()
+        container = docker_client.containers.get(container_id)
+
+        # Read file and put it in container
+        with open(tmp_path, "rb") as f:
+            file_data = f.read()
+
+        # Use docker cp to copy file to workspace
+        import tarfile
+        import io
+
+        # Create tar archive in memory
+        tar_stream = io.BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+            tarinfo = tarfile.TarInfo(name=file.filename or "uploaded_file")
+            tarinfo.size = len(file_data)
+            tar.addfile(tarinfo, io.BytesIO(file_data))
+
+        tar_stream.seek(0)
+
+        # Put archive into container
+        container.put_archive(path=workspace, data=tar_stream.read())
+
+        return {
+            "success": True,
+            "filename": file.filename,
+            "message": f"File {file.filename} uploaded to workspace",
+        }
+
+    except Exception as e:
+        logger.error("file_upload_error", error=str(e), task_id=task_id)
+        return {"success": False, "message": str(e)}
+
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
 @router.delete("/{task_id}")
 async def cancel_task(
     task_id: str,
@@ -279,3 +362,161 @@ async def ws_task_logs(websocket: WebSocket, task_id: str) -> None:
     await verify_ws_auth(websocket)
     await websocket.accept()
     await stream_task_logs(websocket, task_id)
+
+
+@router.websocket("/{task_id}/terminal/ws")
+async def ws_terminal(
+    websocket: WebSocket,
+    task_id: str,
+    session_id: str = Query(None),
+) -> None:
+    """Interactive terminal session via WebSocket.
+
+    Protocol:
+    - Client → Server: {"type": "input", "data": "command text"}
+    - Client → Server: {"type": "resize", "rows": 40, "cols": 120}
+    - Server → Client: {"type": "output", "data": "terminal output"}
+    - Server → Client: {"type": "ready"}
+    - Server → Client: {"type": "error", "message": "error details"}
+    """
+    # Authenticate user
+    user = await verify_ws_auth(websocket)
+    await websocket.accept()
+
+    terminal_service = get_terminal_service()
+    # Use provided session_id or generate one
+    if not session_id:
+        session_id = f"terminal-{task_id}-{uuid.uuid4().hex[:8]}"
+    socket = None
+
+    try:
+        # Get container information for the task
+        logger.info("terminal_ws_connect", task_id=task_id, user_id=str(user.user_id))
+
+        result = await call_tool(
+            module="claude_code",
+            tool_name="claude_code.get_task_container",
+            arguments={"task_id": task_id},
+            user_id=str(user.user_id),
+            timeout=15.0,
+        )
+
+        container_info = result.get("result", {})
+        container_id = container_info.get("container_id")
+        container_status = container_info.get("status")
+        workspace = container_info.get("workspace")
+
+        if not container_id:
+            error_msg = container_info.get('message', 'Workspace container not found')
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Terminal unavailable: {error_msg}. The task may have been deleted or not yet started.",
+            })
+            await websocket.close()
+            return
+
+        if container_status != "running":
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Container is not running (status: {container_status}). Start the task first, then open the terminal.",
+            })
+            await websocket.close()
+            return
+
+        # Create terminal session
+        session = await terminal_service.create_session(
+            session_id=session_id,
+            container_id=container_id,
+            user_id=str(user.user_id),
+            task_id=task_id,
+            working_dir=workspace,
+        )
+
+        # Attach to session and get socket
+        socket = await terminal_service.attach_session(session_id)
+
+        # Send ready signal
+        await websocket.send_json({"type": "ready"})
+
+        # Start bidirectional relay tasks
+        async def read_from_container():
+            """Read output from container and send to client."""
+            try:
+                while True:
+                    # Read from Docker socket
+                    chunk = socket._sock.recv(4096)
+                    if not chunk:
+                        break
+
+                    # Send to WebSocket client
+                    await websocket.send_json({
+                        "type": "output",
+                        "data": chunk.decode("utf-8", errors="replace"),
+                    })
+
+                    # Update activity timestamp
+                    terminal_service.update_session_activity(session_id)
+
+            except Exception as e:
+                logger.debug("container_read_ended", error=str(e))
+
+        async def write_to_container():
+            """Read input from client and send to container."""
+            try:
+                while True:
+                    # Receive from WebSocket client
+                    message = await websocket.receive_json()
+
+                    if message.get("type") == "input":
+                        data = message.get("data", "")
+                        # Send to Docker socket
+                        socket._sock.sendall(data.encode("utf-8"))
+
+                        # Update activity timestamp
+                        terminal_service.update_session_activity(session_id)
+
+                    elif message.get("type") == "resize":
+                        # Handle terminal resize (future enhancement)
+                        # Docker API supports exec_resize but requires exec_id
+                        rows = message.get("rows", 24)
+                        cols = message.get("cols", 80)
+                        try:
+                            terminal_service.docker_client.api.exec_resize(
+                                exec_id=session.exec_id,
+                                height=rows,
+                                width=cols,
+                            )
+                        except Exception as e:
+                            logger.debug("resize_failed", error=str(e))
+
+            except WebSocketDisconnect:
+                logger.info("terminal_client_disconnected", session_id=session_id)
+            except Exception as e:
+                logger.debug("websocket_read_ended", error=str(e))
+
+        # Run both relay tasks concurrently
+        await asyncio.gather(
+            read_from_container(),
+            write_to_container(),
+            return_exceptions=True,
+        )
+
+    except Exception as e:
+        logger.error(
+            "terminal_ws_error",
+            task_id=task_id,
+            session_id=session_id,
+            error=str(e),
+        )
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Terminal error: {str(e)}",
+            })
+        except Exception:
+            pass
+
+    finally:
+        # Cleanup session
+        logger.info("terminal_ws_cleanup", session_id=session_id, task_id=task_id)
+        await terminal_service.cleanup_session(session_id)

@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 
 from portal.auth import verify_ws_auth
 from portal.routers import auth, chat, deployments, files, projects, repos, schedule, settings, system, tasks, usage
+from portal.services.terminal_service import get_terminal_service
 from shared.config import get_settings
 from shared.database import get_session_factory
 from shared.models.conversation import Conversation
@@ -118,6 +119,11 @@ async def _notification_listener() -> None:
 async def startup() -> None:
     global _notification_task
     _notification_task = asyncio.create_task(_notification_listener())
+
+    # Start terminal session cleanup loop
+    terminal_service = get_terminal_service()
+    await terminal_service.start_cleanup_loop()
+    logger.info("portal_startup_complete")
 
 
 @app.on_event("shutdown")

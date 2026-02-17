@@ -197,6 +197,15 @@ class Task:
     def meta_file(self) -> str:
         return os.path.join(self.workspace, f"task_meta_{self.id}.json")
 
+    @property
+    def container_name(self) -> str:
+        """Get the Docker container name for this task.
+
+        The container name includes the continuation count to handle
+        auto-continuations that spawn new containers.
+        """
+        return f"claude-task-{self.id}-{self.num_continuations}"
+
     def to_dict(self) -> dict:
         return {
             "task_id": self.id,
@@ -206,6 +215,7 @@ class Task:
             "source_branch": self.source_branch,
             "workspace": self.workspace,
             "log_file": self.log_file,
+            "container_name": self.container_name,
             "status": self.status,
             "mode": self.mode,
             "auto_push": self.auto_push,
@@ -957,6 +967,79 @@ class ClaudeCodeTools:
             "content": content,
             "truncated": truncated,
         }
+
+    async def get_task_container(
+        self,
+        task_id: str,
+        user_id: str | None = None,
+    ) -> dict:
+        """Get the Docker container information for a task.
+
+        Returns the container ID, name, workspace path, and running status.
+        The container ID can be used to attach a terminal session.
+        """
+        task = self._get_task(task_id, user_id)
+        container_name = task.container_name
+
+        # Check if container exists and get its ID and status
+        try:
+            # Use docker inspect to get container details
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "inspect",
+                "--format", "{{.Id}}|{{.State.Status}}",
+                container_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0:
+                # Container doesn't exist
+                return {
+                    "task_id": task_id,
+                    "container_name": container_name,
+                    "container_id": None,
+                    "workspace": task.workspace,
+                    "status": "not_found",
+                    "message": "Container not found. It may have been removed or task is not running.",
+                }
+
+            # Parse container ID and status
+            output = stdout.decode().strip()
+            container_id, container_status = output.split("|")
+
+            # Map Docker status to our status
+            if container_status == "running":
+                status = "running"
+            elif container_status in ("exited", "dead"):
+                status = "stopped"
+            else:
+                status = container_status
+
+            return {
+                "task_id": task_id,
+                "container_name": container_name,
+                "container_id": container_id,
+                "workspace": task.workspace,
+                "status": status,
+                "task_status": task.status,
+            }
+
+        except Exception as e:
+            logger.error(
+                "get_task_container_error",
+                task_id=task_id,
+                container_name=container_name,
+                error=str(e),
+            )
+            return {
+                "task_id": task_id,
+                "container_name": container_name,
+                "container_id": None,
+                "workspace": task.workspace,
+                "status": "error",
+                "message": f"Error checking container: {e}",
+            }
 
     # ------------------------------------------------------------------
     # Background execution

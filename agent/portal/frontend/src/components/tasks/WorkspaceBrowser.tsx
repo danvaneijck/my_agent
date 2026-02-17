@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Folder, File, ArrowLeft, ChevronRight } from "lucide-react";
+import { Folder, File, ArrowLeft, ChevronRight, Terminal } from "lucide-react";
 import { api } from "@/api/client";
 import type { WorkspaceEntry, WorkspaceFileContent } from "@/types";
+import TerminalPanel from "@/components/code/TerminalPanel";
 
 interface WorkspaceBrowserProps {
   taskId: string;
@@ -20,6 +21,7 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
   const [loading, setLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState<WorkspaceFileContent | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -59,7 +61,7 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Breadcrumb navigation */}
+      {/* Breadcrumb navigation with terminal toggle */}
       <div className="flex items-center gap-1 px-3 py-2 bg-surface border-b border-border text-xs text-gray-400 overflow-x-auto shrink-0">
         <button
           onClick={() => { setCurrentPath(""); setSelectedFile(null); }}
@@ -81,11 +83,28 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
             </button>
           </span>
         ))}
+
+        <div className="flex-1" />
+
+        {/* Terminal toggle button */}
+        <button
+          onClick={() => setShowTerminal(!showTerminal)}
+          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded transition-colors ${
+            showTerminal
+              ? "bg-accent text-white"
+              : "bg-surface-lighter text-gray-400 hover:text-white"
+          }`}
+          title={showTerminal ? "Close terminal" : "Open terminal"}
+        >
+          <Terminal size={14} />
+          Terminal
+        </button>
       </div>
 
-      <div className="flex flex-1 min-h-0">
-        {/* File listing */}
-        <div className="w-64 shrink-0 border-r border-border overflow-auto">
+      <div className={`flex flex-1 min-h-0 ${showTerminal ? "flex-col" : ""}`}>
+        <div className={`flex ${showTerminal ? "flex-1" : "flex-1"} min-h-0`}>
+          {/* File listing */}
+          <div className="w-64 shrink-0 border-r border-border overflow-auto">
           {currentPath && (
             <button
               onClick={navigateUp}
@@ -154,6 +173,16 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
             </div>
           )}
         </div>
+        </div>
+
+        {/* Terminal panel */}
+        {showTerminal && (
+          <TerminalPanel
+            taskId={taskId}
+            onClose={() => setShowTerminal(false)}
+            initialHeight={400}
+          />
+        )}
       </div>
     </div>
   );
