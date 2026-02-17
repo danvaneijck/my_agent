@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, GitBranch, GitPullRequest, ExternalLink, Clock, AlertCircle } from "lucide-react";
+import { ArrowLeft, GitBranch, GitPullRequest, ExternalLink, Clock, AlertCircle, Lightbulb, Plus, X } from "lucide-react";
 import { api } from "@/api/client";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { useTaskSkills, attachSkillToTask, detachSkillFromTask } from "@/hooks/useTaskSkills";
+import SkillPicker from "@/components/skills/SkillPicker";
 import type { ProjectTask } from "@/types";
 
 const STATUS_BADGE: Record<string, string> = {
@@ -25,6 +27,11 @@ export default function ProjectTaskDetailPage() {
   usePageTitle(task ? task.title : "Project Task");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showSkillPicker, setShowSkillPicker] = useState(false);
+  const [removingSkillId, setRemovingSkillId] = useState<string | null>(null);
+
+  // Fetch task skills
+  const { skills: taskSkills, loading: skillsLoading, refetch: refetchSkills } = useTaskSkills(taskId);
 
   const fetchTask = useCallback(async () => {
     if (!projectId || !taskId) return;
@@ -42,6 +49,25 @@ export default function ProjectTaskDetailPage() {
   useEffect(() => {
     fetchTask();
   }, [fetchTask]);
+
+  const handleAttachSkill = async (skillId: string) => {
+    if (!taskId) return;
+    await attachSkillToTask(taskId, skillId);
+    refetchSkills();
+  };
+
+  const handleDetachSkill = async (skillId: string) => {
+    if (!taskId) return;
+    setRemovingSkillId(skillId);
+    try {
+      await detachSkillFromTask(taskId, skillId);
+      refetchSkills();
+    } catch {
+      // Error
+    } finally {
+      setRemovingSkillId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -141,6 +167,61 @@ export default function ProjectTaskDetailPage() {
         )}
       </div>
 
+      {/* Skills */}
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-light-border dark:border-border flex items-center justify-between">
+          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider flex items-center gap-2">
+            <Lightbulb size={14} className="text-accent" />
+            Skills ({taskSkills.length})
+          </h3>
+          <button
+            onClick={() => setShowSkillPicker(true)}
+            className="inline-flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-accent/10 transition-colors"
+          >
+            <Plus size={12} />
+            Add Skill
+          </button>
+        </div>
+        {skillsLoading ? (
+          <div className="px-4 py-6 flex justify-center">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent"></div>
+          </div>
+        ) : taskSkills.length === 0 ? (
+          <div className="px-4 py-6 text-center text-gray-500 text-xs">
+            No skills attached yet
+          </div>
+        ) : (
+          <div className="p-4 flex flex-wrap gap-2">
+            {taskSkills.map((skill) => (
+              <div
+                key={skill.skill_id}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface-lighter border border-border rounded-lg text-xs"
+              >
+                <Lightbulb size={12} className="text-accent" />
+                <span className="text-white">{skill.skill_name}</span>
+                {skill.skill_category && (
+                  <span className="text-xs px-1.5 py-0.5 bg-surface rounded text-gray-400">
+                    {skill.skill_category}
+                  </span>
+                )}
+                <button
+                  onClick={() => handleDetachSkill(skill.skill_id)}
+                  disabled={removingSkillId === skill.skill_id}
+                  className="ml-1 p-0.5 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50"
+                  title="Remove skill"
+                >
+                  {removingSkillId === skill.skill_id ? (
+                    <div className="animate-spin rounded-full h-3 w-3 border border-red-400 border-t-transparent"></div>
+                  ) : (
+                    <X size={10} />
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Error */}
       {task.error_message && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
@@ -172,6 +253,15 @@ export default function ProjectTaskDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Skill Picker Modal */}
+      <SkillPicker
+        open={showSkillPicker}
+        onClose={() => setShowSkillPicker(false)}
+        onAttach={handleAttachSkill}
+        attachedSkillIds={taskSkills.map((s) => s.skill_id)}
+        title="Attach Skill to Task"
+      />
     </div>
   );
 }
