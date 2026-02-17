@@ -1153,6 +1153,39 @@ class ClaudeCodeTools:
                 raise RuntimeError(f"Failed to create terminal container: {error_msg}")
 
             container_id = stdout.decode().strip()
+
+            # Wait for bash to be installed (check up to 10 times with 1s delay)
+            logger.info(
+                "waiting_for_bash_installation",
+                task_id=task_id,
+                container_id=container_id,
+            )
+
+            for attempt in range(10):
+                await asyncio.sleep(1)
+
+                # Check if bash is available
+                check_proc = await asyncio.create_subprocess_exec(
+                    "docker", "exec", container_name, "which", "bash",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await check_proc.communicate()
+
+                if check_proc.returncode == 0:
+                    logger.info(
+                        "bash_installation_complete",
+                        task_id=task_id,
+                        attempt=attempt + 1,
+                    )
+                    break
+            else:
+                logger.warning(
+                    "bash_installation_timeout",
+                    task_id=task_id,
+                    message="Bash may not be fully installed yet",
+                )
+
             logger.info(
                 "terminal_container_created",
                 task_id=task_id,
