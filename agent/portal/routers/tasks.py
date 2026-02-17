@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import uuid
+
 import structlog
-from fastapi import APIRouter, Depends, Query, WebSocket
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
 from portal.auth import PortalUser, require_auth, verify_ws_auth
 from portal.services.log_streamer import stream_task_logs
 from portal.services.module_client import call_tool, check_module_health
+from portal.services.terminal_service import get_terminal_service
 from pydantic import BaseModel
 from shared.config import get_settings
 from shared.credential_store import CredentialStore
@@ -279,3 +284,154 @@ async def ws_task_logs(websocket: WebSocket, task_id: str) -> None:
     await verify_ws_auth(websocket)
     await websocket.accept()
     await stream_task_logs(websocket, task_id)
+
+
+@router.websocket("/{task_id}/terminal/ws")
+async def ws_terminal(websocket: WebSocket, task_id: str) -> None:
+    """Interactive terminal session via WebSocket.
+
+    Protocol:
+    - Client → Server: {"type": "input", "data": "command text"}
+    - Client → Server: {"type": "resize", "rows": 40, "cols": 120}
+    - Server → Client: {"type": "output", "data": "terminal output"}
+    - Server → Client: {"type": "ready"}
+    - Server → Client: {"type": "error", "message": "error details"}
+    """
+    # Authenticate user
+    user = await verify_ws_auth(websocket)
+    await websocket.accept()
+
+    terminal_service = get_terminal_service()
+    session_id = f"terminal-{task_id}-{uuid.uuid4().hex[:8]}"
+    socket = None
+
+    try:
+        # Get container information for the task
+        logger.info("terminal_ws_connect", task_id=task_id, user_id=str(user.user_id))
+
+        result = await call_tool(
+            module="claude_code",
+            tool_name="claude_code.get_task_container",
+            arguments={"task_id": task_id},
+            user_id=str(user.user_id),
+            timeout=15.0,
+        )
+
+        container_info = result.get("result", {})
+        container_id = container_info.get("container_id")
+        container_status = container_info.get("status")
+        workspace = container_info.get("workspace")
+
+        if not container_id:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Container not available: {container_info.get('message', 'Container not found')}",
+            })
+            await websocket.close()
+            return
+
+        if container_status != "running":
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Container is not running (status: {container_status})",
+            })
+            await websocket.close()
+            return
+
+        # Create terminal session
+        session = await terminal_service.create_session(
+            session_id=session_id,
+            container_id=container_id,
+            user_id=str(user.user_id),
+            task_id=task_id,
+            working_dir=workspace,
+        )
+
+        # Attach to session and get socket
+        socket = await terminal_service.attach_session(session_id)
+
+        # Send ready signal
+        await websocket.send_json({"type": "ready"})
+
+        # Start bidirectional relay tasks
+        async def read_from_container():
+            """Read output from container and send to client."""
+            try:
+                while True:
+                    # Read from Docker socket
+                    chunk = socket._sock.recv(4096)
+                    if not chunk:
+                        break
+
+                    # Send to WebSocket client
+                    await websocket.send_json({
+                        "type": "output",
+                        "data": chunk.decode("utf-8", errors="replace"),
+                    })
+
+                    # Update activity timestamp
+                    terminal_service.update_session_activity(session_id)
+
+            except Exception as e:
+                logger.debug("container_read_ended", error=str(e))
+
+        async def write_to_container():
+            """Read input from client and send to container."""
+            try:
+                while True:
+                    # Receive from WebSocket client
+                    message = await websocket.receive_json()
+
+                    if message.get("type") == "input":
+                        data = message.get("data", "")
+                        # Send to Docker socket
+                        socket._sock.sendall(data.encode("utf-8"))
+
+                        # Update activity timestamp
+                        terminal_service.update_session_activity(session_id)
+
+                    elif message.get("type") == "resize":
+                        # Handle terminal resize (future enhancement)
+                        # Docker API supports exec_resize but requires exec_id
+                        rows = message.get("rows", 24)
+                        cols = message.get("cols", 80)
+                        try:
+                            terminal_service.docker_client.api.exec_resize(
+                                exec_id=session.exec_id,
+                                height=rows,
+                                width=cols,
+                            )
+                        except Exception as e:
+                            logger.debug("resize_failed", error=str(e))
+
+            except WebSocketDisconnect:
+                logger.info("terminal_client_disconnected", session_id=session_id)
+            except Exception as e:
+                logger.debug("websocket_read_ended", error=str(e))
+
+        # Run both relay tasks concurrently
+        await asyncio.gather(
+            read_from_container(),
+            write_to_container(),
+            return_exceptions=True,
+        )
+
+    except Exception as e:
+        logger.error(
+            "terminal_ws_error",
+            task_id=task_id,
+            session_id=session_id,
+            error=str(e),
+        )
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Terminal error: {str(e)}",
+            })
+        except Exception:
+            pass
+
+    finally:
+        # Cleanup session
+        logger.info("terminal_ws_cleanup", session_id=session_id, task_id=task_id)
+        await terminal_service.cleanup_session(session_id)
