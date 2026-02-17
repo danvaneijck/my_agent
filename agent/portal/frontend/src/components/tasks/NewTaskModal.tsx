@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, GitBranch, Upload } from "lucide-react";
+import { X, GitBranch, Upload, Search, Plus, Shield } from "lucide-react";
 import { api } from "@/api/client";
+import { useRepos } from "@/hooks/useRepos";
+import { useBranches } from "@/hooks/useBranches";
+import type { GitRepo, GitBranch as GitBranchType } from "@/types";
 
 interface NewTaskModalProps {
   open: boolean;
@@ -10,6 +13,21 @@ interface NewTaskModalProps {
   defaultRepoUrl?: string;
   defaultBranch?: string;
   defaultPrompt?: string;
+}
+
+function formatRelativeDate(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export default function NewTaskModal({
@@ -31,6 +49,43 @@ export default function NewTaskModal({
   const [error, setError] = useState("");
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
+  // Repository selection state
+  const [selectedRepo, setSelectedRepo] = useState<GitRepo | null>(null);
+  const [repoSearch, setRepoSearch] = useState("");
+
+  // Branch selection state
+  const [selectedBranch, setSelectedBranch] = useState<GitBranchType | null>(null);
+  const [branchSearch, setBranchSearch] = useState("");
+  const [creatingNewBranch, setCreatingNewBranch] = useState(false);
+
+  // Fetch repos (only when no defaultRepoUrl)
+  const { repos, loading: reposLoading } = useRepos();
+
+  // Fetch branches when repo is selected
+  const { branches, loading: branchesLoading } = useBranches(
+    selectedRepo?.owner || "",
+    selectedRepo?.repo || "",
+    !!selectedRepo // only fetch when repo is selected
+  );
+
+  // Filter repos by search
+  const filteredRepos = useMemo(() => {
+    if (!repoSearch.trim()) return [];
+    const q = repoSearch.toLowerCase();
+    return repos.filter(
+      (r) =>
+        r.full_name.toLowerCase().includes(q) ||
+        (r.description || "").toLowerCase().includes(q)
+    );
+  }, [repos, repoSearch]);
+
+  // Filter branches by search
+  const filteredBranches = useMemo(() => {
+    if (!branchSearch.trim()) return [];
+    const q = branchSearch.toLowerCase();
+    return branches.filter((b) => b.name.toLowerCase().includes(q));
+  }, [branches, branchSearch]);
+
   // The branch actually sent to the API: new branch overrides source branch
   const effectiveBranch = newBranch.trim() || branch.trim();
 
@@ -44,6 +99,35 @@ export default function NewTaskModal({
       setMode("execute");
       setAutoPush(false);
       setError("");
+      setRepoSearch("");
+      setBranchSearch("");
+      setCreatingNewBranch(false);
+
+      // If defaultRepoUrl is provided, parse it to populate selectedRepo
+      if (defaultRepoUrl) {
+        // Parse git URL to extract owner/repo
+        // e.g., "https://github.com/owner/repo.git" -> owner="owner", repo="repo"
+        const match = defaultRepoUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
+        if (match) {
+          setSelectedRepo({
+            owner: match[1],
+            repo: match[2],
+            full_name: `${match[1]}/${match[2]}`,
+            clone_url: defaultRepoUrl,
+            description: null,
+            url: defaultRepoUrl,
+            default_branch: defaultBranch || "main",
+            language: null,
+            private: false,
+            stars: 0,
+            updated_at: "",
+          });
+        }
+      } else {
+        setSelectedRepo(null);
+      }
+
+      setSelectedBranch(null);
       setTimeout(() => promptRef.current?.focus(), 50);
     }
   }, [open, defaultRepoUrl, defaultBranch, defaultPrompt]);
@@ -68,13 +152,28 @@ export default function NewTaskModal({
 
     try {
       const body: Record<string, string | boolean> = { prompt: prompt.trim(), mode };
-      if (repoUrl.trim()) body.repo_url = repoUrl.trim();
-      if (effectiveBranch) body.branch = effectiveBranch;
-      // When creating a new branch from a specific source, tell the backend
-      // to checkout the source first before creating the new branch
-      if (newBranch.trim() && branch.trim()) {
-        body.source_branch = branch.trim();
+
+      // Determine repo_url
+      if (selectedRepo) {
+        body.repo_url = selectedRepo.clone_url;
+      } else if (repoUrl.trim()) {
+        body.repo_url = repoUrl.trim();
       }
+
+      // Determine branch and source_branch
+      if (creatingNewBranch && newBranch.trim()) {
+        body.branch = newBranch.trim();
+        // Source branch is either selected branch or the default/provided branch
+        const sourceBranchName = selectedBranch?.name || branch.trim();
+        if (sourceBranchName) {
+          body.source_branch = sourceBranchName;
+        }
+      } else if (selectedBranch) {
+        body.branch = selectedBranch.name;
+      } else if (branch.trim()) {
+        body.branch = branch.trim();
+      }
+
       if (autoPush) body.auto_push = true;
 
       const result = await api<{ task_id: string }>("/api/tasks", {
@@ -102,9 +201,9 @@ export default function NewTaskModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-surface-light border border-border rounded-xl w-full max-w-lg shadow-2xl">
+      <div className="bg-surface-light border border-border rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <h3 className="text-base font-semibold text-white">New Task</h3>
           <button
             onClick={onClose}
@@ -115,42 +214,7 @@ export default function NewTaskModal({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Repository info (if pre-filled) */}
-          {defaultRepoUrl && (
-            <div className="space-y-3">
-              <div className="bg-surface/50 border border-border rounded-lg px-3 py-2">
-                <span className="text-xs text-gray-500 block mb-0.5">Repository</span>
-                <span className="text-sm text-gray-300 font-mono">{repoUrl}</span>
-                {branch && (
-                  <>
-                    <span className="text-xs text-gray-500 mx-2">/</span>
-                    <span className="text-sm text-accent font-mono">{branch}</span>
-                  </>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1.5">
-                  <GitBranch size={14} className="inline mr-1 -mt-0.5" />
-                  New branch name
-                  <span className="text-gray-600 ml-1">(optional)</span>
-                </label>
-                <input
-                  value={newBranch}
-                  onChange={(e) => setNewBranch(e.target.value)}
-                  placeholder={`Leave empty to work on ${branch || "default branch"}`}
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent font-mono"
-                />
-                {newBranch.trim() && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Will create <span className="text-accent font-mono">{newBranch.trim()}</span> from{" "}
-                    <span className="font-mono">{branch || "default branch"}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
           <div>
             <label className="block text-sm text-gray-400 mb-1.5">Task description</label>
             <textarea
@@ -163,27 +227,219 @@ export default function NewTaskModal({
             />
           </div>
 
-          {/* Repo URL / Branch (collapsible if not pre-filled) */}
+          {/* Repository selection dropdown (when not pre-filled) */}
           {!defaultRepoUrl && (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1">
-                <label className="block text-sm text-gray-400 mb-1.5">Repository URL</label>
+            <div className="space-y-3">
+              <label className="block text-sm text-gray-400 mb-1.5">
+                Repository <span className="text-gray-600">(optional)</span>
+              </label>
+
+              {/* Search input */}
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  placeholder="https://github.com/owner/repo.git"
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
+                  value={repoSearch}
+                  onChange={(e) => setRepoSearch(e.target.value)}
+                  placeholder="Search repositories..."
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
                 />
               </div>
-              <div className="sm:w-40">
-                <label className="block text-sm text-gray-400 mb-1.5">Branch</label>
-                <input
-                  value={branch}
-                  onChange={(e) => setBranch(e.target.value)}
-                  placeholder="main"
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
-                />
-              </div>
+
+              {/* Repo list dropdown */}
+              {repoSearch && (
+                <div className="max-h-52 overflow-y-auto border border-border rounded-lg divide-y divide-border bg-surface">
+                  {reposLoading ? (
+                    <div className="px-3 py-4 text-sm text-gray-500 text-center">Loading repos...</div>
+                  ) : filteredRepos.length === 0 ? (
+                    <div className="px-3 py-4 text-sm text-gray-500 text-center">
+                      No matching repos
+                    </div>
+                  ) : (
+                    filteredRepos.map((repo) => (
+                      <button
+                        key={repo.full_name}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRepo(repo);
+                          setRepoUrl(repo.clone_url);
+                          setRepoSearch("");
+                          setSelectedBranch(null);
+                          setBranch(repo.default_branch);
+                          setCreatingNewBranch(false);
+                        }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-surface-lighter transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-white font-mono">{repo.full_name}</span>
+                          {repo.private && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
+                              private
+                            </span>
+                          )}
+                        </div>
+                        {repo.description && (
+                          <p className="text-xs text-gray-500 mt-0.5 truncate">{repo.description}</p>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Selected repo indicator */}
+              {selectedRepo && (
+                <div className="bg-accent/10 border border-accent/20 rounded-lg px-3 py-2 flex items-center justify-between">
+                  <span className="text-sm text-accent font-mono">{selectedRepo.full_name}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedRepo(null);
+                      setRepoUrl("");
+                      setSelectedBranch(null);
+                      setBranch("");
+                      setCreatingNewBranch(false);
+                    }}
+                    className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Repository info (if pre-filled) */}
+          {defaultRepoUrl && (
+            <div className="bg-surface/50 border border-border rounded-lg px-3 py-2">
+              <span className="text-xs text-gray-500 block mb-0.5">Repository</span>
+              <span className="text-sm text-gray-300 font-mono">{selectedRepo?.full_name || repoUrl}</span>
+            </div>
+          )}
+
+          {/* Branch selection dropdown (shown when repo is selected or pre-filled) */}
+          {(selectedRepo || defaultRepoUrl) && (
+            <div className="space-y-3">
+              <label className="block text-sm text-gray-400 mb-1.5">
+                <GitBranch size={14} className="inline mr-1 -mt-0.5" />
+                Branch
+              </label>
+
+              {/* "Create new branch" option */}
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatingNewBranch(!creatingNewBranch);
+                  if (!creatingNewBranch) {
+                    setSelectedBranch(null);
+                    setNewBranch("");
+                  }
+                }}
+                className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                  creatingNewBranch
+                    ? "bg-accent/10 border-accent/30 text-accent"
+                    : "bg-surface border-border text-gray-300 hover:bg-surface-lighter"
+                }`}
+              >
+                <Plus size={14} className="inline mr-2 -mt-0.5" />
+                Create new branch
+              </button>
+
+              {/* New branch name input (shown when creating new branch) */}
+              {creatingNewBranch && (
+                <div>
+                  <input
+                    value={newBranch}
+                    onChange={(e) => setNewBranch(e.target.value)}
+                    placeholder="feature/my-new-feature"
+                    className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent font-mono"
+                  />
+                  {newBranch.trim() && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Will create <span className="text-accent font-mono">{newBranch.trim()}</span> from{" "}
+                      <span className="font-mono">{selectedBranch?.name || branch || "default branch"}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Existing branch selection */}
+              {!creatingNewBranch && (
+                <>
+                  {/* Search input */}
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                      value={branchSearch}
+                      onChange={(e) => setBranchSearch(e.target.value)}
+                      placeholder="Search branches..."
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
+                    />
+                  </div>
+
+                  {/* Branch list dropdown */}
+                  {branchSearch && (
+                    <div className="max-h-52 overflow-y-auto border border-border rounded-lg divide-y divide-border bg-surface">
+                      {branchesLoading ? (
+                        <div className="px-3 py-4 text-sm text-gray-500 text-center">Loading branches...</div>
+                      ) : filteredBranches.length === 0 ? (
+                        <div className="px-3 py-4 text-sm text-gray-500 text-center">
+                          No matching branches
+                        </div>
+                      ) : (
+                        filteredBranches.map((branchItem) => (
+                          <button
+                            key={branchItem.name}
+                            type="button"
+                            onClick={() => {
+                              setSelectedBranch(branchItem);
+                              setBranch(branchItem.name);
+                              setBranchSearch("");
+                            }}
+                            className="w-full text-left px-3 py-2.5 hover:bg-surface-lighter transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-white font-mono">{branchItem.name}</span>
+                              {branchItem.protected && (
+                                <Shield size={12} className="text-yellow-400" />
+                              )}
+                            </div>
+                            {branchItem.updated_at && (
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                Updated {formatRelativeDate(branchItem.updated_at)}
+                              </p>
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Selected branch indicator */}
+                  {selectedBranch && (
+                    <div className="bg-accent/10 border border-accent/20 rounded-lg px-3 py-2 flex items-center justify-between">
+                      <span className="text-sm text-accent font-mono">{selectedBranch.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedBranch(null);
+                          setBranch("");
+                        }}
+                        className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Show default branch if nothing selected */}
+                  {!selectedBranch && branch && (
+                    <div className="bg-surface/50 border border-border rounded-lg px-3 py-2">
+                      <span className="text-xs text-gray-500 block mb-0.5">Default branch</span>
+                      <span className="text-sm text-gray-300 font-mono">{branch}</span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -233,29 +489,30 @@ export default function NewTaskModal({
           )}
 
           {error && <p className="text-sm text-red-400">{error}</p>}
-
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || !prompt.trim()}
-              className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
-            >
-              {submitting
-                ? "Starting..."
-                : mode === "plan"
-                ? "Start Planning"
-                : "Start Task"}
-            </button>
-          </div>
         </form>
+
+        {/* Footer - Actions */}
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            onClick={handleSubmit}
+            disabled={submitting || !prompt.trim()}
+            className="px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+          >
+            {submitting
+              ? "Starting..."
+              : mode === "plan"
+              ? "Start Planning"
+              : "Start Task"}
+          </button>
+        </div>
       </div>
     </div>
   );
