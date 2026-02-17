@@ -285,8 +285,12 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
           term.writeln("\x1b[32m✓ Connected to workspace terminal\x1b[0m");
           term.writeln("\x1b[90mTip: Use arrow keys to navigate command history\x1b[0m");
           term.writeln("");
-          // Auto-focus terminal on ready
-          setTimeout(() => term.focus(), 100);
+          // Auto-focus terminal on ready (multiple attempts for reliability)
+          setTimeout(() => {
+            term.focus();
+            console.log("Terminal focused, ready for input");
+          }, 100);
+          setTimeout(() => term.focus(), 500);
         } else if (message.type === "output") {
           // Buffer output and flush periodically to prevent UI freezing
           outputBufferRef.current.push(message.data);
@@ -422,7 +426,16 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
     return () => {
       window.removeEventListener("resize", handleResize);
       disposable.dispose();
-      ws.close();
+
+      // Close WebSocket with immediate timeout
+      try {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close(1000, "Component unmounting");
+        }
+      } catch (e) {
+        console.error("Error closing WebSocket:", e);
+      }
+
       term.dispose();
 
       // Clear any pending flush timers
@@ -531,7 +544,15 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       )}
 
       {/* Terminal container */}
-      <div ref={terminalRef} className="flex-1 p-2" />
+      <div
+        ref={terminalRef}
+        className="flex-1 p-2 cursor-text"
+        onClick={() => {
+          if (xtermRef.current && status === "connected") {
+            xtermRef.current.focus();
+          }
+        }}
+      />
     </div>
   );
 }
