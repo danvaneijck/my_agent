@@ -202,6 +202,45 @@ pytest tests/test_terminal.py -v
 ✅ Production-ready code quality
 ✅ All Phase 4 tasks completed
 
+## Bug Fixes
+
+### Fix Terminal Socket Timeout (Post Phase 4)
+
+**Issue**: Terminal WebSocket connections were timing out after 60 seconds due to blocking socket.recv() calls with default Docker socket timeout.
+
+**Error Logs**:
+```
+container_read_ended error='timed out'
+terminal_client_disconnected session_id=...
+```
+
+**Root Cause**:
+- Docker sockets have a default 60-second timeout
+- Using synchronous `socket._sock.recv(4096)` in async function blocks event loop
+- After 60 seconds of no data, socket.recv() raises a timeout exception
+
+**Solution**:
+1. Set socket timeout to `None` (infinite) after attachment: `socket._sock.settimeout(None)`
+2. Use `asyncio.get_event_loop().run_in_executor()` to run blocking recv() in thread pool
+3. WebSocket connection lifecycle now properly manages disconnects independently
+
+**Changes** (`agent/portal/routers/tasks.py`):
+```python
+# Set socket timeout to None (infinite) to prevent timeout errors
+# The WebSocket connection itself will handle disconnects
+socket._sock.settimeout(None)
+
+# Read from Docker socket in executor to avoid blocking event loop
+loop = asyncio.get_event_loop()
+chunk = await loop.run_in_executor(None, socket._sock.recv, 4096)
+```
+
+**Benefits**:
+- Terminal sessions no longer timeout during idle periods
+- Event loop remains responsive
+- WebSocket properly manages connection lifecycle
+- Users can keep terminals open indefinitely while working
+
 ## Next Steps
 
 The terminal feature is complete and production-ready. Recommended follow-up tasks:

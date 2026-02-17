@@ -469,6 +469,10 @@ async def ws_terminal(
         # Attach to session and get socket
         socket = await terminal_service.attach_session(session_id)
 
+        # Set socket timeout to None (infinite) to prevent timeout errors
+        # The WebSocket connection itself will handle disconnects
+        socket._sock.settimeout(None)
+
         # Send ready signal
         await websocket.send_json({"type": "ready"})
 
@@ -476,9 +480,10 @@ async def ws_terminal(
         async def read_from_container():
             """Read output from container and send to client."""
             try:
+                loop = asyncio.get_event_loop()
                 while True:
-                    # Read from Docker socket
-                    chunk = socket._sock.recv(4096)
+                    # Read from Docker socket in executor to avoid blocking event loop
+                    chunk = await loop.run_in_executor(None, socket._sock.recv, 4096)
                     if not chunk:
                         break
 
