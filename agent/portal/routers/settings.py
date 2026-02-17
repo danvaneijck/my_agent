@@ -69,13 +69,6 @@ SERVICE_DEFINITIONS = {
             {"key": "api_token", "label": "API Token", "type": "password"},
         ],
     },
-    "bitbucket": {
-        "label": "Bitbucket",
-        "keys": [
-            {"key": "username", "label": "Bitbucket Username", "type": "text"},
-            {"key": "app_password", "label": "App Password", "type": "password"},
-        ],
-    },
 }
 
 

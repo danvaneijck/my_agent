@@ -99,12 +99,13 @@ async def _get_tools_for_user(user_id: str | None, provider: str = "github") -> 
                         if git_provider:
                             return GitPlatformTools(provider=git_provider)
                 elif provider == "bitbucket":
-                    username = await _credential_store.get(session, uid, "bitbucket", "username")
-                    app_password = await _credential_store.get(session, uid, "bitbucket", "app_password")
-                    if username and app_password:
+                    # Use Atlassian credentials for Bitbucket access
+                    username = await _credential_store.get(session, uid, "atlassian", "username")
+                    api_token = await _credential_store.get(session, uid, "atlassian", "api_token")
+                    if username and api_token:
                         git_provider = BitbucketProvider(
                             username=username,
-                            app_password=app_password,
+                            app_password=api_token,  # API token works as app password
                             base_url="https://api.bitbucket.org/2.0"
                         )
                         return GitPlatformTools(provider=git_provider)

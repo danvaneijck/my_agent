@@ -70,13 +70,13 @@ async def list_providers(user: PortalUser = Depends(require_auth)) -> dict:
     factory = get_session_factory()
     async with factory() as session:
         github_token = await store.get(session, user.user_id, "github", "github_token")
-        bb_username = await store.get(session, user.user_id, "bitbucket", "username")
-        bb_password = await store.get(session, user.user_id, "bitbucket", "app_password")
+        atlassian_username = await store.get(session, user.user_id, "atlassian", "username")
+        atlassian_token = await store.get(session, user.user_id, "atlassian", "api_token")
 
     providers = []
     if github_token:
         providers.append("github")
-    if bb_username and bb_password:
+    if atlassian_username and atlassian_token:
         providers.append("bitbucket")
 
     return {"providers": providers}

@@ -95,23 +95,23 @@ const SETUP_GUIDES: Record<string, SetupGuide> = {
       },
     ],
   },
-  bitbucket: {
-    title: "Setting up Bitbucket credentials",
+  atlassian: {
+    title: "Setting up Atlassian credentials",
     steps: [
       {
         instruction:
-          "Go to Bitbucket Settings > Personal Settings > App passwords",
+          "Instance URL: Your Atlassian instance URL (e.g., https://yourcompany.atlassian.net)",
       },
       {
         instruction:
-          "Create a new app password with 'Repositories: Read' and 'Repositories: Write' permissions",
+          "Username: Your Atlassian account email address",
       },
       {
         instruction:
-          "Enter your Bitbucket username and the generated app password below",
+          "API Token: Create an API token at https://id.atlassian.com/manage-profile/security/api-tokens with access to Jira, Confluence, and Bitbucket",
       },
     ],
-    note: "App passwords allow secure access to your Bitbucket repositories without exposing your main password.",
+    note: "These credentials provide access to Jira, Confluence, and Bitbucket repositories. The same API token works across all Atlassian services.",
   },
 };
 
