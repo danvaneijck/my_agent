@@ -419,6 +419,13 @@ async def ws_terminal(
         container_info = result.get("result", {})
         workspace = container_info.get("workspace")
 
+        logger.info(
+            "terminal_workspace_info",
+            task_id=task_id,
+            workspace=workspace,
+            container_info=container_info,
+        )
+
         if not workspace:
             await websocket.send_json({
                 "type": "error",
@@ -458,12 +465,14 @@ async def ws_terminal(
             )
 
         # Create terminal session
+        # Use the actual workspace path instead of constructing from task_id
+        # In task chains, workspace is named after the first task, not the current task
         session = await terminal_service.create_session(
             session_id=session_id,
             container_id=container_id,
             user_id=str(user.user_id),
             task_id=task_id,
-            working_dir=f"/tmp/claude_tasks/{task_id}",
+            working_dir=workspace,
         )
 
         # Attach to session and get socket
