@@ -7,6 +7,7 @@ import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PlanningTaskPanel from "@/components/projects/PlanningTaskPanel";
 import ProjectExecutionPanel from "@/components/projects/ProjectExecutionPanel";
+import MultiStateProgressBar from "@/components/projects/MultiStateProgressBar";
 import type { ProjectPhase } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -65,11 +66,8 @@ function PhaseRow({ phase, projectId, repoOwner, repoName, onClick, onRetry }: {
         )}
         {total > 0 && (
           <div className="flex items-center gap-3 mt-1.5">
-            <div className="h-1.5 flex-1 max-w-48 bg-surface rounded-full overflow-hidden">
-              <div
-                className="h-full bg-accent rounded-full transition-all"
-                style={{ width: `${pct}%` }}
-              />
+            <div className="flex-1 max-w-48">
+              <MultiStateProgressBar task_counts={counts} />
             </div>
             <span className="text-xs text-gray-500">{done}/{total}</span>
             <div className="flex gap-2 text-xs">
@@ -282,6 +280,18 @@ export default function ProjectDetailPage() {
   const doneTasks = project.phases.reduce((sum, p) => sum + (p.task_counts?.done || 0), 0);
   const overallPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
+  // Aggregate all task counts for overall progress bar
+  const overallTaskCounts = project.phases.reduce((acc, p) => {
+    const counts = p.task_counts || {};
+    return {
+      todo: (acc.todo || 0) + (counts.todo || 0),
+      doing: (acc.doing || 0) + (counts.doing || 0),
+      in_review: (acc.in_review || 0) + (counts.in_review || 0),
+      done: (acc.done || 0) + (counts.done || 0),
+      failed: (acc.failed || 0) + (counts.failed || 0),
+    };
+  }, {} as { todo?: number; doing?: number; in_review?: number; done?: number; failed?: number });
+
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
       {/* Back nav */}
@@ -358,11 +368,9 @@ export default function ProjectDetailPage() {
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
           <div className="flex justify-between text-sm text-gray-400 mb-2">
             <span>Overall Progress</span>
-            <span>{doneTasks}/{totalTasks} tasks ({overallPct}%)</span>
+            <span>{doneTasks}/{totalTasks} tasks ({overallPct}% complete)</span>
           </div>
-          <div className="h-2 bg-surface rounded-full overflow-hidden">
-            <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${overallPct}%` }} />
-          </div>
+          <MultiStateProgressBar task_counts={overallTaskCounts} height="h-2" />
         </div>
       )}
 
@@ -448,21 +456,23 @@ export default function ProjectDetailPage() {
           </div>
         ) : (
           <div className="divide-y divide-light-border dark:divide-border/50">
-            {project.phases.map((phase) => (
-              <PhaseRow
-                key={phase.phase_id}
-                phase={phase}
-                projectId={project.project_id}
-                repoOwner={project.repo_owner}
-                repoName={project.repo_name}
-                onClick={() => navigate(`/projects/${project.project_id}/phases/${phase.phase_id}`)}
-                onRetry={
-                  (phase.task_counts?.failed || 0) > 0 && !project.phases.some(p => p.status === "in_progress")
-                    ? () => handleRetryPhase(phase.phase_id)
-                    : undefined
-                }
-              />
-            ))}
+            {[...project.phases]
+              .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+              .map((phase) => (
+                <PhaseRow
+                  key={phase.phase_id}
+                  phase={phase}
+                  projectId={project.project_id}
+                  repoOwner={project.repo_owner}
+                  repoName={project.repo_name}
+                  onClick={() => navigate(`/projects/${project.project_id}/phases/${phase.phase_id}`)}
+                  onRetry={
+                    (phase.task_counts?.failed || 0) > 0 && !project.phases.some(p => p.status === "in_progress")
+                      ? () => handleRetryPhase(phase.phase_id)
+                      : undefined
+                  }
+                />
+              ))}
           </div>
         )}
       </div>
