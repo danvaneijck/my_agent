@@ -97,10 +97,13 @@ export default function TerminalPanel({
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await api(`/api/tasks/${taskId}/workspace/upload`, {
-        method: "POST",
-        body: formData,
-      });
+      const result = await api<{ success: boolean; message?: string }>(
+        `/api/tasks/${taskId}/workspace/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
       // Clear the input so the same file can be uploaded again if needed
       if (fileInputRef.current) {
@@ -108,7 +111,6 @@ export default function TerminalPanel({
       }
 
       // Check response
-      const result = await response.json();
       if (result.success) {
         console.log(`File ${file.name} uploaded successfully to workspace`);
       } else {

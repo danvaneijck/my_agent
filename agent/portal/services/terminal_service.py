@@ -58,6 +58,9 @@ class TerminalService:
         # Track active sessions: {session_id: TerminalSession}
         self.sessions: dict[str, TerminalSession] = {}
 
+        # Track on-demand terminal containers: {task_id: container_id}
+        self.terminal_containers: dict[str, str] = {}
+
         # Background task for session cleanup
         self._cleanup_task: Optional[asyncio.Task] = None
 
@@ -113,6 +116,93 @@ class TerminalService:
             raise ValueError(f"Docker API error: {str(e)}")
         except Exception as e:
             raise ValueError(f"Failed to access container: {str(e)}")
+
+    async def ensure_terminal_container(
+        self, task_id: str, user_id: str
+    ) -> str:
+        """Ensure a terminal container exists for the task.
+
+        Tries to get the task's execution container first. If the task is no longer
+        running, creates or retrieves a persistent terminal container.
+
+        Workflow:
+        1. Try to get task container (if task still running)
+        2. If task container exists and running → return its ID
+        3. Otherwise, call claude_code.create_terminal_container
+        4. Return terminal container ID
+
+        Args:
+            task_id: Task ID
+            user_id: User ID for ownership validation
+
+        Returns:
+            container_id: Docker container ID
+
+        Raises:
+            ValueError: If workspace not found or access denied
+        """
+        from portal.services.module_client import call_tool
+
+        # First, try to get running task container
+        try:
+            result = await call_tool(
+                module="claude_code",
+                tool_name="claude_code.get_task_container",
+                arguments={"task_id": task_id},
+                user_id=user_id,
+            )
+            container_info = result.get("result", {})
+
+            # If task container is running, use it
+            if container_info.get("status") == "running":
+                logger.info(
+                    "using_task_container",
+                    task_id=task_id,
+                    container_id=container_info["container_id"],
+                )
+                return container_info["container_id"]
+
+        except Exception as e:
+            # Task container not available, continue to terminal container
+            logger.debug(
+                "task_container_not_available",
+                task_id=task_id,
+                error=str(e),
+            )
+
+        # Create or get terminal container
+        logger.info("creating_terminal_container", task_id=task_id)
+        try:
+            result = await call_tool(
+                module="claude_code",
+                tool_name="claude_code.create_terminal_container",
+                arguments={"task_id": task_id},
+                user_id=user_id,
+            )
+
+            terminal_info = result.get("result", {})
+            if not terminal_info.get("container_id"):
+                raise ValueError(
+                    "Failed to create terminal container. "
+                    "The workspace may have been deleted."
+                )
+
+            logger.info(
+                "using_terminal_container",
+                task_id=task_id,
+                container_id=terminal_info["container_id"],
+                status=terminal_info.get("status"),
+            )
+
+            return terminal_info["container_id"]
+
+        except Exception as e:
+            logger.error(
+                "ensure_terminal_container_failed",
+                task_id=task_id,
+                error=str(e),
+            )
+            raise ValueError(f"Failed to ensure terminal container: {e}")
 
     async def create_session(
         self,
@@ -337,6 +427,150 @@ class TerminalService:
             List of TerminalSession objects
         """
         return [s for s in self.sessions.values() if s.task_id == task_id]
+
+    async def get_or_create_terminal_container(
+        self, task_id: str, workspace_path: str
+    ) -> tuple[str, str]:
+        """Get existing or create new on-demand terminal container for a workspace.
+
+        Args:
+            task_id: Task identifier
+            workspace_path: Path to workspace directory on host
+
+        Returns:
+            Tuple of (container_id, container_status)
+
+        Raises:
+            ValueError: If container creation fails
+        """
+        # Check if we already have a terminal container for this task
+        if task_id in self.terminal_containers:
+            container_id = self.terminal_containers[task_id]
+            try:
+                container = self.docker_client.containers.get(container_id)
+                container.reload()
+
+                # If container exists and is running, return it
+                if container.status == "running":
+                    logger.info(
+                        "terminal_container_exists",
+                        task_id=task_id,
+                        container_id=container_id,
+                    )
+                    return container_id, container.status
+
+                # If container exists but not running, try to start it
+                if container.status == "exited":
+                    logger.info(
+                        "terminal_container_starting",
+                        task_id=task_id,
+                        container_id=container_id,
+                    )
+                    container.start()
+                    container.reload()
+                    return container_id, container.status
+
+            except docker.errors.NotFound:
+                # Container was removed, clean up reference
+                logger.info(
+                    "terminal_container_removed",
+                    task_id=task_id,
+                    container_id=container_id,
+                )
+                del self.terminal_containers[task_id]
+
+        # Create new terminal container
+        try:
+            logger.info(
+                "creating_terminal_container",
+                task_id=task_id,
+                workspace_path=workspace_path,
+            )
+
+            # Mount the entire /tmp/claude_tasks directory like task containers do
+            # This ensures task chains work correctly (workspace may be named after first task)
+            # The workspace_path is the container path like /tmp/claude_tasks/{task_id}
+            # Portal service has ./data/claude_tasks mounted at /tmp/claude_tasks
+            # So we mount /tmp/claude_tasks:/tmp/claude_tasks in terminal containers too
+            container = self.docker_client.containers.run(
+                image="my-claude-code-image",
+                command=["/bin/bash", "-c", "sleep infinity"],
+                detach=True,
+                remove=False,  # Don't auto-remove so we can reuse it
+                name=f"terminal-{task_id}",
+                working_dir=workspace_path,  # Use actual workspace path (works for task chains)
+                volumes={
+                    "/tmp/claude_tasks": {
+                        "bind": "/tmp/claude_tasks",
+                        "mode": "rw",
+                    }
+                },
+                environment={"TERM": "xterm-256color"},
+                labels={
+                    "managed_by": "portal_terminal_service",
+                    "task_id": task_id,
+                },
+            )
+
+            container_id = container.id
+            self.terminal_containers[task_id] = container_id
+
+            logger.info(
+                "terminal_container_created",
+                task_id=task_id,
+                container_id=container_id,
+            )
+
+            return container_id, "running"
+
+        except Exception as e:
+            logger.error(
+                "terminal_container_creation_failed",
+                task_id=task_id,
+                workspace_path=workspace_path,
+                error=str(e),
+            )
+            raise ValueError(f"Failed to create terminal container: {e}")
+
+    async def cleanup_terminal_container(self, task_id: str) -> None:
+        """Stop and remove on-demand terminal container for a task.
+
+        Args:
+            task_id: Task identifier
+        """
+        if task_id not in self.terminal_containers:
+            return
+
+        container_id = self.terminal_containers[task_id]
+        try:
+            container = self.docker_client.containers.get(container_id)
+            logger.info(
+                "stopping_terminal_container",
+                task_id=task_id,
+                container_id=container_id,
+            )
+            container.stop(timeout=5)
+            container.remove()
+            logger.info(
+                "terminal_container_removed",
+                task_id=task_id,
+                container_id=container_id,
+            )
+        except docker.errors.NotFound:
+            logger.debug(
+                "terminal_container_not_found",
+                task_id=task_id,
+                container_id=container_id,
+            )
+        except Exception as e:
+            logger.error(
+                "terminal_container_cleanup_error",
+                task_id=task_id,
+                container_id=container_id,
+                error=str(e),
+            )
+        finally:
+            del self.terminal_containers[task_id]
 
 
 # Global instance

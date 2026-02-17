@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import structlog
 from fastapi import FastAPI
 
@@ -27,6 +28,24 @@ tools: ClaudeCodeTools | None = None
 _credential_store: CredentialStore | None = None
 
 
+async def cleanup_terminal_containers_loop() -> None:
+    """Background task to cleanup idle terminal containers every hour."""
+    while True:
+        try:
+            await asyncio.sleep(3600)  # 1 hour
+            if tools:
+                result = await tools.cleanup_idle_terminal_containers()
+                if result["count"] > 0:
+                    logger.info(
+                        "terminal_cleanup_completed",
+                        removed=result["count"],
+                        containers=result["removed"],
+                        errors=result.get("errors", []),
+                    )
+        except Exception as e:
+            logger.error("cleanup_loop_error", error=str(e))
+
+
 @app.on_event("startup")
 async def startup() -> None:
     global tools, _credential_store
@@ -37,6 +56,11 @@ async def startup() -> None:
         logger.info("credential_store_initialized")
     else:
         logger.warning("credential_store_not_configured", reason="CREDENTIAL_ENCRYPTION_KEY not set")
+
+    # Start background cleanup task
+    asyncio.create_task(cleanup_terminal_containers_loop())
+    logger.info("terminal_cleanup_loop_started")
+
     logger.info("claude_code_module_ready")
 
 
@@ -106,6 +130,12 @@ async def execute(call: ToolCall) -> ToolResult:
             result = await tools.read_workspace_file(**args)
         elif tool_name == "get_task_container":
             result = await tools.get_task_container(**args)
+        elif tool_name == "create_terminal_container":
+            result = await tools.create_terminal_container(**args)
+        elif tool_name == "stop_terminal_container":
+            result = await tools.stop_terminal_container(**args)
+        elif tool_name == "list_terminal_containers":
+            result = await tools.list_terminal_containers(**args)
         elif tool_name == "git_status":
             result = await tools.git_status(**args)
         elif tool_name == "git_push":

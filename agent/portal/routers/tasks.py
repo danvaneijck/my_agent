@@ -328,12 +328,82 @@ async def delete_workspace(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Delete a task's workspace and all associated tasks."""
+    # Clean up terminal container if it exists
+    terminal_service = get_terminal_service()
+    await terminal_service.cleanup_terminal_container(task_id)
+
     result = await call_tool(
         module="claude_code",
         tool_name="claude_code.delete_workspace",
         arguments={"task_id": task_id},
         user_id=str(user.user_id),
         timeout=30.0,
+    )
+    return result.get("result", {})
+
+
+@router.post("/{task_id}/terminal/container")
+async def create_terminal_container_endpoint(
+    task_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Explicitly create a terminal container for a task.
+
+    Useful for pre-warming container before opening terminal.
+    """
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.create_terminal_container",
+        arguments={"task_id": task_id},
+        user_id=str(user.user_id),
+        timeout=30.0,
+    )
+    return result.get("result", {})
+
+
+@router.delete("/{task_id}/terminal/container")
+async def stop_terminal_container_endpoint(
+    task_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Stop and remove a terminal container."""
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.stop_terminal_container",
+        arguments={"task_id": task_id},
+        user_id=str(user.user_id),
+        timeout=15.0,
+    )
+    return result.get("result", {})
+
+
+@router.get("/terminal/containers")
+async def list_terminal_containers_endpoint(
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """List all terminal containers for the current user."""
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.list_terminal_containers",
+        arguments={},
+        user_id=str(user.user_id),
+        timeout=15.0,
+    )
+    return result.get("result", {})
+
+
+@router.delete("/{task_id}/terminal")
+async def stop_terminal_container(
+    task_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Stop and remove the on-demand terminal container for a task (legacy endpoint)."""
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.stop_terminal_container",
+        arguments={"task_id": task_id},
+        user_id=str(user.user_id),
+        timeout=15.0,
     )
     return result.get("result", {})
 
@@ -390,40 +460,56 @@ async def ws_terminal(
     socket = None
 
     try:
-        # Get container information for the task
+        # Get workspace information for the task
         logger.info("terminal_ws_connect", task_id=task_id, user_id=str(user.user_id))
 
+        # Ensure a container exists (task or terminal)
+        try:
+            container_id = await terminal_service.ensure_terminal_container(
+                task_id, str(user.user_id)
+            )
+        except Exception as e:
+            logger.error(
+                "terminal_container_ensure_failed",
+                task_id=task_id,
+                error=str(e),
+            )
+            await websocket.send_json({
+                "type": "error",
+                "message": str(e),
+            })
+            await websocket.close()
+            return
+
+        logger.info(
+            "terminal_container_ready",
+            task_id=task_id,
+            container_id=container_id,
+        )
+
+        # Get workspace path from task status
         result = await call_tool(
             module="claude_code",
-            tool_name="claude_code.get_task_container",
+            tool_name="claude_code.task_status",
             arguments={"task_id": task_id},
             user_id=str(user.user_id),
             timeout=15.0,
         )
 
-        container_info = result.get("result", {})
-        container_id = container_info.get("container_id")
-        container_status = container_info.get("status")
-        workspace = container_info.get("workspace")
+        task_info = result.get("result", {})
+        workspace = task_info.get("workspace")
 
-        if not container_id:
-            error_msg = container_info.get('message', 'Workspace container not found')
+        if not workspace:
             await websocket.send_json({
                 "type": "error",
-                "message": f"Terminal unavailable: {error_msg}. The task may have been deleted or not yet started.",
-            })
-            await websocket.close()
-            return
-
-        if container_status != "running":
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Container is not running (status: {container_status}). Start the task first, then open the terminal.",
+                "message": "Workspace not found. The task may not have been created yet or was deleted.",
             })
             await websocket.close()
             return
 
         # Create terminal session
+        # Use the actual workspace path instead of constructing from task_id
+        # In task chains, workspace is named after the first task, not the current task
         session = await terminal_service.create_session(
             session_id=session_id,
             container_id=container_id,
@@ -435,6 +521,10 @@ async def ws_terminal(
         # Attach to session and get socket
         socket = await terminal_service.attach_session(session_id)
 
+        # Set socket timeout to None (infinite) to prevent timeout errors
+        # The WebSocket connection itself will handle disconnects
+        socket._sock.settimeout(None)
+
         # Send ready signal
         await websocket.send_json({"type": "ready"})
 
@@ -442,9 +532,10 @@ async def ws_terminal(
         async def read_from_container():
             """Read output from container and send to client."""
             try:
+                loop = asyncio.get_event_loop()
                 while True:
-                    # Read from Docker socket
-                    chunk = socket._sock.recv(4096)
+                    # Read from Docker socket in executor to avoid blocking event loop
+                    chunk = await loop.run_in_executor(None, socket._sock.recv, 4096)
                     if not chunk:
                         break
 

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Terminal } from "xterm";
+import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 import { getToken } from "@/api/client";
 import { Palette } from "lucide-react";
-import type { ITheme } from "xterm";
+import type { ITheme } from "@xterm/xterm";
 
 export interface TerminalViewProps {
   taskId: string;
@@ -284,9 +284,14 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
           // Show welcome message
           term.writeln("\x1b[32m✓ Connected to workspace terminal\x1b[0m");
           term.writeln("\x1b[90mTip: Use arrow keys to navigate command history\x1b[0m");
+          term.writeln("\x1b[90mNote: Terminal persists after tasks complete (24h timeout)\x1b[0m");
           term.writeln("");
-          // Auto-focus terminal on ready
-          setTimeout(() => term.focus(), 100);
+          // Auto-focus terminal on ready (multiple attempts for reliability)
+          setTimeout(() => {
+            term.focus();
+            console.log("Terminal focused, ready for input");
+          }, 100);
+          setTimeout(() => term.focus(), 500);
         } else if (message.type === "output") {
           // Buffer output and flush periodically to prevent UI freezing
           outputBufferRef.current.push(message.data);
@@ -313,8 +318,10 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
 
     ws.onerror = (event) => {
       setStatus("error");
-      setErrorMessage("Failed to connect to terminal. The workspace container may not be running.");
-      logger.error("terminal_ws_error", event);
+      setErrorMessage(
+        "Terminal container is starting. Please wait a moment and try reconnecting."
+      );
+      console.error("terminal_ws_error", event);
     };
 
     ws.onclose = (event) => {
@@ -422,7 +429,16 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
     return () => {
       window.removeEventListener("resize", handleResize);
       disposable.dispose();
-      ws.close();
+
+      // Close WebSocket with immediate timeout
+      try {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close(1000, "Component unmounting");
+        }
+      } catch (e) {
+        console.error("Error closing WebSocket:", e);
+      }
+
       term.dispose();
 
       // Clear any pending flush timers
@@ -531,7 +547,15 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       )}
 
       {/* Terminal container */}
-      <div ref={terminalRef} className="flex-1 p-2" />
+      <div
+        ref={terminalRef}
+        className="flex-1 p-2 cursor-text"
+        onClick={() => {
+          if (xtermRef.current && status === "connected") {
+            xtermRef.current.focus();
+          }
+        }}
+      />
     </div>
   );
 }
