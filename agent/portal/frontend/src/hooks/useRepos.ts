@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "@/api/client";
 import type { GitRepo, CreateRepoPayload, CreateRepoResult } from "@/types";
 
-export function useRepos(search: string = "") {
+export function useRepos(search: string = "", provider: string = "github") {
   const [repos, setRepos] = useState<GitRepo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -10,7 +10,11 @@ export function useRepos(search: string = "") {
   const fetchRepos = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ per_page: "100", sort: "updated" });
+      const params = new URLSearchParams({
+        per_page: "100",
+        sort: "updated",
+        provider: provider
+      });
       if (search.trim()) params.set("search", search.trim());
       const data = await api<{ count: number; repos: GitRepo[] }>(
         `/api/repos?${params}`
@@ -34,7 +38,7 @@ export function useRepos(search: string = "") {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, provider]);
 
   useEffect(() => {
     fetchRepos();

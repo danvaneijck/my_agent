@@ -95,6 +95,24 @@ const SETUP_GUIDES: Record<string, SetupGuide> = {
       },
     ],
   },
+  bitbucket: {
+    title: "Setting up Bitbucket credentials",
+    steps: [
+      {
+        instruction:
+          "Go to Bitbucket Settings > Personal Settings > App passwords",
+      },
+      {
+        instruction:
+          "Create a new app password with 'Repositories: Read' and 'Repositories: Write' permissions",
+      },
+      {
+        instruction:
+          "Enter your Bitbucket username and the generated app password below",
+      },
+    ],
+    note: "App passwords allow secure access to your Bitbucket repositories without exposing your main password.",
+  },
 };
 
 function formatTimeRemaining(seconds: number): string {
