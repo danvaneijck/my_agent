@@ -138,7 +138,7 @@ The portal provides an interactive terminal feature for direct access to workspa
 ### Architecture
 
 The terminal is built on:
-- **Frontend**: xterm.js v5.5 with FitAddon and WebLinksAddon
+- **Frontend**: xterm.js v5.3 with FitAddon and WebLinksAddon
 - **Backend**: FastAPI WebSocket + Docker SDK exec API
 - **PTY**: Interactive bash shell with `tty=True` for proper terminal control codes
 
