@@ -268,6 +268,23 @@ MANIFEST = ModuleManifest(
             required_permission="admin",
         ),
         ToolDefinition(
+            name="claude_code.get_task_container",
+            description=(
+                "Get the Docker container information for a task. Returns the container ID, "
+                "name, workspace path, and running status. The container ID can be used to "
+                "attach an interactive terminal session to the workspace container."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID whose container information to retrieve.",
+                    required=True,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
             name="claude_code.git_status",
             description=(
                 "Get the git status of a task's workspace. Returns the current branch, "
