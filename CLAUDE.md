@@ -59,6 +59,7 @@ Makefile:       Makefile (top-level, wraps docker compose)
     ├── renpho_biometrics — Renpho smart scale body composition
     ├── location          — OwnTracks geofence reminders + tracking
     ├── project_planner   — project planning, tracking + autonomous execution
+    ├── skills_modules    — reusable skill definitions with project/task attachment
     └── injective         — blockchain trading (scaffold)
 
  Infrastructure: PostgreSQL+pgvector │ Redis │ MinIO (S3)
@@ -87,6 +88,7 @@ Detailed per-module docs live in `agent/docs/modules/`:
 - [git_platform](agent/docs/modules/git_platform.md) — GitHub/Bitbucket repos, issues, PRs, CI
 - [myfitnesspal](agent/docs/modules/myfitnesspal.md) — nutrition and meal tracking
 - [project_planner](agent/docs/modules/project_planner.md) — project planning, tracking + autonomous execution
+- [skills_modules](agent/docs/modules/skills_modules.md) — reusable skill definitions with project/task attachment
 - [injective](agent/docs/modules/injective.md) — blockchain spot and perpetual trading
 
 **For module implementation details:** [Module Documentation](agent/docs/modules/), [Adding Modules Guide](agent/docs/modules/ADDING_MODULES.md)
@@ -304,6 +306,36 @@ project_tasks
   completed_at          datetime(tz) | null
   created_at            datetime(tz)
   updated_at            datetime(tz)
+
+user_skills
+  id                    UUID PK
+  user_id               UUID FK → users.id (CASCADE)
+  name                  str
+  description           text | null
+  category              str | null      — e.g., "code", "config", "procedure", "template", "reference"
+  content               text            — The actual skill content (code, config, instructions)
+  language              str | null      — e.g., "python", "javascript", "bash", etc.
+  tags                  text | null     — JSON array of tag strings
+  is_template           bool            — default false, whether skill uses Jinja2 templates
+  created_at            datetime(tz)
+  updated_at            datetime(tz)
+  UNIQUE(user_id, name)
+
+project_skills
+  id                    UUID PK
+  project_id            UUID FK → projects.id (CASCADE)
+  skill_id              UUID FK → user_skills.id (CASCADE)
+  order_index           int             — default 0
+  applied_at            datetime(tz)
+  UNIQUE(project_id, skill_id)
+
+task_skills
+  id                    UUID PK
+  task_id               UUID FK → project_tasks.id (CASCADE)
+  skill_id              UUID FK → user_skills.id (CASCADE)
+  order_index           int             — default 0
+  applied_at            datetime(tz)
+  UNIQUE(task_id, skill_id)
 ```
 
 **ORM models** are in `agent/shared/shared/models/`. Each model file exports a single class.
@@ -708,4 +740,5 @@ Use `session.commit()` (not `session.flush()`) when another container needs to s
 | `renpho_biometrics` | `get_measurements`, `get_latest`, `get_trend` | None (external API) | user |
 | `location` | `create_reminder`, `list_reminders`, `cancel_reminder`, `get_location`, `set_named_place`, `generate_pairing_credentials` | PostgreSQL, Redis | user |
 | `project_planner` | `create_project`, `update_project`, `get_project`, `list_projects`, `delete_project`, `add_phase`, `update_phase`, `add_task`, `bulk_add_tasks`, `update_task`, `get_task`, `get_phase_tasks`, `get_next_task`, `get_project_status` | PostgreSQL | user/admin |
+| `skills_modules` | `create_skill`, `list_skills`, `get_skill`, `update_skill`, `delete_skill`, `attach_skill_to_project`, `detach_skill_from_project`, `attach_skill_to_task`, `detach_skill_from_task`, `get_project_skills`, `get_task_skills`, `render_skill` | PostgreSQL | user |
 | `injective` | `get_portfolio`, `get_market_price`, `place_order`, `cancel_order`, `get_positions` | None (scaffold) | owner |
