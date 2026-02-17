@@ -6,19 +6,28 @@ import asyncio
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from portal.auth import PortalUser, require_auth
 from portal.services.module_client import call_tool
+from shared.config import get_settings
+from shared.credential_store import CredentialStore
 from shared.database import get_session_factory
 from shared.models.project import Project
 from shared.models.project_task import ProjectTask
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/repos", tags=["repos"])
+
+
+def _get_credential_store() -> CredentialStore:
+    settings = get_settings()
+    if not settings.credential_encryption_key:
+        raise HTTPException(503, "Credential storage not configured")
+    return CredentialStore(settings.credential_encryption_key)
 
 
 async def _safe_call(
@@ -54,10 +63,30 @@ async def _safe_call(
         return None, JSONResponse(status_code=502, content={"error": detail})
 
 
+@router.get("/providers")
+async def list_providers(user: PortalUser = Depends(require_auth)) -> dict:
+    """List configured git providers for the user."""
+    store = _get_credential_store()
+    factory = get_session_factory()
+    async with factory() as session:
+        github_token = await store.get(session, user.user_id, "github", "github_token")
+        atlassian_username = await store.get(session, user.user_id, "atlassian", "username")
+        atlassian_token = await store.get(session, user.user_id, "atlassian", "api_token")
+
+    providers = []
+    if github_token:
+        providers.append("github")
+    if atlassian_username and atlassian_token:
+        providers.append("bitbucket")
+
+    return {"providers": providers}
+
+
 class CreateRepoBody(BaseModel):
     name: str
     description: str | None = None
     private: bool = True
+    provider: str = "github"
 
 
 @router.post("")
@@ -66,7 +95,7 @@ async def create_repo(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Create a new git repository."""
-    args: dict = {"name": body.name, "private": body.private}
+    args: dict = {"name": body.name, "private": body.private, "provider": body.provider}
     if body.description:
         args["description"] = body.description
     result, err = await _safe_call(
@@ -82,10 +111,11 @@ async def list_repos(
     search: str | None = Query(None),
     per_page: int = Query(30, ge=1, le=100),
     sort: str = Query("updated"),
+    provider: str = Query("github"),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """List repositories accessible to the authenticated git platform user."""
-    args: dict = {"per_page": per_page, "sort": sort}
+    args: dict = {"per_page": per_page, "sort": sort, "provider": provider}
     if search:
         args["search"] = search
     result, err = await _safe_call(
@@ -98,13 +128,14 @@ async def list_repos(
 
 @router.get("/pulls/all")
 async def list_all_pull_requests(
+    provider: str = Query("github"),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """List open pull requests across all repos."""
     repos_result, err = await _safe_call(
         "git_platform",
         "git_platform.list_repos",
-        {"per_page": 20, "sort": "updated"},
+        {"per_page": 20, "sort": "updated", "provider": provider},
         str(user.user_id),
     )
     if err:
@@ -126,6 +157,7 @@ async def list_all_pull_requests(
                     "repo": name,
                     "state": "open",
                     "per_page": 50,
+                    "provider": provider,
                 },
                 user_id=str(user.user_id),
                 timeout=10.0,
@@ -149,13 +181,14 @@ async def list_all_pull_requests(
 async def get_repo(
     owner: str,
     repo: str,
+    provider: str = Query("github"),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Get repository metadata."""
     result, err = await _safe_call(
         "git_platform",
         "git_platform.get_repo",
-        {"owner": owner, "repo": repo},
+        {"owner": owner, "repo": repo, "provider": provider},
         str(user.user_id),
     )
     if err:
@@ -168,13 +201,14 @@ async def list_branches(
     owner: str,
     repo: str,
     per_page: int = Query(30, ge=1, le=100),
+    provider: str = Query("github"),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """List branches in a repository."""
     result, err = await _safe_call(
         "git_platform",
         "git_platform.list_branches",
-        {"owner": owner, "repo": repo, "per_page": per_page},
+        {"owner": owner, "repo": repo, "per_page": per_page, "provider": provider},
         str(user.user_id),
     )
     if err:
@@ -187,13 +221,14 @@ async def delete_branch(
     owner: str,
     repo: str,
     branch_name: str,
+    provider: str = Query("github"),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Delete a branch from a repository."""
     result, err = await _safe_call(
         "git_platform",
         "git_platform.delete_branch",
-        {"owner": owner, "repo": repo, "branch": branch_name},
+        {"owner": owner, "repo": repo, "branch": branch_name, "provider": provider},
         str(user.user_id),
     )
     if err:
@@ -207,13 +242,14 @@ async def list_issues(
     repo: str,
     state: str = Query("open"),
     per_page: int = Query(20, ge=1, le=100),
+    provider: str = Query("github"),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """List issues in a repository."""
     result, err = await _safe_call(
         "git_platform",
         "git_platform.list_issues",
-        {"owner": owner, "repo": repo, "state": state, "per_page": per_page},
+        {"owner": owner, "repo": repo, "state": state, "per_page": per_page, "provider": provider},
         str(user.user_id),
     )
     if err:
@@ -227,13 +263,14 @@ async def list_pull_requests(
     repo: str,
     state: str = Query("open"),
     per_page: int = Query(20, ge=1, le=100),
+    provider: str = Query("github"),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """List pull requests in a repository."""
     result, err = await _safe_call(
         "git_platform",
         "git_platform.list_pull_requests",
-        {"owner": owner, "repo": repo, "state": state, "per_page": per_page},
+        {"owner": owner, "repo": repo, "state": state, "per_page": per_page, "provider": provider},
         str(user.user_id),
     )
     if err:
@@ -247,6 +284,7 @@ class CreatePRBody(BaseModel):
     base: str
     body: str | None = None
     draft: bool = False
+    provider: str = "github"
 
 
 @router.post("/{owner}/{repo}/pulls")
@@ -268,6 +306,7 @@ async def create_pull_request(
             "base": pr_body.base,
             "body": pr_body.body,
             "draft": pr_body.draft,
+            "provider": pr_body.provider,
         },
         str(user.user_id),
     )
@@ -281,13 +320,14 @@ async def get_pull_request(
     owner: str,
     repo: str,
     pr_number: int,
+    provider: str = Query("github"),
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Get full pull request details."""
     result, err = await _safe_call(
         "git_platform",
         "git_platform.get_pull_request",
-        {"owner": owner, "repo": repo, "pr_number": pr_number},
+        {"owner": owner, "repo": repo, "pr_number": pr_number, "provider": provider},
         str(user.user_id),
         timeout=20.0,
     )
@@ -298,6 +338,7 @@ async def get_pull_request(
 
 class MergeBody(BaseModel):
     merge_method: str = "squash"
+    provider: str = "github"
 
 
 @router.post("/{owner}/{repo}/pulls/{pr_number}/merge")
@@ -317,6 +358,7 @@ async def merge_pull_request(
             "repo": repo,
             "pr_number": pr_number,
             "merge_method": body.merge_method,
+            "provider": body.provider,
         },
         str(user.user_id),
         timeout=20.0,
@@ -394,6 +436,7 @@ async def _on_pr_merged(pr_number: int, user_id) -> None:
 
 class CommentBody(BaseModel):
     body: str
+    provider: str = "github"
 
 
 @router.post("/{owner}/{repo}/pulls/{pr_number}/comment")
@@ -408,7 +451,7 @@ async def comment_on_pull_request(
     result, err = await _safe_call(
         "git_platform",
         "git_platform.comment_on_pull_request",
-        {"owner": owner, "repo": repo, "pr_number": pr_number, "body": body.body},
+        {"owner": owner, "repo": repo, "pr_number": pr_number, "body": body.body, "provider": body.provider},
         str(user.user_id),
     )
     if err:

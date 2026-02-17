@@ -1,902 +1,372 @@
-# Implementation Plan: Persistent Workspace Access After Task Completion
-
-## Problem Statement
-
-**Current Issue:** Users can only access workspace files through the code terminal when a Claude Code task is actively running. Once a task completes, the Docker container is automatically removed, making files inaccessible via the terminal.
-
-### Current Behavior
-1. Task starts → Container created with `docker run --rm ...`
-2. Task executes → Container running, terminal access works
-3. Task completes → Container exits and is **immediately removed** (due to `--rm` flag)
-4. Files inaccessible → Terminal shows "Container not found" error
-
-### User Impact
-- **Cannot inspect generated code** after task completion
-- **Cannot run git operations** to review changes (diff, log, status)
-- **Cannot test or debug** code that was written
-- **Cannot run follow-up commands** (npm install, pytest, etc.)
-- **Forced to use file browser only** which lacks command-line functionality
-
-### Root Cause
-
-**Location:** `agent/modules/claude_code/tools.py`
-
-The container lifecycle in `_run_single_container()` (lines 1178-1401):
-
-```python
-async def _run_single_container(task, timeout, prompt, user_mounts):
-    cmd = ["docker", "run", "--rm", ...]  # Line 1506: --rm auto-removes container
-    # ... container runs ...
-    finally:
-        await self._remove_container(container_name)  # Line 1400: explicit removal
-```
-
-**Key Issue:** Both `--rm` flag AND explicit `_remove_container()` ensure the container is destroyed on exit, regardless of success/failure status.
-
-## Proposed Solution: On-Demand Terminal Containers
-
-Instead of keeping task execution containers running, create **lightweight persistent containers** specifically for terminal access after task completion.
-
-### Design Principles
-
-1. **Separation of Concerns**: Task containers (ephemeral) vs. Terminal containers (persistent)
-2. **On-Demand Creation**: Only create when user requests terminal access
-3. **Resource Efficiency**: Minimal footprint, automatic cleanup
-4. **Seamless UX**: Transparent to users - terminal "just works"
-5. **Workspace Preservation**: Both containers share same workspace volume
-
-## Architecture
-
-### Container Types
-
-#### Task Execution Containers
-- **Purpose:** Run Claude Code CLI for task execution
-- **Lifecycle:** Created on `run_task` → Removed on completion
-- **Name:** `claude-task-{task_id}-{continuation_count}`
-- **Image:** Full Claude Code image with all tools
-- **Duration:** Minutes to hours (until task completes)
-
-#### Terminal Access Containers
-- **Purpose:** Provide shell access to completed workspaces
-- **Lifecycle:** Created on first terminal access → Removed after 24h idle
-- **Name:** `claude-terminal-{task_id}`
-- **Image:** Lightweight Alpine + bash + git
-- **Duration:** Up to 24 hours (idle timeout)
-
-### Lifecycle Flow
-
-```
-Task Created
-    ↓
-Task Container Running (claude-task-{id}-0)
-    ↓ task completes
-Task Container Removed (--rm)
-    ↓ workspace files persist on host
-User Opens Terminal
-    ↓
-Check: Does terminal container exist?
-    ├─ Yes, running → Use it
-    ├─ Yes, stopped → Remove and recreate
-    └─ No → Create new terminal container
-         ↓
-Terminal Container Running (claude-terminal-{id})
-    ↓ user works in terminal
-24 hours of inactivity
-    ↓
-Cleanup Job Removes Container
-```
-
-## Implementation Plan
-
-### Phase 1: Backend - Terminal Container Management
-
-#### Task 1.1: Add Terminal Container Creation Tool
-
-**Files:**
-- `agent/modules/claude_code/manifest.py`
-- `agent/modules/claude_code/tools.py`
-
-**Changes:**
-
-**manifest.py** - Add tool definition:
-```python
-ToolDefinition(
-    name="claude_code.create_terminal_container",
-    description="Create or get a persistent terminal container for workspace access",
-    parameters=[
-        ToolParameter(name="task_id", type="string", required=True),
-    ],
-    required_permission="admin",
-)
-```
-
-**tools.py** - Add method to `ClaudeCodeTools`:
-```python
-async def create_terminal_container(
-    self, task_id: str, user_id: str | None = None
-) -> dict:
-    """Create or get a persistent terminal container for workspace access.
-
-    Container specifications:
-    - Image: alpine:latest with bash and git
-    - Command: tail -f /dev/null (keeps container running)
-    - Name: claude-terminal-{task_id}
-    - Volume: Same workspace mount as task container
-    - Working dir: Task workspace path
-    - Labels: user_id, task_id, type=terminal, created_at
-
-    Returns:
-        {
-            "container_id": str,
-            "container_name": str,
-            "workspace": str,
-            "status": "created" | "existing" | "restarted"
-        }
-    """
-```
-
-**Implementation Steps:**
-1. Validate task exists and user has access (`_get_task()`)
-2. Check if terminal container already exists:
-   ```python
-   container_name = f"claude-terminal-{task_id}"
-   proc = await asyncio.create_subprocess_exec(
-       "docker", "ps", "-a", "-q", "-f", f"name={container_name}",
-       stdout=asyncio.subprocess.PIPE
-   )
-   ```
-3. If exists and running → return existing info
-4. If exists and stopped → remove then create new
-5. If not exists → create new container
-6. Return container metadata
-
-**Container Creation Command:**
-```python
-cmd = [
-    "docker", "run", "-d",  # Detached, NOT --rm
-    "--name", f"claude-terminal-{task_id}",
-    "-v", f"{TASK_VOLUME}:{TASK_BASE_DIR}",
-    "-w", task.workspace,
-    "-e", "TERM=xterm-256color",
-    "--label", f"user_id={user_id}",
-    "--label", f"task_id={task_id}",
-    "--label", "type=terminal",
-    "--label", f"created_at={int(time.time())}",
-    "alpine:latest",
-    "sh", "-c", "apk add --no-cache bash git && tail -f /dev/null"
-]
-```
-
-**Acceptance Criteria:**
-- [ ] Creates Alpine container with bash and git
-- [ ] Mounts workspace volume correctly
-- [ ] Sets working directory to task workspace
-- [ ] Returns container ID and status
-- [ ] Idempotent - returns existing if already created
-- [ ] Validates user owns the task
-
----
-
-#### Task 1.2: Add Container Lifecycle Management Tools
-
-**File:** `agent/modules/claude_code/tools.py`
-
-**Add methods:**
-
-```python
-async def stop_terminal_container(
-    self, task_id: str, user_id: str | None = None
-) -> dict:
-    """Stop and remove a terminal container.
-
-    Returns:
-        {
-            "task_id": str,
-            "container_name": str,
-            "removed": bool,
-            "message": str
-        }
-    """
-```
-
-```python
-async def list_terminal_containers(
-    self, user_id: str | None = None
-) -> dict:
-    """List all terminal containers for a user.
-
-    Returns:
-        {
-            "containers": [
-                {
-                    "task_id": str,
-                    "container_id": str,
-                    "container_name": str,
-                    "workspace": str,
-                    "status": str,
-                    "created_at": int,
-                    "idle_time_seconds": int
-                }
-            ],
-            "total": int
-        }
-    """
-```
-
-**Acceptance Criteria:**
-- [ ] `stop_terminal_container` removes container and cleans up
-- [ ] `list_terminal_containers` filters by user_id
-- [ ] Both handle non-existent containers gracefully
-- [ ] Proper error messages for failures
-
----
-
-#### Task 1.3: Add Manifest Entries
-
-**File:** `agent/modules/claude_code/manifest.py`
-
-Add to `MANIFEST.tools` list:
-
-```python
-ToolDefinition(
-    name="claude_code.stop_terminal_container",
-    description="Stop and remove a terminal container",
-    parameters=[
-        ToolParameter(name="task_id", type="string", required=True),
-    ],
-    required_permission="admin",
-),
-ToolDefinition(
-    name="claude_code.list_terminal_containers",
-    description="List all terminal containers for the current user",
-    parameters=[],
-    required_permission="admin",
-),
-```
-
----
-
-#### Task 1.4: Add Automatic Cleanup
-
-**File:** `agent/modules/claude_code/tools.py`
-
-Add cleanup method:
-
-```python
-async def cleanup_idle_terminal_containers(self) -> dict:
-    """Remove terminal containers idle for >24 hours.
-
-    Cleanup criteria:
-    - Container has label type=terminal
-    - Created >24 hours ago OR last_activity >24 hours ago
-    - Not currently attached to any terminal session
-
-    Returns:
-        {
-            "removed": [container_names],
-            "count": int,
-            "errors": [error_messages]
-        }
-    """
-```
-
-**Implementation:**
-1. List all containers with label `type=terminal`
-2. For each container:
-   - Inspect labels to get `created_at` timestamp
-   - Check if container has been running >24 hours
-   - Check if any active terminal sessions exist (via portal terminal_service)
-   - If idle criteria met → remove container
-3. Return summary of removed containers
-
-**File:** `agent/modules/claude_code/main.py`
-
-Add background cleanup loop:
-
-```python
-@app.on_event("startup")
-async def startup():
-    global tools
-    tools = ClaudeCodeTools()
-    # Start cleanup loop
-    asyncio.create_task(cleanup_loop())
-
-async def cleanup_loop():
-    """Run terminal container cleanup every hour."""
-    while True:
-        try:
-            await asyncio.sleep(3600)  # 1 hour
-            result = await tools.cleanup_idle_terminal_containers()
-            if result["count"] > 0:
-                logger.info(
-                    "terminal_cleanup_completed",
-                    removed=result["count"],
-                    containers=result["removed"]
-                )
-        except Exception as e:
-            logger.error("cleanup_loop_error", error=str(e))
-```
-
-**Acceptance Criteria:**
-- [ ] Cleanup runs every hour in background
-- [ ] Removes containers idle >24 hours
-- [ ] Logs removal actions
-- [ ] Handles Docker API errors gracefully
-- [ ] Does not remove containers with active sessions
-
----
-
-### Phase 2: Portal Integration
-
-#### Task 2.1: Update Terminal Service
-
-**File:** `agent/portal/services/terminal_service.py`
-
-**Add method:**
-
-```python
-async def ensure_terminal_container(
-    self, task_id: str, user_id: str
-) -> str:
-    """Ensure a terminal container exists for the task.
-
-    Workflow:
-    1. Try to get task container (if task still running)
-    2. If task container exists and running → return its ID
-    3. Otherwise, call claude_code.create_terminal_container
-    4. Return terminal container ID
-
-    Args:
-        task_id: Task ID
-        user_id: User ID for ownership validation
-
-    Returns:
-        container_id: Docker container ID
-
-    Raises:
-        ValueError: If workspace not found or access denied
-    """
-    # First, try to get running task container
-    try:
-        from portal.services.module_client import call_tool
-
-        result = await call_tool(
-            module="claude_code",
-            tool_name="claude_code.get_task_container",
-            arguments={"task_id": task_id},
-            user_id=user_id,
-        )
-        container_info = result.get("result", {})
-
-        # If task container is running, use it
-        if container_info.get("status") == "running":
-            return container_info["container_id"]
-
-    except Exception:
-        # Task container not available, continue to terminal container
-        pass
-
-    # Create or get terminal container
-    result = await call_tool(
-        module="claude_code",
-        tool_name="claude_code.create_terminal_container",
-        arguments={"task_id": task_id},
-        user_id=user_id,
-    )
-
-    terminal_info = result.get("result", {})
-    if not terminal_info.get("container_id"):
-        raise ValueError(
-            "Failed to create terminal container. "
-            "The workspace may have been deleted."
-        )
-
-    return terminal_info["container_id"]
-```
-
-**Update `get_container()` method:**
-
-```python
-def get_container(self, container_id: str) -> Container:
-    """Get a Docker container by ID or name.
-
-    Now handles both task and terminal containers.
-    """
-    try:
-        container = self.docker_client.containers.get(container_id)
-        # Refresh container status
-        container.reload()
-
-        if container.status != "running":
-            raise ValueError(
-                f"Container exists but is {container.status}. "
-                f"It may need to be restarted."
-            )
-
-        return container
-    except docker.errors.NotFound:
-        raise ValueError(
-            "Container not found. The workspace may have been deleted or "
-            "the container may have been removed."
-        )
-    except docker.errors.APIError as e:
-        raise ValueError(f"Docker API error: {e}")
-```
-
-**Acceptance Criteria:**
-- [ ] `ensure_terminal_container` prefers task container if running
-- [ ] Falls back to terminal container if task completed
-- [ ] Creates terminal container on first access
-- [ ] Returns valid container ID
-- [ ] Handles all error cases with clear messages
-
----
-
-#### Task 2.2: Update WebSocket Endpoint
-
-**File:** `agent/portal/routers/tasks.py`
-
-**Modify `terminal_ws` endpoint (around line 250):**
-
-```python
-@router.websocket("/{task_id}/terminal/ws")
-async def terminal_ws(
-    websocket: WebSocket,
-    task_id: str,
-    session_id: str = Query(...),
-    token: str = Query(...),
-):
-    """WebSocket endpoint for interactive terminal access.
-
-    Now supports both task and terminal containers automatically.
-    """
-    user = await verify_ws_auth(token)
-    await websocket.accept()
-
-    logger.info(
-        "terminal_ws_connection_attempt",
-        task_id=task_id,
-        session_id=session_id,
-        user_id=str(user.user_id)
-    )
-
-    try:
-        terminal_service = get_terminal_service()
-
-        # CHANGE: Ensure container exists (task or terminal)
-        try:
-            container_id = await terminal_service.ensure_terminal_container(
-                task_id, str(user.user_id)
-            )
-        except Exception as e:
-            logger.error(
-                "terminal_container_ensure_failed",
-                task_id=task_id,
-                error=str(e)
-            )
-            await websocket.send_json({
-                "type": "error",
-                "message": str(e)
-            })
-            return
-
-        logger.info(
-            "terminal_container_ready",
-            task_id=task_id,
-            container_id=container_id
-        )
-
-        # Rest of existing logic unchanged...
-        session = await terminal_service.create_session(
-            session_id=session_id,
-            container_id=container_id,
-            user_id=str(user.user_id),
-            task_id=task_id,
-        )
-        # ... existing WebSocket handling ...
-```
-
-**Acceptance Criteria:**
-- [ ] WebSocket connects successfully for running tasks
-- [ ] WebSocket connects successfully for completed tasks
-- [ ] Error messages are user-friendly
-- [ ] Container creation logged for debugging
-
----
-
-#### Task 2.3: Add Container Management REST Endpoints
-
-**File:** `agent/portal/routers/tasks.py`
-
-**Add new endpoints:**
-
-```python
-@router.post("/{task_id}/terminal/container")
-async def create_terminal_container_endpoint(
-    task_id: str,
-    user: PortalUser = Depends(require_auth),
-) -> dict:
-    """Explicitly create a terminal container for a task.
-
-    Useful for pre-warming container before opening terminal.
-    """
-    result = await call_tool(
-        module="claude_code",
-        tool_name="claude_code.create_terminal_container",
-        arguments={"task_id": task_id},
-        user_id=str(user.user_id),
-    )
-    return result.get("result", {})
-
-
-@router.delete("/{task_id}/terminal/container")
-async def stop_terminal_container_endpoint(
-    task_id: str,
-    user: PortalUser = Depends(require_auth),
-) -> dict:
-    """Stop and remove a terminal container."""
-    result = await call_tool(
-        module="claude_code",
-        tool_name="claude_code.stop_terminal_container",
-        arguments={"task_id": task_id},
-        user_id=str(user.user_id),
-    )
-    return result.get("result", {})
-
-
-@router.get("/terminal/containers")
-async def list_terminal_containers_endpoint(
-    user: PortalUser = Depends(require_auth),
-) -> dict:
-    """List all terminal containers for the current user."""
-    result = await call_tool(
-        module="claude_code",
-        tool_name="claude_code.list_terminal_containers",
-        arguments={},
-        user_id=str(user.user_id),
-    )
-    return result.get("result", {})
-```
-
-**Acceptance Criteria:**
-- [ ] POST creates/gets container
-- [ ] DELETE removes container
-- [ ] GET lists user's containers
-- [ ] All require authentication
-- [ ] Return proper HTTP status codes
-
----
-
-### Phase 3: Frontend Updates (Optional Enhancements)
-
-#### Task 3.1: Add Terminal Status Indicator
-
-**File:** `agent/portal/frontend/src/components/tasks/WorkspaceBrowser.tsx`
-
-**Add state for container status:**
-
-```tsx
-const [containerStatus, setContainerStatus] = useState<{
-  type: "task" | "terminal" | "none";
-  status: "running" | "creating" | "error";
-} | null>(null);
-
-// Check on mount
-useEffect(() => {
-  // Container info fetched automatically by terminal
-  // This is just for UI indication
-}, [taskId]);
-```
-
-**Add UI indicator in header:**
-
-```tsx
-<div className="flex items-center gap-2">
-  {containerStatus?.type === "terminal" && (
-    <span className="text-xs text-yellow-400">
-      Using persistent container
-    </span>
-  )}
-  <button onClick={() => setShowTerminal(!showTerminal)}>
-    Terminal
-  </button>
-</div>
-```
-
-**Acceptance Criteria:**
-- [ ] Shows "Using persistent container" for terminal containers
-- [ ] Shows nothing for task containers (default case)
-- [ ] Updates when container type changes
-
----
-
-#### Task 3.2: Improve Terminal Connection UX
-
-**File:** `agent/portal/frontend/src/components/code/TerminalView.tsx`
-
-**Update connection handling:**
-
-```tsx
-ws.onmessage = (event) => {
-  const message = JSON.parse(event.data);
-
-  if (message.type === "ready") {
-    setStatus("connected");
-    term.writeln("✓ Connected to workspace terminal");
-    term.writeln("Tip: This terminal persists even after tasks complete");
-    term.writeln("");
+# Implementation Plan: Add Bitbucket Repos Tab to Portal
+
+## Overview
+Add support for displaying Bitbucket repositories alongside GitHub repositories in the portal's repos navigation. When users have Bitbucket credentials configured, show a tabbed interface with separate "GitHub" and "Bitbucket" tabs. Each tab will display repositories from the respective platform.
+
+## Current State Analysis
+
+### Backend Infrastructure
+- **git_platform module** (`agent/modules/git_platform/`):
+  - Already has `BitbucketProvider` implementation in `providers/bitbucket.py`
+  - Has `GitHubProvider` implementation in `providers/github.py`
+  - Both implement the common `GitProvider` interface from `providers/base.py`
+  - `main.py` currently only checks for GitHub credentials in `_get_tools_for_user()`
+  - Module supports both GitHub and Bitbucket at the infrastructure level
+
+### Credential Storage
+- **Settings API** (`agent/portal/routers/settings.py`):
+  - Defines `SERVICE_DEFINITIONS` for various services
+  - Has `atlassian` service with keys: `url`, `username`, `api_token`
+  - Bitbucket credentials are NOT currently separate - they could use Atlassian credentials
+  - Uses `CredentialStore` for encrypted credential storage
+
+### Frontend
+- **ReposPage** (`agent/portal/frontend/src/pages/ReposPage.tsx`):
+  - Currently shows a single list of repositories
+  - Uses `useRepos` hook to fetch repos
+  - No tab interface currently
+
+- **useRepos hook** (`agent/portal/frontend/src/hooks/useRepos.ts`):
+  - Calls `/api/repos` endpoint
+  - Returns flat list of repos
+
+- **Repos router** (`agent/portal/routers/repos.py`):
+  - Proxies to `git_platform` module
+  - All endpoints assume single provider
+
+## Implementation Strategy
+
+### Phase 1: Backend - Add Bitbucket Credential Support
+
+**1.1. Update settings.py to add Bitbucket service definition**
+- File: `agent/portal/routers/settings.py`
+- Add `"bitbucket"` entry to `SERVICE_DEFINITIONS` dict:
+  ```python
+  "bitbucket": {
+      "label": "Bitbucket",
+      "keys": [
+          {"key": "username", "label": "Bitbucket Username", "type": "text"},
+          {"key": "app_password", "label": "App Password", "type": "password"},
+      ],
   }
-  // ... rest of message handling
-};
-
-ws.onerror = (event) => {
-  setStatus("error");
-  const errorMsg =
-    "Terminal container is starting. Please wait a moment and try reconnecting.";
-  setErrorMessage(errorMsg);
-};
-```
-
-**Acceptance Criteria:**
-- [ ] Shows helpful message on connection
-- [ ] Explains persistence behavior
-- [ ] Clear error for container startup delays
-
----
-
-### Phase 4: Documentation
-
-#### Task 4.1: Update Module Documentation
-
-**File:** `agent/docs/modules/claude_code.md`
-
-**Add section after "Interactive Terminal Access":**
-
-```markdown
-### Terminal Container Persistence
-
-Terminal access remains available even after tasks complete:
-
-**Container Lifecycle:**
-- **Task Running**: Terminal connects to task execution container
-- **Task Completed**: Terminal auto-creates persistent container
-- **Idle Timeout**: Containers removed after 24 hours of inactivity
-
-**Terminal Containers:**
-- Lightweight Alpine Linux with bash and git
-- Same workspace volume as task container
-- Automatic creation on first terminal access
-- Removed during cleanup (every hour) if idle >24h
-
-**New Tools:**
-- `claude_code.create_terminal_container` - Create/get terminal container
-- `claude_code.stop_terminal_container` - Remove terminal container
-- `claude_code.list_terminal_containers` - List user's terminal containers
-
-See [Portal Documentation](../portal.md#persistent-workspace-access) for user guide.
-```
-
----
-
-#### Task 4.2: Update Portal Documentation
-
-**File:** `agent/docs/portal.md`
-
-**Add section after "Terminal" section:**
-
-```markdown
-### Persistent Workspace Access
-
-Workspaces remain accessible via terminal even after Claude Code tasks complete.
-
-**How It Works:**
-
-1. During task execution → terminal connects to task container
-2. After task completes → task container is removed (saves resources)
-3. User opens terminal → lightweight container auto-created
-4. User can run commands, inspect files, perform git operations
-5. Container persists for 24 hours of inactivity
-6. Automatic cleanup removes idle containers
-
-**Use Cases:**
-
-- Review generated code with `cat`, `less`, etc.
-- Run git operations: `git status`, `git diff`, `git log`
-- Test code: `npm install`, `pytest`, `go run`
-- Debug issues: inspect logs, check configurations
-- Make quick edits with `vim` or `nano`
-
-**Resource Management:**
-
-- Terminal containers use minimal resources (~5MB Alpine Linux)
-- Maximum 10 terminal containers per user
-- Auto-cleanup every hour removes idle containers (>24h)
-- Manual cleanup: DELETE `/api/tasks/{id}/terminal/container`
-
-**Container Specifications:**
-
-- **Image**: alpine:latest
-- **Installed**: bash, git
-- **Volume**: Same workspace as task
-- **Working dir**: Task workspace path
-- **Network**: Isolated (no internet access)
-```
-
----
-
-### Phase 5: Testing
-
-#### Task 5.1: Unit Tests
-
-**File:** `agent/modules/claude_code/test_terminal_containers.py` (new)
-
-```python
-import pytest
-from modules.claude_code.tools import ClaudeCodeTools
-
-@pytest.mark.asyncio
-async def test_create_terminal_container_new():
-    """Creating new terminal container succeeds."""
-
-@pytest.mark.asyncio
-async def test_create_terminal_container_existing():
-    """Getting existing terminal container returns same ID."""
-
-@pytest.mark.asyncio
-async def test_stop_terminal_container():
-    """Stopping terminal container removes it."""
-
-@pytest.mark.asyncio
-async def test_list_terminal_containers_filters_by_user():
-    """List only shows user's own containers."""
-
-@pytest.mark.asyncio
-async def test_cleanup_idle_containers():
-    """Cleanup removes containers idle >24 hours."""
-```
-
----
-
-#### Task 5.2: Integration Tests
-
-**File:** `agent/portal/tests/test_terminal_persistence.py` (new)
-
-```python
-@pytest.mark.asyncio
-async def test_terminal_access_after_task_completion():
-    """Terminal works on completed tasks via persistent container."""
-
-@pytest.mark.asyncio
-async def test_terminal_container_auto_creation():
-    """Opening terminal auto-creates container if needed."""
-
-@pytest.mark.asyncio
-async def test_terminal_container_reuse():
-    """Second terminal connection reuses existing container."""
-```
-
----
-
-#### Task 5.3: Manual Testing Checklist
-
-- [ ] Start task, let it complete, verify container removed
-- [ ] Open terminal on completed task, verify new container created
-- [ ] Run commands in terminal (ls, git status, etc.)
-- [ ] Close and reopen terminal, verify same container reused
-- [ ] Check container list shows terminal container
-- [ ] Wait 24+ hours (or adjust timeout for testing), verify cleanup
-- [ ] Check resource usage (should be minimal)
-- [ ] Test with multiple concurrent terminal containers
-- [ ] Test error cases (deleted workspace, invalid task_id)
-
----
-
-## Files Modified/Created
-
-### New Files
-1. `agent/modules/claude_code/test_terminal_containers.py`
-2. `agent/portal/tests/test_terminal_persistence.py`
-
-### Modified Files
-1. `agent/modules/claude_code/manifest.py` - Add 3 new tool definitions
-2. `agent/modules/claude_code/tools.py` - Add 4 new methods
-3. `agent/modules/claude_code/main.py` - Add cleanup background task
-4. `agent/portal/services/terminal_service.py` - Add `ensure_terminal_container()`
-5. `agent/portal/routers/tasks.py` - Update WebSocket + add 3 REST endpoints
-6. `agent/portal/frontend/src/components/tasks/WorkspaceBrowser.tsx` - Add status indicator
-7. `agent/portal/frontend/src/components/code/TerminalView.tsx` - Update messages
-8. `agent/docs/modules/claude_code.md` - Document terminal containers
-9. `agent/docs/portal.md` - Add persistence section
-
-## Resource Considerations
-
-### Container Resources
-- **Task Container**: Short-lived, full Claude Code image (~500MB), high CPU during execution
-- **Terminal Container**: Long-lived (max 24h), Alpine image (~5MB), idle CPU/memory
-
-### Scaling Limits
-- Max terminal containers per user: 10
-- Max idle time: 24 hours
-- System-wide limit: 100 containers (10 users × 10 containers)
-
-### Expected Impact
-- 100 containers × 5MB = ~500MB total disk space
-- Minimal CPU/memory when idle
-- Cleanup runs hourly to prevent accumulation
-
-## Security Considerations
-
-- Terminal containers run with same isolation as task containers
-- User can only access their own workspaces (user_id validation)
-- No privileged mode or network access
-- Container labels enforce ownership tracking
-- Portal auth required for all operations
-
-## Success Criteria
-
-### Functional
-- ✅ Terminal works on completed tasks
-- ✅ Files accessible and modifiable
-- ✅ Git operations work correctly
-- ✅ Automatic cleanup maintains system health
-
-### Performance
-- Container creation: <3 seconds
-- Terminal connection: <1 second after container ready
-- Resource overhead: <100MB per container
-
-### User Experience
-- Seamless transition (user doesn't notice container type)
-- Clear error messages
-- No manual intervention required
-
-## Rollout Plan
-
-1. **Week 1**: Implement backend (Phase 1)
-   - Add terminal container tools to claude_code module
-   - Add cleanup background task
-   - Write unit tests
-
-2. **Week 1-2**: Portal integration (Phase 2)
-   - Update terminal service
-   - Modify WebSocket endpoint
-   - Add REST endpoints
-   - Write integration tests
-
-3. **Week 2**: Frontend polish (Phase 3)
-   - Add status indicators
-   - Improve messaging
-   - User testing
-
-4. **Week 2**: Documentation and deployment (Phase 4-5)
-   - Update all docs
-   - Final testing
-   - Deploy to production
+  ```
+- This allows users to configure Bitbucket credentials separately from Atlassian
+
+**1.2. Update git_platform module to support multiple providers per user**
+- File: `agent/modules/git_platform/main.py`
+- Modify `_get_tools_for_user()` to check for both GitHub and Bitbucket credentials:
+  ```python
+  async def _get_tools_for_user(user_id: str | None, provider: str = "github") -> GitPlatformTools | None:
+      """Resolve a GitPlatformTools instance for the given user and provider.
+
+      Priority:
+      1. User's stored credentials for the specified provider
+      2. Global GIT_PLATFORM_TOKEN env var (fallback)
+      """
+  ```
+- Check for provider-specific credentials (github or bitbucket)
+- Return appropriate provider instance or fallback
+
+**1.3. Update execute endpoint to accept provider parameter**
+- File: `agent/modules/git_platform/main.py`
+- Modify `/execute` to accept optional `provider` argument in tool call arguments
+- Default to "github" for backward compatibility
+- Pass provider to `_get_tools_for_user()`
+
+### Phase 2: Backend - Add Provider-Specific API Endpoints
+
+**2.1. Add provider detection endpoint**
+- File: `agent/portal/routers/repos.py`
+- Add new endpoint: `GET /api/repos/providers`
+- Returns: `{"providers": ["github", "bitbucket"]}`
+- Implementation:
+  ```python
+  @router.get("/providers")
+  async def list_providers(user: PortalUser = Depends(require_auth)) -> dict:
+      """List configured git providers for the user."""
+      store = _get_credential_store()
+      factory = get_session_factory()
+      async with factory() as session:
+          github_token = await store.get(session, user.user_id, "github", "github_token")
+          bb_username = await store.get(session, user.user_id, "bitbucket", "username")
+          bb_password = await store.get(session, user.user_id, "bitbucket", "app_password")
+
+      providers = []
+      if github_token:
+          providers.append("github")
+      if bb_username and bb_password:
+          providers.append("bitbucket")
+
+      return {"providers": providers}
+  ```
+
+**2.2. Modify list_repos endpoint**
+- File: `agent/portal/routers/repos.py`
+- Add optional `provider` query parameter (default: "github")
+- Pass provider to git_platform module tool call
+- Update tool call arguments to include provider:
+  ```python
+  args: dict = {"per_page": per_page, "sort": sort, "provider": provider}
+  ```
+
+**2.3. Update all repo endpoints to support provider parameter**
+- File: `agent/portal/routers/repos.py`
+- Endpoints to update:
+  - `GET /repos` - add `provider` query param
+  - `POST /repos` - add `provider` to request body
+  - `GET /repos/{owner}/{repo}` - add `provider` query param
+  - All branch, issue, and PR endpoints - add `provider` query param
+- Each endpoint should pass provider to `_safe_call()` arguments
+
+### Phase 3: Frontend - Add Tab Interface
+
+**3.1. Create useProviders hook**
+- File: `agent/portal/frontend/src/hooks/useProviders.ts` (new file)
+- Implementation:
+  ```tsx
+  import { useState, useEffect } from "react";
+  import { api } from "@/api/client";
+
+  export function useProviders() {
+    const [providers, setProviders] = useState<string[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+      async function fetchProviders() {
+        try {
+          const data = await api<{ providers: string[] }>("/api/repos/providers");
+          setProviders(data.providers || []);
+          setError(null);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Failed to fetch providers");
+          setProviders([]);
+        } finally {
+          setLoading(false);
+        }
+      }
+      fetchProviders();
+    }, []);
+
+    return { providers, loading, error };
+  }
+  ```
+
+**3.2. Update ReposPage to show tabs when multiple providers exist**
+- File: `agent/portal/frontend/src/pages/ReposPage.tsx`
+- Add state for active provider:
+  ```tsx
+  const { providers } = useProviders();
+  const [activeProvider, setActiveProvider] = useState<string>("github");
+  ```
+- Show tab bar only if multiple providers are configured:
+  ```tsx
+  {providers.length > 1 && (
+    <div className="flex gap-1 bg-surface-light rounded-lg p-1 border border-border mb-4">
+      {providers.map((provider) => (
+        <button
+          key={provider}
+          onClick={() => setActiveProvider(provider)}
+          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+            activeProvider === provider
+              ? "bg-accent/15 text-accent-hover"
+              : "text-gray-400 hover:text-gray-200"
+          }`}
+        >
+          {provider === 'github' ? 'GitHub' : 'Bitbucket'}
+        </button>
+      ))}
+    </div>
+  )}
+  ```
+- Pass activeProvider to useRepos hook
+
+**3.3. Update useRepos hook to accept provider parameter**
+- File: `agent/portal/frontend/src/hooks/useRepos.ts`
+- Add `provider` parameter to `useRepos(search, provider)`:
+  ```tsx
+  export function useRepos(search: string = "", provider: string = "github") {
+    // ...
+    const fetchRepos = useCallback(async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          per_page: "100",
+          sort: "updated",
+          provider: provider
+        });
+        if (search.trim()) params.set("search", search.trim());
+        const data = await api<{ count: number; repos: GitRepo[] }>(
+          `/api/repos?${params}`
+        );
+        setRepos(data.repos || []);
+        setError(null);
+      } catch (e) {
+        // ... error handling
+      } finally {
+        setLoading(false);
+      }
+    }, [search, provider]);
+    // ...
+  }
+  ```
+
+**3.4. Update RepoDetailPage to handle provider context**
+- File: `agent/portal/frontend/src/pages/RepoDetailPage.tsx`
+- Add provider query parameter to all API calls:
+  ```tsx
+  const provider = new URLSearchParams(window.location.search).get("provider") || "github";
+
+  // Pass provider to all api calls
+  const data = await api(`/api/repos/${owner}/${repo}?provider=${provider}`);
+  ```
+- Update navigation to include provider:
+  ```tsx
+  navigate(`/repos/${repo.owner}/${repo.repo}?provider=${activeProvider}`)
+  ```
+
+### Phase 4: Frontend - Credential Setup UI
+
+**4.1. Add Bitbucket credential card**
+- File: `agent/portal/frontend/src/components/settings/CredentialCard.tsx`
+- Add setup guide for Bitbucket in `SETUP_GUIDES`:
+  ```tsx
+  bitbucket: {
+    title: "Setting up Bitbucket credentials",
+    steps: [
+      {
+        instruction: "Go to Bitbucket Settings > Personal Settings > App passwords",
+      },
+      {
+        instruction: "Create a new app password with 'Repositories: Read' and 'Repositories: Write' permissions",
+      },
+      {
+        instruction: "Enter your Bitbucket username and the generated app password below",
+      },
+    ],
+  }
+  ```
+
+**4.2. Update SettingsPage to show Bitbucket credentials**
+- File: `agent/portal/frontend/src/pages/SettingsPage.tsx`
+- No changes needed - credentials are dynamically loaded from backend
+- Verify that Bitbucket service definition appears in credentials tab
+
+### Phase 5: Testing & Polish
+
+**5.1. Test credential flow**
+- Add Bitbucket credentials in settings
+- Verify credentials are encrypted and stored correctly
+- Test credential retrieval and decryption
+
+**5.2. Test repo listing**
+- With only GitHub credentials: verify single list (no tabs)
+- With only Bitbucket credentials: verify single list or error handling
+- With both credentials: verify tab interface appears
+- Test search functionality within each provider tab
+- Verify repo metadata displays correctly for both providers
+
+**5.3. Test repo detail pages**
+- Verify branches, PRs, and issues load correctly for both providers
+- Test creating PRs on both platforms
+- Test branch deletion on both platforms
+- Verify CI status checks work for both providers
+
+**5.4. Error handling**
+- Handle case where user has Atlassian creds but no Bitbucket access
+- Handle API errors from Bitbucket gracefully
+- Show helpful error messages for missing credentials
+- Handle provider-specific API differences (e.g., different PR states)
+
+**5.5. UI/UX polish**
+- Add provider labels/icons to distinguish GitHub vs Bitbucket repos
+- Consider showing provider badge in repo cards
+- Update empty states to mention both providers
+- Ensure consistent styling across tabs
+- Add loading states for tab switches
+
+## Files to Modify
+
+### Backend (Python)
+1. `agent/portal/routers/settings.py` - Add Bitbucket service definition
+2. `agent/modules/git_platform/main.py` - Support provider parameter in credential lookup
+3. `agent/portal/routers/repos.py` - Add provider parameter to all endpoints, add providers endpoint
+
+### Frontend (TypeScript/React)
+1. `agent/portal/frontend/src/hooks/useProviders.ts` - New hook for provider detection
+2. `agent/portal/frontend/src/hooks/useRepos.ts` - Add provider parameter
+3. `agent/portal/frontend/src/pages/ReposPage.tsx` - Add tab interface
+4. `agent/portal/frontend/src/pages/RepoDetailPage.tsx` - Handle provider context
+5. `agent/portal/frontend/src/components/settings/CredentialCard.tsx` - Add Bitbucket guide
+
+### Optional/Future Enhancements
+1. `agent/portal/frontend/src/types/index.ts` - Add provider type definitions
+2. `agent/portal/frontend/src/hooks/useRepoDetail.ts` - Add provider parameter
+3. `agent/portal/frontend/src/components/common/RepoLabel.tsx` - Add provider badge
+
+## Alternative Approaches Considered
+
+### Approach A: Unified Credential Lookup
+- Use Atlassian credentials for Bitbucket access (since user mentioned they have Atlassian setup)
+- Pros: Reuses existing credentials, no new credential service needed
+- Cons: Assumes Atlassian credentials always include Bitbucket access, less flexible
+
+### Approach B: Separate Bitbucket Service (Chosen)
+- Create dedicated Bitbucket credential service
+- Pros: Clear separation, flexible for users with different accounts
+- Cons: Slight duplication if user uses same credentials
+
+### Approach C: Provider Selection Per Repo
+- Let users specify provider when navigating to repo
+- Pros: More flexible, could support same repo name on different platforms
+- Cons: More complex UX, potential confusion
+
+## Implementation Order Rationale
+
+1. **Backend first**: Establish credential storage and provider support before frontend changes
+2. **Endpoint updates**: Ensure API can handle provider parameter before UI depends on it
+3. **Frontend tabs**: Add UI after backend is ready to serve provider-specific data
+4. **Polish last**: Get core functionality working before perfecting UX
 
 ## Risk Mitigation
 
-| Risk | Mitigation |
-|------|------------|
-| Resource exhaustion | Per-user limit (10), idle timeout (24h), system cap (100) |
-| Orphaned containers | Automatic cleanup loop + Docker labels |
-| Breaking existing terminals | Graceful fallback (task container first) |
-| Container startup delays | Clear loading messages, retry logic |
+1. **Backward compatibility**: Default provider to "github" to avoid breaking existing functionality
+2. **Graceful degradation**: If only one provider configured, show single list (no tabs)
+3. **Error boundaries**: Wrap provider-specific components in error boundaries
+4. **Credential validation**: Validate credentials before attempting to fetch repos
+5. **Provider fallback**: If provider-specific call fails, show helpful error message
 
-## Alternatives Considered
+## Success Criteria
 
-### Alternative 1: Remove `--rm`, keep task containers
-**Rejected** - Wastes resources, full containers remain running indefinitely
+- [ ] Users can configure Bitbucket credentials in settings
+- [ ] Repos page shows tabs when both GitHub and Bitbucket are configured
+- [ ] Each tab displays repos from the respective provider
+- [ ] All repo operations (view, branches, PRs, issues) work for both providers
+- [ ] UI clearly indicates which provider each repo belongs to
+- [ ] Error handling provides clear guidance when credentials are missing or invalid
+- [ ] Existing GitHub-only functionality remains unchanged when Bitbucket is not configured
 
-### Alternative 2: File browser only
-**Rejected** - Poor UX, no command-line tools, no git operations
+## Estimated Complexity
 
-### Alternative 3: Single shared terminal per user
-**Rejected** - Complex workspace switching, session isolation issues
+- Backend changes: **Medium** (3-4 hours)
+  - Credential service: Simple addition
+  - Provider routing: Moderate refactor of existing code
 
-## Conclusion
+- Frontend changes: **Medium** (4-5 hours)
+  - Tab interface: Similar to existing patterns
+  - Hook updates: Straightforward parameter additions
+  - Provider detection: New logic but simple
 
-This solution provides persistent workspace access through lightweight on-demand containers while maintaining resource efficiency. Users get seamless terminal access regardless of task status, with automatic lifecycle management preventing resource waste.
+- Testing & Polish: **Low-Medium** (2-3 hours)
+  - Credential flow: Standard testing
+  - Multi-provider scenarios: Need to test combinations
 
-**Timeline**: 2 weeks
-**Risk**: Low
-**Impact**: High - dramatically improves developer experience
+**Total Estimate**: 9-12 hours
+
+## Notes
+
+- BitbucketProvider already exists and is fully implemented
+- Main work is credential management and UI plumbing
+- Consider adding provider icons (GitHub/Bitbucket logos) for better visual distinction
+- May want to cache provider list in frontend to avoid repeated API calls
+- Consider adding "Configure Credentials" button in empty state when no providers are set up

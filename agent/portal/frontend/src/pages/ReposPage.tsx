@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { pageVariants } from "@/utils/animations";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, Search, RefreshCw, Lock, Star } from "lucide-react";
 import { useRepos } from "@/hooks/useRepos";
+import { useProviders } from "@/hooks/useProviders";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { ReposGridSkeleton } from "@/components/common/Skeleton";
 import EmptyState from "@/components/common/EmptyState";
@@ -42,8 +43,17 @@ export default function ReposPage() {
   usePageTitle("Repositories");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const { repos, loading, error, refetch } = useRepos(debouncedSearch);
+  const { providers, loading: providersLoading } = useProviders();
+  const [activeProvider, setActiveProvider] = useState<string>("github");
+  const { repos, loading, error, refetch } = useRepos(debouncedSearch, activeProvider);
   const navigate = useNavigate();
+
+  // Set active provider to first available when providers load
+  useEffect(() => {
+    if (!providersLoading && providers.length > 0 && !providers.includes(activeProvider)) {
+      setActiveProvider(providers[0]);
+    }
+  }, [providers, providersLoading, activeProvider]);
 
   // Simple debounce via timeout
   const handleSearchChange = (value: string) => {
@@ -108,6 +118,25 @@ export default function ReposPage() {
         </div>
       </div>
 
+      {/* Provider tabs - only show if multiple providers configured */}
+      {providers.length > 1 && (
+        <div className="flex gap-1 bg-surface-light rounded-lg p-1 border border-border">
+          {providers.map((provider) => (
+            <button
+              key={provider}
+              onClick={() => setActiveProvider(provider)}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                activeProvider === provider
+                  ? "bg-accent/15 text-accent-hover"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              {provider === 'github' ? 'GitHub' : 'Bitbucket'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
@@ -133,7 +162,7 @@ export default function ReposPage() {
           {filtered.map((repo) => (
             <button
               key={repo.full_name}
-              onClick={() => navigate(`/repos/${repo.owner}/${repo.repo}`)}
+              onClick={() => navigate(`/repos/${repo.owner}/${repo.repo}?provider=${activeProvider}`)}
               className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-accent/50 hover:bg-surface-lighter/50 transition-all group"
             >
               <div className="flex items-start justify-between gap-2 mb-2">

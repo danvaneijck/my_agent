@@ -8,7 +8,7 @@ interface RepoDetailData {
   pullRequests: GitPullRequest[];
 }
 
-export function useRepoDetail(owner: string, repo: string) {
+export function useRepoDetail(owner: string, repo: string, provider: string = "github") {
   const [data, setData] = useState<RepoDetailData>({
     branches: [],
     issues: [],
@@ -23,13 +23,13 @@ export function useRepoDetail(owner: string, repo: string) {
     try {
       const [branchRes, issueRes, prRes] = await Promise.all([
         api<{ count: number; branches: GitBranch[] }>(
-          `/api/repos/${owner}/${repo}/branches?per_page=100`
+          `/api/repos/${owner}/${repo}/branches?per_page=100&provider=${provider}`
         ),
         api<{ count: number; issues: GitIssue[] }>(
-          `/api/repos/${owner}/${repo}/issues?state=open&per_page=50`
+          `/api/repos/${owner}/${repo}/issues?state=open&per_page=50&provider=${provider}`
         ).catch(() => ({ count: 0, issues: [] })),
         api<{ count: number; pull_requests: GitPullRequest[] }>(
-          `/api/repos/${owner}/${repo}/pulls?state=open&per_page=50`
+          `/api/repos/${owner}/${repo}/pulls?state=open&per_page=50&provider=${provider}`
         ),
       ]);
       setData({
@@ -54,7 +54,7 @@ export function useRepoDetail(owner: string, repo: string) {
     } finally {
       setLoading(false);
     }
-  }, [owner, repo]);
+  }, [owner, repo, provider]);
 
   useEffect(() => {
     fetchAll();

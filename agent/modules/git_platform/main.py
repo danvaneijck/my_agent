@@ -76,28 +76,47 @@ def _build_provider(token: str, provider_type: str = "github") -> GitHubProvider
     return None
 
 
-async def _get_tools_for_user(user_id: str | None) -> GitPlatformTools | None:
-    """Resolve a GitPlatformTools instance for the given user.
+async def _get_tools_for_user(user_id: str | None, provider: str = "github") -> GitPlatformTools | None:
+    """Resolve a GitPlatformTools instance for the given user and provider.
 
     Priority:
-    1. User's stored GitHub PAT from credential store
+    1. User's stored credentials for the specified provider
     2. Global GIT_PLATFORM_TOKEN env var (fallback)
+
+    Args:
+        user_id: User ID for credential lookup
+        provider: Git platform provider ("github" or "bitbucket")
     """
     # Try per-user credentials
     if user_id and _credential_store and _session_factory:
         try:
             uid = uuid.UUID(user_id)
             async with _session_factory() as session:
-                token = await _credential_store.get(session, uid, "github", "github_token")
-            if token:
-                provider = _build_provider(token, provider_type="github")
-                if provider:
-                    return GitPlatformTools(provider=provider)
+                if provider == "github":
+                    token = await _credential_store.get(session, uid, "github", "github_token")
+                    if token:
+                        git_provider = _build_provider(token, provider_type="github")
+                        if git_provider:
+                            return GitPlatformTools(provider=git_provider)
+                elif provider == "bitbucket":
+                    # Use Atlassian credentials for Bitbucket access
+                    username = await _credential_store.get(session, uid, "atlassian", "username")
+                    api_token = await _credential_store.get(session, uid, "atlassian", "api_token")
+                    if username and api_token:
+                        git_provider = BitbucketProvider(
+                            username=username,
+                            app_password=api_token,  # API token works as app password
+                            base_url="https://api.bitbucket.org/2.0"
+                        )
+                        return GitPlatformTools(provider=git_provider)
         except Exception as e:
-            logger.warning("user_credential_lookup_failed", user_id=user_id, error=str(e))
+            logger.warning("user_credential_lookup_failed", user_id=user_id, provider=provider, error=str(e))
 
-    # Fall back to global provider
-    return _fallback_tools
+    # Fall back to global provider (only if provider matches global config)
+    if _fallback_tools and provider == settings.git_platform_provider:
+        return _fallback_tools
+
+    return None
 
 
 @app.on_event("startup")
@@ -155,6 +174,9 @@ async def execute(call: ToolCall):
         args = dict(call.arguments)
         user_id = args.pop("user_id", None) or call.user_id
 
+        # Extract provider from arguments (default to "github" for backward compatibility)
+        provider = args.pop("provider", "github")
+
         if tool_name not in TOOL_MAP:
             return ToolResult(
                 tool_name=call.tool_name,
@@ -162,12 +184,13 @@ async def execute(call: ToolCall):
                 error=f"Unknown tool: {call.tool_name}",
             )
 
-        tools = await _get_tools_for_user(user_id)
+        tools = await _get_tools_for_user(user_id, provider)
         if tools is None:
+            provider_name = "GitHub" if provider == "github" else "Bitbucket"
             return ToolResult(
                 tool_name=call.tool_name,
                 success=False,
-                error="No GitHub credentials configured. Add a GitHub PAT in Portal Settings, or set GIT_PLATFORM_TOKEN in .env.",
+                error=f"No {provider_name} credentials configured. Add credentials in Portal Settings.",
             )
 
         method = getattr(tools, tool_name)

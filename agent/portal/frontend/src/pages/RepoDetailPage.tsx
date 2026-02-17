@@ -59,8 +59,12 @@ export default function RepoDetailPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("branches");
   const [repoMeta, setRepoMeta] = useState<GitRepo | null>(null);
+
+  // Get provider from query params
+  const provider = new URLSearchParams(window.location.search).get("provider") || "github";
+
   const { branches, issues, pullRequests, loading, error, refetch } =
-    useRepoDetail(owner, repo);
+    useRepoDetail(owner, repo, provider);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -89,7 +93,7 @@ export default function RepoDetailPage() {
     if (!deleteBranch) return;
     setDeleting(true);
     try {
-      await api(`/api/repos/${owner}/${repo}/branches/${encodeURIComponent(deleteBranch)}`, {
+      await api(`/api/repos/${owner}/${repo}/branches/${encodeURIComponent(deleteBranch)}?provider=${provider}`, {
         method: "DELETE",
       });
       setDeleteBranch(null);
@@ -111,15 +115,15 @@ export default function RepoDetailPage() {
     } finally {
       setDeleting(false);
     }
-  }, [deleteBranch, owner, repo, refetch]);
+  }, [deleteBranch, owner, repo, provider, refetch]);
 
   // Fetch repo metadata
   useEffect(() => {
     if (!owner || !repo) return;
-    api<GitRepo>(`/api/repos/${owner}/${repo}`)
+    api<GitRepo>(`/api/repos/${owner}/${repo}?provider=${provider}`)
       .then(setRepoMeta)
       .catch(() => { });
-  }, [owner, repo]);
+  }, [owner, repo, provider]);
 
   const cloneUrl = repoMeta?.clone_url || `https://github.com/${owner}/${repo}.git`;
 

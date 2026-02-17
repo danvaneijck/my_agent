@@ -95,6 +95,24 @@ const SETUP_GUIDES: Record<string, SetupGuide> = {
       },
     ],
   },
+  atlassian: {
+    title: "Setting up Atlassian credentials",
+    steps: [
+      {
+        instruction:
+          "Instance URL: Your Atlassian instance URL (e.g., https://yourcompany.atlassian.net)",
+      },
+      {
+        instruction:
+          "Username: Your Atlassian account email address",
+      },
+      {
+        instruction:
+          "API Token: Create an API token at https://id.atlassian.com/manage-profile/security/api-tokens with access to Jira, Confluence, and Bitbucket",
+      },
+    ],
+    note: "These credentials provide access to Jira, Confluence, and Bitbucket repositories. The same API token works across all Atlassian services.",
+  },
 };
 
 function formatTimeRemaining(seconds: number): string {
