@@ -7,7 +7,7 @@ import json
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, UploadFile, File
 
 from portal.auth import PortalUser, require_auth, verify_ws_auth
 from portal.services.log_streamer import stream_task_logs
@@ -228,6 +228,84 @@ async def read_workspace_file(
     return result.get("result", {})
 
 
+@router.post("/{task_id}/workspace/upload")
+async def upload_workspace_file(
+    task_id: str,
+    file: UploadFile = File(...),
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Upload a file to a task's workspace."""
+    import tempfile
+    import os
+    import docker
+
+    # Read file content
+    content = await file.read()
+
+    # Save to temporary file on host
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        # Get container info
+        workspace_result = await call_tool(
+            module="claude_code",
+            tool_name="claude_code.get_task_container",
+            arguments={"task_id": task_id},
+            user_id=str(user.user_id),
+            timeout=15.0,
+        )
+
+        container_info = workspace_result.get("result", {})
+        container_id = container_info.get("container_id")
+        workspace = container_info.get("workspace", "")
+
+        if not container_id or not workspace:
+            return {"success": False, "message": "Container or workspace not found"}
+
+        # Copy file to container using Docker API
+        docker_client = docker.from_env()
+        container = docker_client.containers.get(container_id)
+
+        # Read file and put it in container
+        with open(tmp_path, "rb") as f:
+            file_data = f.read()
+
+        # Use docker cp to copy file to workspace
+        import tarfile
+        import io
+
+        # Create tar archive in memory
+        tar_stream = io.BytesIO()
+        with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+            tarinfo = tarfile.TarInfo(name=file.filename or "uploaded_file")
+            tarinfo.size = len(file_data)
+            tar.addfile(tarinfo, io.BytesIO(file_data))
+
+        tar_stream.seek(0)
+
+        # Put archive into container
+        container.put_archive(path=workspace, data=tar_stream.read())
+
+        return {
+            "success": True,
+            "filename": file.filename,
+            "message": f"File {file.filename} uploaded to workspace",
+        }
+
+    except Exception as e:
+        logger.error("file_upload_error", error=str(e), task_id=task_id)
+        return {"success": False, "message": str(e)}
+
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
 @router.delete("/{task_id}")
 async def cancel_task(
     task_id: str,
@@ -287,7 +365,11 @@ async def ws_task_logs(websocket: WebSocket, task_id: str) -> None:
 
 
 @router.websocket("/{task_id}/terminal/ws")
-async def ws_terminal(websocket: WebSocket, task_id: str) -> None:
+async def ws_terminal(
+    websocket: WebSocket,
+    task_id: str,
+    session_id: str = Query(None),
+) -> None:
     """Interactive terminal session via WebSocket.
 
     Protocol:
@@ -302,7 +384,9 @@ async def ws_terminal(websocket: WebSocket, task_id: str) -> None:
     await websocket.accept()
 
     terminal_service = get_terminal_service()
-    session_id = f"terminal-{task_id}-{uuid.uuid4().hex[:8]}"
+    # Use provided session_id or generate one
+    if not session_id:
+        session_id = f"terminal-{task_id}-{uuid.uuid4().hex[:8]}"
     socket = None
 
     try:
