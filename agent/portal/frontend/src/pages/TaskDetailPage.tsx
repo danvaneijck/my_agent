@@ -248,6 +248,15 @@ export default function TaskDetailPage() {
           />
         )}
 
+        {/* Retry form — shown for failed tasks */}
+        {task.status === "failed" && (
+          <ContinueTaskForm
+            taskId={task.id}
+            onContinued={(newId) => navigate(`/tasks/${newId}`)}
+            label="Retry"
+          />
+        )}
+
         {/* Continue form — shown for completed non-plan tasks */}
         {task.status === "completed" && (
           <ContinueTaskForm
@@ -257,9 +266,7 @@ export default function TaskDetailPage() {
         )}
 
         {/* Task chain timeline */}
-        {(task.parent_task_id || task.mode === "plan") && (
-          <TaskChainViewer taskId={task.id} currentTaskId={task.id} />
-        )}
+        <TaskChainViewer taskId={task.id} currentTaskId={task.id} />
       </div>
 
       {/* View mode tabs */}

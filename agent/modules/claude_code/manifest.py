@@ -68,6 +68,12 @@ MANIFEST = ModuleManifest(
                     ),
                     required=False,
                 ),
+                ToolParameter(
+                    name="group_id",
+                    type="string",
+                    description="Optional group identifier to link related tasks (e.g. project workflow phases). Tasks with the same group_id appear together in the task chain viewer.",
+                    required=False,
+                ),
             ],
             required_permission="admin",
         ),

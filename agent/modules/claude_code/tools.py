@@ -170,6 +170,7 @@ class Task:
     mode: str = "execute"  # "execute" or "plan"
     auto_push: bool = False  # automatically push branch to remote after successful completion
     parent_task_id: str | None = None  # links tasks in a planning chain (points to chain root)
+    group_id: str | None = None  # groups related tasks (e.g. project workflow phases)
     continue_session: bool = False  # whether to use --continue for CLI session resumption
     user_id: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -209,6 +210,7 @@ class Task:
             "mode": self.mode,
             "auto_push": self.auto_push,
             "parent_task_id": self.parent_task_id,
+            "group_id": self.group_id,
             "user_id": self.user_id,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
@@ -255,6 +257,7 @@ class Task:
             mode=data.get("mode", "execute"),
             auto_push=data.get("auto_push", False),
             parent_task_id=data.get("parent_task_id"),
+            group_id=data.get("group_id"),
             user_id=data.get("user_id"),
             created_at=_parse_dt(data.get("created_at")) or datetime.now(timezone.utc),
             started_at=_parse_dt(data.get("started_at")),
@@ -384,6 +387,7 @@ class ClaudeCodeTools:
         timeout: int = DEFAULT_TIMEOUT,
         mode: str = "execute",
         auto_push: bool = False,
+        group_id: str | None = None,
         user_id: str | None = None,
         user_credentials: dict[str, dict[str, str]] | None = None,
     ) -> dict:
@@ -424,7 +428,7 @@ class ClaudeCodeTools:
         task = Task(
             id=task_id, prompt=prompt, repo_url=repo_url, branch=branch,
             source_branch=source_branch, workspace=workspace, mode=mode,
-            auto_push=auto_push, user_id=user_id,
+            auto_push=auto_push, group_id=group_id, user_id=user_id,
         )
         self.tasks[task_id] = task
         task.save()
@@ -502,6 +506,7 @@ class ClaudeCodeTools:
             mode=effective_mode,
             auto_push=effective_auto_push,
             parent_task_id=chain_root,
+            group_id=original.group_id,
             continue_session=True,
             user_id=user_id,
         )
@@ -698,14 +703,23 @@ class ClaudeCodeTools:
         }
 
     async def get_task_chain(self, task_id: str, user_id: str | None = None) -> dict:
-        """Return all tasks in the same planning chain, sorted chronologically."""
+        """Return all tasks in the same chain, sorted chronologically.
+
+        Matches tasks by parent_task_id linkage, shared workspace, or
+        shared group_id (e.g. project workflow phases).
+        """
         root_task = self._get_task(task_id, user_id)
 
         chain_root = root_task.parent_task_id or root_task.id
+        workspace = root_task.workspace
+        group_id = root_task.group_id
 
         chain = [
             t.to_dict() for t in self.tasks.values()
-            if t.id == chain_root or t.parent_task_id == chain_root
+            if t.id == chain_root
+            or t.parent_task_id == chain_root
+            or (workspace and t.workspace == workspace)
+            or (group_id and t.group_id == group_id)
         ]
         chain.sort(key=lambda t: t["created_at"])
 
