@@ -7,6 +7,7 @@ import { useProjects } from "@/hooks/useProjects";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import NewProjectModal from "@/components/projects/NewProjectModal";
 import EmptyState from "@/components/common/EmptyState";
+import MultiStateProgressBar from "@/components/projects/MultiStateProgressBar";
 import type { ProjectSummary } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -47,15 +48,10 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
       {total > 0 && (
         <div className="space-y-1.5">
           <div className="flex justify-between text-xs text-gray-400">
-            <span>{done}/{total} tasks done</span>
-            <span>{pct}%</span>
+            <span>{done}/{total} tasks</span>
+            <span>{pct}% complete</span>
           </div>
-          <div className="h-1.5 bg-surface rounded-full overflow-hidden">
-            <div
-              className="h-full bg-accent rounded-full transition-all"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
+          <MultiStateProgressBar task_counts={project.task_counts} />
           <div className="flex gap-3 text-xs text-gray-500">
             {(project.task_counts.doing || 0) > 0 && (
               <span className="text-yellow-400">{project.task_counts.doing} in progress</span>

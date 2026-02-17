@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw, CheckCircle, Archive } from "lucide-react";
 import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase } from "@/hooks/useProjects";
@@ -7,6 +7,7 @@ import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PlanningTaskPanel from "@/components/projects/PlanningTaskPanel";
 import ProjectExecutionPanel from "@/components/projects/ProjectExecutionPanel";
+import MultiStateProgressBar from "@/components/projects/MultiStateProgressBar";
 import type { ProjectPhase } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -65,11 +66,8 @@ function PhaseRow({ phase, projectId, repoOwner, repoName, onClick, onRetry }: {
         )}
         {total > 0 && (
           <div className="flex items-center gap-3 mt-1.5">
-            <div className="h-1.5 flex-1 max-w-48 bg-surface rounded-full overflow-hidden">
-              <div
-                className="h-full bg-accent rounded-full transition-all"
-                style={{ width: `${pct}%` }}
-              />
+            <div className="flex-1 max-w-48">
+              <MultiStateProgressBar task_counts={counts} />
             </div>
             <span className="text-xs text-gray-500">{done}/{total}</span>
             <div className="flex gap-2 text-xs">
@@ -113,6 +111,18 @@ export default function ProjectDetailPage() {
   const [reapplyProgress, setReapplyProgress] = useState("");
   const [retryingPhase, setRetryingPhase] = useState<string | null>(null);
   const syncedRef = useRef(false);
+
+  // Sort phases by order_index to ensure consistent top-to-bottom ordering
+  // Must be called before early returns to comply with Rules of Hooks
+  const sortedPhases = useMemo(() => {
+    if (!project) return [];
+    const sorted = [...project.phases].sort((a, b) => {
+      const aIndex = a.order_index ?? 999;
+      const bIndex = b.order_index ?? 999;
+      return aIndex - bIndex;
+    });
+    return sorted;
+  }, [project?.phases]);
 
   // Auto-sync on page load: fix stuck phases + catch merged PRs
   useEffect(() => {
@@ -275,12 +285,24 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const totalTasks = project.phases.reduce((sum, p) => {
+  const totalTasks = sortedPhases.reduce((sum, p) => {
     const counts = p.task_counts || {};
     return sum + Object.values(counts).reduce((a, b) => a + (b || 0), 0);
   }, 0);
-  const doneTasks = project.phases.reduce((sum, p) => sum + (p.task_counts?.done || 0), 0);
+  const doneTasks = sortedPhases.reduce((sum, p) => sum + (p.task_counts?.done || 0), 0);
   const overallPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+  // Aggregate all task counts for overall progress bar
+  const overallTaskCounts = sortedPhases.reduce((acc, p) => {
+    const counts = p.task_counts || {};
+    return {
+      todo: (acc.todo || 0) + (counts.todo || 0),
+      doing: (acc.doing || 0) + (counts.doing || 0),
+      in_review: (acc.in_review || 0) + (counts.in_review || 0),
+      done: (acc.done || 0) + (counts.done || 0),
+      failed: (acc.failed || 0) + (counts.failed || 0),
+    };
+  }, {} as { todo?: number; doing?: number; in_review?: number; done?: number; failed?: number });
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
@@ -358,11 +380,9 @@ export default function ProjectDetailPage() {
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
           <div className="flex justify-between text-sm text-gray-400 mb-2">
             <span>Overall Progress</span>
-            <span>{doneTasks}/{totalTasks} tasks ({overallPct}%)</span>
+            <span>{doneTasks}/{totalTasks} tasks ({overallPct}% complete)</span>
           </div>
-          <div className="h-2 bg-surface rounded-full overflow-hidden">
-            <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${overallPct}%` }} />
-          </div>
+          <MultiStateProgressBar task_counts={overallTaskCounts} height="h-2" />
         </div>
       )}
 
@@ -429,7 +449,7 @@ export default function ProjectDetailPage() {
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-light-border dark:border-border flex items-center justify-between">
           <h3 className="text-sm font-medium text-gray-300">
-            Phases ({project.phases.length})
+            Phases ({sortedPhases.length})
           </h3>
           {project.design_document && (
             <button
@@ -442,22 +462,22 @@ export default function ProjectDetailPage() {
             </button>
           )}
         </div>
-        {project.phases.length === 0 ? (
+        {sortedPhases.length === 0 ? (
           <div className="px-4 py-8 text-center text-gray-500 text-sm">
             No phases yet
           </div>
         ) : (
           <div className="divide-y divide-light-border dark:divide-border/50">
-            {project.phases.map((phase) => (
+            {sortedPhases.map((phase, index) => (
               <PhaseRow
-                key={phase.phase_id}
+                key={`${phase.order_index}-${phase.phase_id}`}
                 phase={phase}
                 projectId={project.project_id}
                 repoOwner={project.repo_owner}
                 repoName={project.repo_name}
                 onClick={() => navigate(`/projects/${project.project_id}/phases/${phase.phase_id}`)}
                 onRetry={
-                  (phase.task_counts?.failed || 0) > 0 && !project.phases.some(p => p.status === "in_progress")
+                  (phase.task_counts?.failed || 0) > 0 && !sortedPhases.some(p => p.status === "in_progress")
                     ? () => handleRetryPhase(phase.phase_id)
                     : undefined
                 }
