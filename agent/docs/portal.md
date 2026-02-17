@@ -182,11 +182,47 @@ Files can be uploaded to the workspace via the upload button (max 50MB):
 4. Docker SDK `put_archive()` extracts to workspace
 5. File appears in current directory (run `ls` to verify)
 
+### Persistent Workspace Access
+
+Workspaces remain accessible via terminal even after Claude Code tasks complete.
+
+**How It Works:**
+
+1. During task execution → terminal connects to task container
+2. After task completes → task container is removed (saves resources)
+3. User opens terminal → lightweight container auto-created
+4. User can run commands, inspect files, perform git operations
+5. Container persists for 24 hours of inactivity
+6. Automatic cleanup removes idle containers
+
+**Use Cases:**
+
+- Review generated code with `cat`, `less`, etc.
+- Run git operations: `git status`, `git diff`, `git log`
+- Test code: `npm install`, `pytest`, `go run`
+- Debug issues: inspect logs, check configurations
+- Make quick edits with `vim` or `nano`
+
+**Resource Management:**
+
+- Terminal containers use minimal resources (~5MB Alpine Linux)
+- Maximum 10 terminal containers per user
+- Auto-cleanup every hour removes idle containers (>24h)
+- Manual cleanup: DELETE `/api/tasks/{id}/terminal/container`
+
+**Container Specifications:**
+
+- **Image**: alpine:latest
+- **Installed**: bash, git
+- **Volume**: Same workspace as task
+- **Working dir**: Task workspace path
+- **Network**: Isolated (no internet access)
+
 ### Usage
 
 From the task detail page:
 
-1. Click "Open Terminal" button (only shown when container is running)
+1. Click "Open Terminal" button (works for both running and completed tasks)
 2. Terminal panel appears at bottom of screen
 3. Use "+" button to open additional tabs (up to 5)
 4. Click palette icon to change theme

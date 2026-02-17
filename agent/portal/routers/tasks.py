@@ -342,15 +342,70 @@ async def delete_workspace(
     return result.get("result", {})
 
 
+@router.post("/{task_id}/terminal/container")
+async def create_terminal_container_endpoint(
+    task_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Explicitly create a terminal container for a task.
+
+    Useful for pre-warming container before opening terminal.
+    """
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.create_terminal_container",
+        arguments={"task_id": task_id},
+        user_id=str(user.user_id),
+        timeout=30.0,
+    )
+    return result.get("result", {})
+
+
+@router.delete("/{task_id}/terminal/container")
+async def stop_terminal_container_endpoint(
+    task_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Stop and remove a terminal container."""
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.stop_terminal_container",
+        arguments={"task_id": task_id},
+        user_id=str(user.user_id),
+        timeout=15.0,
+    )
+    return result.get("result", {})
+
+
+@router.get("/terminal/containers")
+async def list_terminal_containers_endpoint(
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """List all terminal containers for the current user."""
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.list_terminal_containers",
+        arguments={},
+        user_id=str(user.user_id),
+        timeout=15.0,
+    )
+    return result.get("result", {})
+
+
 @router.delete("/{task_id}/terminal")
 async def stop_terminal_container(
     task_id: str,
     user: PortalUser = Depends(require_auth),
 ) -> dict:
-    """Stop and remove the on-demand terminal container for a task."""
-    terminal_service = get_terminal_service()
-    await terminal_service.cleanup_terminal_container(task_id)
-    return {"success": True, "message": f"Terminal container for task {task_id} stopped"}
+    """Stop and remove the on-demand terminal container for a task (legacy endpoint)."""
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.stop_terminal_container",
+        arguments={"task_id": task_id},
+        user_id=str(user.user_id),
+        timeout=15.0,
+    )
+    return result.get("result", {})
 
 
 @router.delete("")
@@ -408,23 +463,41 @@ async def ws_terminal(
         # Get workspace information for the task
         logger.info("terminal_ws_connect", task_id=task_id, user_id=str(user.user_id))
 
+        # Ensure a container exists (task or terminal)
+        try:
+            container_id = await terminal_service.ensure_terminal_container(
+                task_id, str(user.user_id)
+            )
+        except Exception as e:
+            logger.error(
+                "terminal_container_ensure_failed",
+                task_id=task_id,
+                error=str(e),
+            )
+            await websocket.send_json({
+                "type": "error",
+                "message": str(e),
+            })
+            await websocket.close()
+            return
+
+        logger.info(
+            "terminal_container_ready",
+            task_id=task_id,
+            container_id=container_id,
+        )
+
+        # Get workspace path from task status
         result = await call_tool(
             module="claude_code",
-            tool_name="claude_code.get_task_container",
+            tool_name="claude_code.task_status",
             arguments={"task_id": task_id},
             user_id=str(user.user_id),
             timeout=15.0,
         )
 
-        container_info = result.get("result", {})
-        workspace = container_info.get("workspace")
-
-        logger.info(
-            "terminal_workspace_info",
-            task_id=task_id,
-            workspace=workspace,
-            container_info=container_info,
-        )
+        task_info = result.get("result", {})
+        workspace = task_info.get("workspace")
 
         if not workspace:
             await websocket.send_json({
@@ -433,36 +506,6 @@ async def ws_terminal(
             })
             await websocket.close()
             return
-
-        # Check if task has an active container, otherwise create on-demand terminal
-        task_container_id = container_info.get("container_id")
-        task_container_status = container_info.get("status")
-
-        if task_container_id and task_container_status == "running":
-            # Use the existing task container
-            container_id = task_container_id
-            logger.info(
-                "using_task_container",
-                task_id=task_id,
-                container_id=container_id,
-            )
-        else:
-            # Create or reuse on-demand terminal container
-            logger.info(
-                "creating_on_demand_terminal",
-                task_id=task_id,
-                workspace=workspace,
-            )
-            container_id, status = await terminal_service.get_or_create_terminal_container(
-                task_id=task_id,
-                workspace_path=workspace,
-            )
-            logger.info(
-                "using_terminal_container",
-                task_id=task_id,
-                container_id=container_id,
-                status=status,
-            )
 
         # Create terminal session
         # Use the actual workspace path instead of constructing from task_id

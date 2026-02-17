@@ -117,6 +117,93 @@ class TerminalService:
         except Exception as e:
             raise ValueError(f"Failed to access container: {str(e)}")
 
+    async def ensure_terminal_container(
+        self, task_id: str, user_id: str
+    ) -> str:
+        """Ensure a terminal container exists for the task.
+
+        Tries to get the task's execution container first. If the task is no longer
+        running, creates or retrieves a persistent terminal container.
+
+        Workflow:
+        1. Try to get task container (if task still running)
+        2. If task container exists and running → return its ID
+        3. Otherwise, call claude_code.create_terminal_container
+        4. Return terminal container ID
+
+        Args:
+            task_id: Task ID
+            user_id: User ID for ownership validation
+
+        Returns:
+            container_id: Docker container ID
+
+        Raises:
+            ValueError: If workspace not found or access denied
+        """
+        from portal.services.module_client import call_tool
+
+        # First, try to get running task container
+        try:
+            result = await call_tool(
+                module="claude_code",
+                tool_name="claude_code.get_task_container",
+                arguments={"task_id": task_id},
+                user_id=user_id,
+            )
+            container_info = result.get("result", {})
+
+            # If task container is running, use it
+            if container_info.get("status") == "running":
+                logger.info(
+                    "using_task_container",
+                    task_id=task_id,
+                    container_id=container_info["container_id"],
+                )
+                return container_info["container_id"]
+
+        except Exception as e:
+            # Task container not available, continue to terminal container
+            logger.debug(
+                "task_container_not_available",
+                task_id=task_id,
+                error=str(e),
+            )
+
+        # Create or get terminal container
+        logger.info("creating_terminal_container", task_id=task_id)
+        try:
+            result = await call_tool(
+                module="claude_code",
+                tool_name="claude_code.create_terminal_container",
+                arguments={"task_id": task_id},
+                user_id=user_id,
+            )
+
+            terminal_info = result.get("result", {})
+            if not terminal_info.get("container_id"):
+                raise ValueError(
+                    "Failed to create terminal container. "
+                    "The workspace may have been deleted."
+                )
+
+            logger.info(
+                "using_terminal_container",
+                task_id=task_id,
+                container_id=terminal_info["container_id"],
+                status=terminal_info.get("status"),
+            )
+
+            return terminal_info["container_id"]
+
+        except Exception as e:
+            logger.error(
+                "ensure_terminal_container_failed",
+                task_id=task_id,
+                error=str(e),
+            )
+            raise ValueError(f"Failed to ensure terminal container: {e}")
+
     async def create_session(
         self,
         session_id: str,

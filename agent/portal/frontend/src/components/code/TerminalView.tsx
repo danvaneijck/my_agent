@@ -284,6 +284,7 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
           // Show welcome message
           term.writeln("\x1b[32m✓ Connected to workspace terminal\x1b[0m");
           term.writeln("\x1b[90mTip: Use arrow keys to navigate command history\x1b[0m");
+          term.writeln("\x1b[90mNote: Terminal persists after tasks complete (24h timeout)\x1b[0m");
           term.writeln("");
           // Auto-focus terminal on ready (multiple attempts for reliability)
           setTimeout(() => {
@@ -317,7 +318,9 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
 
     ws.onerror = (event) => {
       setStatus("error");
-      setErrorMessage("Failed to connect to terminal. The workspace container may not be running.");
+      setErrorMessage(
+        "Terminal container is starting. Please wait a moment and try reconnecting."
+      );
       console.error("terminal_ws_error", event);
     };
 

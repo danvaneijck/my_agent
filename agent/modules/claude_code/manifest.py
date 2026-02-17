@@ -370,5 +370,48 @@ MANIFEST = ModuleManifest(
             parameters=[],  # user_id is injected automatically
             required_permission="admin",
         ),
+        ToolDefinition(
+            name="claude_code.create_terminal_container",
+            description=(
+                "Create or get a persistent terminal container for workspace access after "
+                "task completion. Terminal containers are lightweight Alpine Linux containers "
+                "that provide shell access to workspaces even after the task has finished. "
+                "Containers persist for 24 hours and are automatically cleaned up when idle."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID whose workspace to access via terminal.",
+                    required=True,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
+            name="claude_code.stop_terminal_container",
+            description=(
+                "Stop and remove a terminal container. Use this to manually clean up "
+                "terminal containers before the automatic 24-hour timeout."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="task_id",
+                    type="string",
+                    description="The task ID whose terminal container to stop.",
+                    required=True,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
+            name="claude_code.list_terminal_containers",
+            description=(
+                "List all terminal containers for the current user. Shows container status, "
+                "workspace path, creation time, and idle duration."
+            ),
+            parameters=[],  # user_id is injected automatically
+            required_permission="admin",
+        ),
     ],
 )

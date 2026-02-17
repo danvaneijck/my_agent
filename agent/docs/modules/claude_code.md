@@ -97,11 +97,33 @@ The portal provides interactive terminal access to workspace containers via WebS
 
 See [Portal Documentation](../portal.md#terminal) for terminal features and usage.
 
+### Terminal Container Persistence
+
+Terminal access remains available even after tasks complete:
+
+**Container Lifecycle:**
+- **Task Running**: Terminal connects to task execution container
+- **Task Completed**: Terminal auto-creates persistent container
+- **Idle Timeout**: Containers removed after 24 hours of inactivity
+
+**Terminal Containers:**
+- Lightweight Alpine Linux with bash and git
+- Same workspace volume as task container
+- Automatic creation on first terminal access
+- Removed during cleanup (every hour) if idle >24h
+
+**New Tools:**
+- `claude_code.create_terminal_container` - Create/get terminal container
+- `claude_code.stop_terminal_container` - Remove terminal container
+- `claude_code.list_terminal_containers` - List user's terminal containers
+
 **Container Requirements:**
 - Container must be in `running` status
-- Container ID is retrieved via `get_task_container` tool
+- Container ID is retrieved via `get_task_container` or created automatically
 - Terminal creates Docker exec instances with `/bin/bash` and `tty=True`
 - Working directory is set to the workspace path (`/tmp/claude_tasks/{task_id}/`)
+
+See [Portal Documentation](../portal.md#persistent-workspace-access) for user guide.
 
 ## Workflow Integration
 

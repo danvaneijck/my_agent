@@ -1041,6 +1041,363 @@ class ClaudeCodeTools:
                 "message": f"Error checking container: {e}",
             }
 
+    async def create_terminal_container(
+        self, task_id: str, user_id: str | None = None
+    ) -> dict:
+        """Create or get a persistent terminal container for workspace access.
+
+        Terminal containers are lightweight Alpine Linux containers that provide
+        shell access to workspaces after task execution completes. They share
+        the same workspace volume as the task container but use minimal resources.
+
+        Container specifications:
+        - Image: alpine:latest with bash and git
+        - Command: tail -f /dev/null (keeps container running)
+        - Name: claude-terminal-{task_id}
+        - Volume: Same workspace mount as task container
+        - Working dir: Task workspace path
+        - Labels: user_id, task_id, type=terminal, created_at
+
+        Returns:
+            {
+                "container_id": str,
+                "container_name": str,
+                "workspace": str,
+                "status": "created" | "existing" | "restarted",
+                "message": str
+            }
+        """
+        task = self._get_task(task_id, user_id)
+        container_name = f"claude-terminal-{task_id}"
+
+        # Check if terminal container already exists
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "inspect",
+                "--format", "{{.Id}}|{{.State.Status}}",
+                container_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode == 0:
+                # Container exists
+                output = stdout.decode().strip()
+                container_id, container_status = output.split("|")
+
+                if container_status == "running":
+                    # Container already running, return it
+                    logger.info(
+                        "terminal_container_exists",
+                        task_id=task_id,
+                        container_id=container_id,
+                    )
+                    return {
+                        "container_id": container_id,
+                        "container_name": container_name,
+                        "workspace": task.workspace,
+                        "status": "existing",
+                        "message": "Terminal container already running",
+                    }
+                else:
+                    # Container exists but stopped, remove and recreate
+                    logger.info(
+                        "terminal_container_stopped",
+                        task_id=task_id,
+                        container_id=container_id,
+                        status=container_status,
+                    )
+                    await self._remove_container(container_name)
+
+        except Exception as e:
+            logger.debug(
+                "terminal_container_check_error",
+                task_id=task_id,
+                error=str(e),
+            )
+            # Container doesn't exist, continue to create
+
+        # Create new terminal container
+        logger.info("creating_terminal_container", task_id=task_id)
+
+        cmd = [
+            "docker", "run", "-d",  # Detached, NOT --rm
+            "--name", container_name,
+            "-v", f"{TASK_VOLUME}:{TASK_BASE_DIR}",
+            "-w", task.workspace,
+            "-e", "TERM=xterm-256color",
+            "--label", f"user_id={user_id or 'unknown'}",
+            "--label", f"task_id={task_id}",
+            "--label", "type=terminal",
+            "--label", f"created_at={int(time.time())}",
+            "alpine:latest",
+            "sh", "-c", "apk add --no-cache bash git && tail -f /dev/null",
+        ]
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0:
+                error_msg = stderr.decode().strip()
+                logger.error(
+                    "terminal_container_create_failed",
+                    task_id=task_id,
+                    error=error_msg,
+                )
+                raise RuntimeError(f"Failed to create terminal container: {error_msg}")
+
+            container_id = stdout.decode().strip()
+            logger.info(
+                "terminal_container_created",
+                task_id=task_id,
+                container_id=container_id,
+            )
+
+            return {
+                "container_id": container_id,
+                "container_name": container_name,
+                "workspace": task.workspace,
+                "status": "created",
+                "message": "Terminal container created successfully",
+            }
+
+        except Exception as e:
+            logger.error(
+                "terminal_container_creation_error",
+                task_id=task_id,
+                error=str(e),
+            )
+            raise
+
+    async def stop_terminal_container(
+        self, task_id: str, user_id: str | None = None
+    ) -> dict:
+        """Stop and remove a terminal container.
+
+        Returns:
+            {
+                "task_id": str,
+                "container_name": str,
+                "removed": bool,
+                "message": str
+            }
+        """
+        task = self._get_task(task_id, user_id)
+        container_name = f"claude-terminal-{task_id}"
+
+        try:
+            await self._remove_container(container_name)
+            logger.info("terminal_container_removed", task_id=task_id)
+
+            return {
+                "task_id": task_id,
+                "container_name": container_name,
+                "removed": True,
+                "message": "Terminal container stopped and removed",
+            }
+
+        except Exception as e:
+            logger.warning(
+                "terminal_container_stop_error",
+                task_id=task_id,
+                error=str(e),
+            )
+            return {
+                "task_id": task_id,
+                "container_name": container_name,
+                "removed": False,
+                "message": f"Container may not exist or already removed: {e}",
+            }
+
+    async def list_terminal_containers(
+        self, user_id: str | None = None
+    ) -> dict:
+        """List all terminal containers for a user.
+
+        Returns:
+            {
+                "containers": [
+                    {
+                        "task_id": str,
+                        "container_id": str,
+                        "container_name": str,
+                        "workspace": str,
+                        "status": str,
+                        "created_at": int,
+                        "idle_seconds": int
+                    }
+                ],
+                "total": int
+            }
+        """
+        try:
+            # Find all terminal containers
+            user_filter = f"--filter=label=user_id={user_id}" if user_id else ""
+            cmd = [
+                "docker", "ps", "-a",
+                "--filter", "label=type=terminal",
+            ]
+            if user_filter:
+                cmd.append(user_filter)
+            cmd.extend(["--format", "{{.Names}}|{{.ID}}|{{.Status}}|{{.Label \"created_at\"}}|{{.Label \"task_id\"}}"])
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0:
+                logger.error("list_terminal_containers_error", error=stderr.decode())
+                return {"containers": [], "total": 0}
+
+            containers = []
+            for line in stdout.decode().strip().split("\n"):
+                if not line:
+                    continue
+
+                parts = line.split("|")
+                if len(parts) != 5:
+                    continue
+
+                name, container_id, status, created_at_str, task_id = parts
+
+                # Parse status
+                if "Up" in status:
+                    container_status = "running"
+                elif "Exited" in status:
+                    container_status = "stopped"
+                else:
+                    container_status = "unknown"
+
+                # Calculate idle time
+                try:
+                    created_at = int(created_at_str)
+                    idle_seconds = int(time.time()) - created_at
+                except ValueError:
+                    created_at = 0
+                    idle_seconds = 0
+
+                # Get workspace from task
+                workspace = ""
+                try:
+                    task = self.tasks.get(task_id)
+                    if task:
+                        workspace = task.workspace
+                except Exception:
+                    pass
+
+                containers.append({
+                    "task_id": task_id,
+                    "container_id": container_id,
+                    "container_name": name,
+                    "workspace": workspace,
+                    "status": container_status,
+                    "created_at": created_at,
+                    "idle_seconds": idle_seconds,
+                })
+
+            return {
+                "containers": containers,
+                "total": len(containers),
+            }
+
+        except Exception as e:
+            logger.error("list_terminal_containers_exception", error=str(e))
+            return {"containers": [], "total": 0}
+
+    async def cleanup_idle_terminal_containers(self) -> dict:
+        """Remove terminal containers idle for >24 hours.
+
+        Cleanup criteria:
+        - Container has label type=terminal
+        - Created >24 hours ago (86400 seconds)
+        - Not currently attached to any terminal session
+
+        Returns:
+            {
+                "removed": [container_names],
+                "count": int,
+                "errors": [error_messages]
+            }
+        """
+        IDLE_THRESHOLD = 24 * 3600  # 24 hours in seconds
+        removed = []
+        errors = []
+
+        try:
+            # List all terminal containers
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "ps", "-a",
+                "--filter", "label=type=terminal",
+                "--format", "{{.Names}}|{{.Label \"created_at\"}}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            if proc.returncode != 0:
+                errors.append(f"Failed to list containers: {stderr.decode()}")
+                return {"removed": removed, "count": 0, "errors": errors}
+
+            now = int(time.time())
+            for line in stdout.decode().strip().split("\n"):
+                if not line:
+                    continue
+
+                parts = line.split("|")
+                if len(parts) != 2:
+                    continue
+
+                container_name, created_at_str = parts
+
+                try:
+                    created_at = int(created_at_str)
+                    idle_seconds = now - created_at
+
+                    if idle_seconds > IDLE_THRESHOLD:
+                        logger.info(
+                            "cleaning_idle_terminal_container",
+                            container=container_name,
+                            idle_hours=idle_seconds / 3600,
+                        )
+
+                        try:
+                            await self._remove_container(container_name)
+                            removed.append(container_name)
+                        except Exception as e:
+                            error_msg = f"Failed to remove {container_name}: {e}"
+                            errors.append(error_msg)
+                            logger.warning("cleanup_remove_failed", error=error_msg)
+
+                except ValueError:
+                    errors.append(f"Invalid created_at for {container_name}")
+                    continue
+
+            logger.info(
+                "terminal_cleanup_completed",
+                removed=len(removed),
+                errors=len(errors),
+            )
+
+            return {
+                "removed": removed,
+                "count": len(removed),
+                "errors": errors,
+            }
+
+        except Exception as e:
+            logger.error("cleanup_idle_containers_exception", error=str(e))
+            errors.append(str(e))
+            return {"removed": removed, "count": 0, "errors": errors}
+
     # ------------------------------------------------------------------
     # Background execution
     # ------------------------------------------------------------------
