@@ -408,9 +408,12 @@ async def ws_terminal(
 
         if not container_id:
             error_msg = container_info.get('message', 'Workspace container not found')
+            # Clean up the error message if it already has punctuation
+            if error_msg.endswith('.'):
+                error_msg = error_msg[:-1]
             await websocket.send_json({
                 "type": "error",
-                "message": f"Terminal unavailable: {error_msg}. The task may have been deleted or not yet started.",
+                "message": f"Terminal unavailable: {error_msg}. Please ensure the task is running before opening the terminal.",
             })
             await websocket.close()
             return
