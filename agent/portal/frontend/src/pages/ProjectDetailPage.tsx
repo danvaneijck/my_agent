@@ -112,6 +112,13 @@ export default function ProjectDetailPage() {
   const [retryingPhase, setRetryingPhase] = useState<string | null>(null);
   const syncedRef = useRef(false);
 
+  // Sort phases by order_index to ensure consistent top-to-bottom ordering
+  // Must be called before early returns to comply with Rules of Hooks
+  const sortedPhases = useMemo(() => {
+    if (!project) return [];
+    return [...project.phases].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+  }, [project]);
+
   // Auto-sync on page load: fix stuck phases + catch merged PRs
   useEffect(() => {
     if (!projectId || !project || syncedRef.current) return;
@@ -272,11 +279,6 @@ export default function ProjectDetailPage() {
       </div>
     );
   }
-
-  // Sort phases by order_index to ensure consistent top-to-bottom ordering
-  const sortedPhases = useMemo(() => {
-    return [...project.phases].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
-  }, [project.phases]);
 
   const totalTasks = sortedPhases.reduce((sum, p) => {
     const counts = p.task_counts || {};
