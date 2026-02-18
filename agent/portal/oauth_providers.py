@@ -194,7 +194,7 @@ class SlackOAuthProvider(OAuthProvider):
             {
                 "client_id": self.client_id,
                 "redirect_uri": redirect_uri,
-                "scope": "identity.basic,identity.email",
+                "response_type": "code",
                 "user_scope": "identity.basic,identity.email",
             }
         )
