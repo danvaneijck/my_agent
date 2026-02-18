@@ -340,7 +340,7 @@ services:
         max-size: "5m"
         max-file: "3"
 
-  # --- Portal: in prod, PORTAL_PORT=127.0.0.1:8080 in .env so nginx handles external ---
+  # --- Portal ---
   portal:
     deploy:
       resources:

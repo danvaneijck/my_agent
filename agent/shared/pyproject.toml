@@ -17,6 +17,7 @@ dependencies = [
     "structlog>=24.1",
     "tiktoken>=0.5",
     "cryptography>=42.0",
+    "fastapi>=0.109",
 ]
 
 [tool.setuptools.packages.find]
