@@ -10,8 +10,9 @@ RUN pip install --no-cache-dir /shared/
 COPY modules/skills_modules/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY modules/ /app/modules/
+# Copy application code (only this module)
+COPY modules/__init__.py /app/modules/__init__.py
+COPY modules/skills_modules/ /app/modules/skills_modules/
 
 ENV PYTHONPATH="/app:/shared"
 

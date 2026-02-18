@@ -14,93 +14,137 @@ permissions:
   packages: write
 
 jobs:
+  # ── Step 1: Detect which services changed since the last tag ──
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.filter.outputs.matrix }}
+      services: ${{ steps.filter.outputs.services }}
+      has_changes: ${{ steps.filter.outputs.has_changes }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed services
+        id: filter
+        run: |
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${CURRENT_TAG}$" | head -1)
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found — building all services"
+            BUILD_ALL=true
+            CHANGED_FILES=""
+          else
+            echo "Comparing $PREV_TAG..$CURRENT_TAG"
+            CHANGED_FILES=$(git diff --name-only "$PREV_TAG".."$CURRENT_TAG")
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+            BUILD_ALL=false
+          fi
+
+          # Check if shared/ changed (forces rebuild of everything)
+          SHARED_CHANGED=false
+          if [ "$BUILD_ALL" = "true" ]; then
+            SHARED_CHANGED=true
+          elif echo "$CHANGED_FILES" | grep -q "^agent/shared/"; then
+            SHARED_CHANGED=true
+            echo "agent/shared/ changed — all services will be rebuilt"
+          fi
+
+          # Service definitions: service|dockerfile|context|path_prefix
+          declare -a ALL_SERVICES=(
+            "core|agent/core/Dockerfile|./agent|agent/core/"
+            "discord-bot|agent/comms/discord_bot/Dockerfile|./agent|agent/comms/discord_bot/"
+            "telegram-bot|agent/comms/telegram_bot/Dockerfile|./agent|agent/comms/telegram_bot/"
+            "slack-bot|agent/comms/slack_bot/Dockerfile|./agent|agent/comms/slack_bot/"
+            "portal|agent/portal/Dockerfile|./agent|agent/portal/"
+            "dashboard|agent/dashboard/Dockerfile|./agent|agent/dashboard/"
+            "research|agent/modules/research/Dockerfile|./agent|agent/modules/research/"
+            "file-manager|agent/modules/file_manager/Dockerfile|./agent|agent/modules/file_manager/"
+            "code-executor|agent/modules/code_executor/Dockerfile|./agent|agent/modules/code_executor/"
+            "knowledge|agent/modules/knowledge/Dockerfile|./agent|agent/modules/knowledge/"
+            "atlassian|agent/modules/atlassian/Dockerfile|./agent|agent/modules/atlassian/"
+            "garmin|agent/modules/garmin/Dockerfile|./agent|agent/modules/garmin/"
+            "renpho-biometrics|agent/modules/renpho_biometrics/Dockerfile|./agent|agent/modules/renpho_biometrics/"
+            "claude-code|agent/modules/claude_code/Dockerfile|./agent|agent/modules/claude_code/"
+            "claude-code-worker|agent/modules/claude_code/Dockerfile.worker|./agent|agent/modules/claude_code/"
+            "deployer|agent/modules/deployer/Dockerfile|./agent|agent/modules/deployer/"
+            "scheduler|agent/modules/scheduler/Dockerfile|./agent|agent/modules/scheduler/"
+            "location|agent/modules/location/Dockerfile|./agent|agent/modules/location/"
+            "git-platform|agent/modules/git_platform/Dockerfile|./agent|agent/modules/git_platform/"
+            "project-planner|agent/modules/project_planner/Dockerfile|./agent|agent/modules/project_planner/"
+            "skills-modules|agent/modules/skills_modules/Dockerfile|./agent|agent/modules/skills_modules/"
+            "weather|agent/modules/weather/Dockerfile|./agent|agent/modules/weather/"
+            "benchmarker|agent/modules/benchmarker/Dockerfile|./agent|agent/modules/benchmarker/"
+            "injective|agent/modules/injective/Dockerfile|./agent|agent/modules/injective/"
+            "nginx|agent/nginx/Dockerfile|./agent/nginx|agent/nginx/"
+          )
+
+          # Extra paths that trigger a core rebuild
+          CORE_EXTRA="agent/alembic/ agent/alembic.ini agent/cli.py"
+
+          MATRIX_JSON="["
+          SERVICE_LIST=""
+          FIRST=true
+
+          for entry in "${ALL_SERVICES[@]}"; do
+            IFS='|' read -r service dockerfile context path_prefix <<< "$entry"
+
+            NEEDS_BUILD=false
+
+            if [ "$SHARED_CHANGED" = "true" ]; then
+              NEEDS_BUILD=true
+            elif echo "$CHANGED_FILES" | grep -q "^${path_prefix}"; then
+              NEEDS_BUILD=true
+            fi
+
+            # Core also rebuilds for alembic/cli changes
+            if [ "$service" = "core" ] && [ "$NEEDS_BUILD" = "false" ]; then
+              for extra in $CORE_EXTRA; do
+                if echo "$CHANGED_FILES" | grep -q "^${extra}"; then
+                  NEEDS_BUILD=true
+                  break
+                fi
+              done
+            fi
+
+            if [ "$NEEDS_BUILD" = "true" ]; then
+              if [ "$FIRST" = "true" ]; then
+                FIRST=false
+              else
+                MATRIX_JSON+=","
+                SERVICE_LIST+=","
+              fi
+              MATRIX_JSON+="{\"service\":\"${service}\",\"dockerfile\":\"${dockerfile}\",\"context\":\"${context}\"}"
+              SERVICE_LIST+="${service}"
+            fi
+          done
+
+          MATRIX_JSON+="]"
+
+          if [ "$FIRST" = "true" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+            echo "services=" >> $GITHUB_OUTPUT
+            echo "No services need building."
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "matrix={\"include\":${MATRIX_JSON}}" >> $GITHUB_OUTPUT
+            echo "services=${SERVICE_LIST}" >> $GITHUB_OUTPUT
+            echo "Services to build: ${SERVICE_LIST}"
+          fi
+
+  # ── Step 2: Build and push only changed services ──
   build-and-push:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 4
-      matrix:
-        include:
-          # Core
-          - service: core
-            dockerfile: agent/core/Dockerfile
-            context: ./agent
-          # Communication bots
-          - service: discord-bot
-            dockerfile: agent/comms/discord_bot/Dockerfile
-            context: ./agent
-          - service: telegram-bot
-            dockerfile: agent/comms/telegram_bot/Dockerfile
-            context: ./agent
-          - service: slack-bot
-            dockerfile: agent/comms/slack_bot/Dockerfile
-            context: ./agent
-          # Portal & Dashboard
-          - service: portal
-            dockerfile: agent/portal/Dockerfile
-            context: ./agent
-          - service: dashboard
-            dockerfile: agent/dashboard/Dockerfile
-            context: ./agent
-          # Modules
-          - service: research
-            dockerfile: agent/modules/research/Dockerfile
-            context: ./agent
-          - service: file-manager
-            dockerfile: agent/modules/file_manager/Dockerfile
-            context: ./agent
-          - service: code-executor
-            dockerfile: agent/modules/code_executor/Dockerfile
-            context: ./agent
-          - service: knowledge
-            dockerfile: agent/modules/knowledge/Dockerfile
-            context: ./agent
-          - service: atlassian
-            dockerfile: agent/modules/atlassian/Dockerfile
-            context: ./agent
-          - service: garmin
-            dockerfile: agent/modules/garmin/Dockerfile
-            context: ./agent
-          - service: renpho-biometrics
-            dockerfile: agent/modules/renpho_biometrics/Dockerfile
-            context: ./agent
-          - service: claude-code
-            dockerfile: agent/modules/claude_code/Dockerfile
-            context: ./agent
-          - service: claude-code-worker
-            dockerfile: agent/modules/claude_code/Dockerfile.worker
-            context: ./agent
-          - service: deployer
-            dockerfile: agent/modules/deployer/Dockerfile
-            context: ./agent
-          - service: scheduler
-            dockerfile: agent/modules/scheduler/Dockerfile
-            context: ./agent
-          - service: location
-            dockerfile: agent/modules/location/Dockerfile
-            context: ./agent
-          - service: git-platform
-            dockerfile: agent/modules/git_platform/Dockerfile
-            context: ./agent
-          - service: project-planner
-            dockerfile: agent/modules/project_planner/Dockerfile
-            context: ./agent
-          - service: skills-modules
-            dockerfile: agent/modules/skills_modules/Dockerfile
-            context: ./agent
-          - service: weather
-            dockerfile: agent/modules/weather/Dockerfile
-            context: ./agent
-          - service: benchmarker
-            dockerfile: agent/modules/benchmarker/Dockerfile
-            context: ./agent
-          - service: injective
-            dockerfile: agent/modules/injective/Dockerfile
-            context: ./agent
-          # Nginx (context is the nginx dir itself)
-          - service: nginx
-            dockerfile: agent/nginx/Dockerfile
-            context: ./agent/nginx
-
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -131,9 +175,10 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-  # After all images are built, update the deploy repo
+  # ── Step 3: Update per-service tags in the deploy repo ──
   update-deploy-repo:
-    needs: build-and-push
+    needs: [detect-changes, build-and-push]
+    if: needs.detect-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout deploy repo
@@ -147,10 +192,18 @@ jobs:
         id: version
         run: echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Update image tag in compose file
+      - name: Update per-service tags in compose file
         run: |
           cd deploy
-          sed -i "s|IMAGE_TAG:-[^}]*|IMAGE_TAG:-${{ steps.version.outputs.tag }}|g" docker-compose.yml
+          TAG="${{ steps.version.outputs.tag }}"
+          SERVICES="${{ needs.detect-changes.outputs.services }}"
+
+          for SERVICE in $(echo "$SERVICES" | tr ',' ' '); do
+            # Convert service name to env var: git-platform -> GIT_PLATFORM_TAG
+            VAR_NAME=$(echo "${SERVICE}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')_TAG
+            sed -i "s|\${${VAR_NAME}:-[^}]*}|\${${VAR_NAME}:-${TAG}}|g" docker-compose.yml
+            echo "Updated ${VAR_NAME} -> ${TAG}"
+          done
 
       - name: Commit and push
         run: |
@@ -158,5 +211,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add docker-compose.yml
-          git diff --cached --quiet || git commit -m "Update image tag to ${{ steps.version.outputs.tag }}"
+          SERVICES="${{ needs.detect-changes.outputs.services }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          git diff --cached --quiet || git commit -m "Update to ${TAG} (${SERVICES})"
           git push

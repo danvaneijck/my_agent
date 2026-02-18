@@ -10,8 +10,9 @@ RUN pip install --no-cache-dir /shared/
 COPY modules/weather/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY modules/ /app/modules/
+# Copy application code (only this module)
+COPY modules/__init__.py /app/modules/__init__.py
+COPY modules/weather/ /app/modules/weather/
 
 ENV PYTHONPATH="/app:/shared"
 

@@ -22,8 +22,9 @@ RUN pip install --no-cache-dir /shared/
 COPY modules/code_executor/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY modules/ /app/modules/
+# Copy application code (only this module)
+COPY modules/__init__.py /app/modules/__init__.py
+COPY modules/code_executor/ /app/modules/code_executor/
 
 ENV PYTHONPATH="/app:/shared"
 

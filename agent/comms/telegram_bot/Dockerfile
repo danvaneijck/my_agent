@@ -10,8 +10,9 @@ RUN pip install --no-cache-dir /shared/
 COPY comms/telegram_bot/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY comms/ /app/comms/
+# Copy application code (only this bot)
+COPY comms/__init__.py /app/comms/__init__.py
+COPY comms/telegram_bot/ /app/comms/telegram_bot/
 
 ENV PYTHONPATH="/app:/shared"
 
