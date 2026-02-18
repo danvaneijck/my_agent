@@ -1,12 +1,16 @@
 """Git Platform module — FastAPI service for GitHub/Bitbucket integration.
 
-Supports per-user credentials: if a user has stored a GitHub PAT in the
+Supports per-user credentials: if a user has stored a GitHub PAT/OAuth token in the
 portal settings, it is used instead of the global GIT_PLATFORM_TOKEN env var.
+
+OAuth token auto-refresh: Bitbucket tokens expire after 2 hours and are automatically
+refreshed when expired or expiring soon.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import Depends, FastAPI
@@ -77,12 +81,77 @@ def _build_provider(token: str, provider_type: str = "github") -> GitHubProvider
     return None
 
 
+async def _refresh_bitbucket_token(session, user_id: uuid.UUID) -> str | None:
+    """Refresh Bitbucket OAuth token if expired or expiring soon.
+
+    Returns the refreshed access token, or None if refresh failed.
+    """
+    try:
+        import httpx
+
+        refresh_token = await _credential_store.get(session, user_id, "bitbucket", "bitbucket_refresh_token")
+        if not refresh_token:
+            logger.warning("bitbucket_no_refresh_token", user_id=str(user_id))
+            return None
+
+        # Get OAuth client credentials from settings
+        if not settings.bitbucket_oauth_client_id or not settings.bitbucket_oauth_client_secret:
+            logger.warning("bitbucket_oauth_not_configured")
+            return None
+
+        # Call Bitbucket token endpoint
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://bitbucket.org/site/oauth2/access_token",
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                },
+                auth=(settings.bitbucket_oauth_client_id, settings.bitbucket_oauth_client_secret),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+
+            if resp.status_code != 200:
+                logger.warning("bitbucket_token_refresh_failed", status=resp.status_code)
+                return None
+
+            data = resp.json()
+            if "error" in data:
+                logger.warning("bitbucket_token_refresh_error", error=data.get("error"))
+                return None
+
+            # Update stored credentials
+            access_token = data["access_token"]
+            new_refresh_token = data.get("refresh_token", refresh_token)
+            expires_in = data.get("expires_in", 7200)
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+            await _credential_store.set_many(
+                session,
+                user_id,
+                "bitbucket",
+                {
+                    "bitbucket_token": access_token,
+                    "bitbucket_refresh_token": new_refresh_token,
+                    "bitbucket_token_expires_at": expires_at.isoformat(),
+                },
+            )
+
+            logger.info("bitbucket_token_auto_refreshed", user_id=str(user_id))
+            return access_token
+
+    except Exception as e:
+        logger.error("bitbucket_token_refresh_exception", error=str(e), user_id=str(user_id))
+        return None
+
+
 async def _get_tools_for_user(user_id: str | None, provider: str = "github") -> GitPlatformTools | None:
     """Resolve a GitPlatformTools instance for the given user and provider.
 
     Priority:
-    1. User's stored credentials for the specified provider
-    2. Global GIT_PLATFORM_TOKEN env var (fallback)
+    1. User's stored OAuth credentials for the specified provider (with auto-refresh for Bitbucket)
+    2. User's stored PAT/Atlassian credentials (fallback)
+    3. Global GIT_PLATFORM_TOKEN env var (fallback)
 
     Args:
         user_id: User ID for credential lookup
@@ -94,13 +163,41 @@ async def _get_tools_for_user(user_id: str | None, provider: str = "github") -> 
             uid = uuid.UUID(user_id)
             async with _session_factory() as session:
                 if provider == "github":
+                    # Try OAuth token first, fall back to PAT
                     token = await _credential_store.get(session, uid, "github", "github_token")
                     if token:
                         git_provider = _build_provider(token, provider_type="github")
                         if git_provider:
                             return GitPlatformTools(provider=git_provider)
+
                 elif provider == "bitbucket":
-                    # Use Atlassian credentials for Bitbucket access
+                    # Try OAuth token first
+                    token = await _credential_store.get(session, uid, "bitbucket", "bitbucket_token")
+                    expires_at_str = await _credential_store.get(session, uid, "bitbucket", "bitbucket_token_expires_at")
+
+                    # Check if token is expired or expiring soon (< 5 minutes)
+                    if token and expires_at_str:
+                        try:
+                            expires_at = datetime.fromisoformat(expires_at_str)
+                            now = datetime.now(timezone.utc)
+                            if expires_at < now + timedelta(minutes=5):
+                                logger.info("bitbucket_token_expiring_soon", user_id=str(uid))
+                                # Auto-refresh token
+                                refreshed_token = await _refresh_bitbucket_token(session, uid)
+                                if refreshed_token:
+                                    token = refreshed_token
+                                else:
+                                    logger.warning("bitbucket_token_refresh_failed_using_expired", user_id=str(uid))
+                                    # Continue with expired token, will fail gracefully
+                        except Exception as e:
+                            logger.warning("bitbucket_token_expiry_parse_failed", error=str(e))
+
+                    # Use OAuth token if available
+                    if token:
+                        git_provider = BitbucketProvider(token=token, base_url="https://api.bitbucket.org/2.0")
+                        return GitPlatformTools(provider=git_provider)
+
+                    # Fall back to Atlassian credentials for Bitbucket access
                     username = await _credential_store.get(session, uid, "atlassian", "username")
                     api_token = await _credential_store.get(session, uid, "atlassian", "api_token")
                     if username and api_token:
@@ -110,6 +207,7 @@ async def _get_tools_for_user(user_id: str | None, provider: str = "github") -> 
                             base_url="https://api.bitbucket.org/2.0"
                         )
                         return GitPlatformTools(provider=git_provider)
+
         except Exception as e:
             logger.warning("user_credential_lookup_failed", user_id=user_id, provider=provider, error=str(e))
 

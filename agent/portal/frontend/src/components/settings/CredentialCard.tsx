@@ -6,6 +6,8 @@ import {
   ChevronRight,
   Edit3,
   ExternalLink,
+  Github,
+  GitBranch,
   HelpCircle,
   RefreshCw,
   Shield,
@@ -59,6 +61,16 @@ interface ClaudeTokenStatus {
   error?: string;
 }
 
+interface GitTokenStatus {
+  configured: boolean;
+  username?: string | null;
+  scopes?: string[];
+  expires_at?: string | null;
+  expires_in_seconds?: number | null;
+  is_expired?: boolean;
+  needs_refresh?: boolean;
+}
+
 const SETUP_GUIDES: Record<string, SetupGuide> = {
   claude_code: {
     title: "Paste credentials manually (from CLI)",
@@ -78,22 +90,37 @@ const SETUP_GUIDES: Record<string, SetupGuide> = {
     note: "Your token is encrypted before storage and injected into Claude Code containers at runtime. It is never logged or exposed.",
   },
   github: {
-    title: "Setting up GitHub credentials",
+    title: "Alternative: Paste token manually",
     steps: [
       {
         instruction:
-          "GitHub Token (PAT): Create a fine-grained personal access token at GitHub Settings > Developer settings > Personal access tokens. Grant repo access for the repositories you want the agent to work with.",
+          "Option 1: OAuth (Recommended) — Click 'Connect with GitHub' above for seamless authorization with automatic token management.",
       },
       {
         instruction:
-          "SSH Private Key (optional): Paste the contents of your private key file. Used for git clone/push over SSH.",
+          "Option 2: Manual PAT — Create a fine-grained personal access token at GitHub Settings > Developer settings > Personal access tokens. Grant 'repo' and 'user:email' scopes.",
+      },
+      {
+        instruction:
+          "SSH Private Key (optional): Only needed for git clone/push over SSH. Paste your private key:",
         code: "cat ~/.ssh/id_ed25519",
       },
+    ],
+    note: "OAuth tokens are managed automatically. Manual PATs must be regenerated when expired.",
+  },
+  bitbucket: {
+    title: "Bitbucket OAuth Setup",
+    steps: [
       {
         instruction:
-          "Git Author Name/Email: Set the identity used for commits made by the agent on your behalf.",
+          "Click 'Connect with Bitbucket' above to authorize via OAuth.",
+      },
+      {
+        instruction:
+          "Bitbucket tokens expire every 2 hours but are automatically refreshed in the background.",
       },
     ],
+    note: "For Jira and Confluence access, configure Atlassian credentials separately.",
   },
   atlassian: {
     title: "Setting up Atlassian credentials",
@@ -339,6 +366,172 @@ function ClaudeTokenStatusBar({
 }
 
 // ---------------------------------------------------------------------------
+// Git OAuth flow (GitHub, Bitbucket)
+// ---------------------------------------------------------------------------
+
+function GitOAuthFlow({
+  service,
+  onSuccess,
+  onCancel,
+}: {
+  service: "github" | "bitbucket";
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const startOAuth = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const data = await api<{ authorize_url: string; state: string }>(
+        `/api/settings/credentials/${service}/oauth/start`,
+        { method: "POST" },
+      );
+      // Redirect current window to GitHub/Bitbucket (will redirect back to callback)
+      window.location.href = data.authorize_url;
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const Icon = service === "github" ? Github : GitBranch;
+  const label = service === "github" ? "GitHub" : "Bitbucket";
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={startOAuth}
+        disabled={loading}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors w-full justify-center disabled:opacity-50"
+      >
+        <Icon size={16} />
+        {loading ? `Redirecting to ${label}...` : `Connect with ${label}`}
+      </button>
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      <button
+        onClick={onCancel}
+        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm transition-colors w-full justify-center"
+      >
+        <X size={14} />
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Git token status bar
+// ---------------------------------------------------------------------------
+
+function GitTokenStatusBar({
+  service,
+  onRefreshDone,
+}: {
+  service: "github" | "bitbucket";
+  onRefreshDone: () => void;
+}) {
+  const [status, setStatus] = useState<GitTokenStatus | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const data = await api<GitTokenStatus>(
+        `/api/settings/credentials/${service}/status`,
+      );
+      setStatus(data);
+    } catch {
+      // Silently fail — status is optional enhancement
+    }
+  }, [service]);
+
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshError("");
+    try {
+      await api(`/api/settings/credentials/${service}/oauth/refresh`, {
+        method: "POST",
+      });
+      await fetchStatus();
+      onRefreshDone();
+    } catch (err: any) {
+      setRefreshError(err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  if (!status || !status.configured) return null;
+
+  const expirySeconds = status.expires_in_seconds ?? 0;
+  const isExpired = status.is_expired ?? false;
+  const isWarning = !isExpired && (status.needs_refresh ?? false);
+  const hasExpiry = status.expires_at !== null && status.expires_at !== undefined;
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Username */}
+        {status.username && (
+          <span className="text-xs text-gray-400">
+            @{status.username}
+          </span>
+        )}
+
+        {/* Token expiry (only for tokens that expire) */}
+        {hasExpiry && (
+          <>
+            {isExpired ? (
+              <span className="text-xs text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full">
+                Token expired
+              </span>
+            ) : isWarning ? (
+              <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded-full">
+                {formatTimeRemaining(expirySeconds)}
+              </span>
+            ) : expirySeconds > 0 ? (
+              <span className="text-xs text-green-400/70 bg-green-400/5 px-2 py-0.5 rounded-full">
+                {formatTimeRemaining(expirySeconds)}
+              </span>
+            ) : null}
+          </>
+        )}
+
+        {/* Scopes */}
+        {status.scopes && status.scopes.length > 0 && (
+          <span className="text-xs text-gray-500 bg-gray-500/10 px-2 py-0.5 rounded-full">
+            {status.scopes.slice(0, 2).join(", ")}
+            {status.scopes.length > 2 && ` +${status.scopes.length - 2}`}
+          </span>
+        )}
+
+        {/* Refresh button (only for services with refresh tokens) */}
+        {(service === "bitbucket" || (service === "github" && hasExpiry)) && (
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors disabled:opacity-50 ml-auto"
+            title="Refresh token"
+          >
+            <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        )}
+      </div>
+
+      {refreshError && <p className="text-xs text-red-400">{refreshError}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main CredentialCard
 // ---------------------------------------------------------------------------
 
@@ -352,6 +545,9 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
 
   const guide = SETUP_GUIDES[service.service];
   const isClaude = service.service === "claude_code";
+  const isGitHub = service.service === "github";
+  const isBitbucket = service.service === "bitbucket";
+  const isGitService = isGitHub || isBitbucket;
 
   const handleSave = async () => {
     const nonEmpty = Object.fromEntries(
@@ -454,6 +650,8 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
             )}
           </p>
           {isClaude && <ClaudeTokenStatusBar onRefreshDone={onUpdate} />}
+          {isGitHub && <GitTokenStatusBar service="github" onRefreshDone={onUpdate} />}
+          {isBitbucket && <GitTokenStatusBar service="bitbucket" onRefreshDone={onUpdate} />}
         </>
       )}
 
@@ -471,8 +669,31 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
             />
           )}
 
-          {/* Divider between OAuth and manual paste for Claude */}
-          {isClaude && (
+          {/* Git OAuth connect button (GitHub, Bitbucket) */}
+          {isGitHub && (
+            <GitOAuthFlow
+              service="github"
+              onSuccess={() => {
+                setEditing(false);
+                onUpdate();
+              }}
+              onCancel={cancelEditing}
+            />
+          )}
+
+          {isBitbucket && (
+            <GitOAuthFlow
+              service="bitbucket"
+              onSuccess={() => {
+                setEditing(false);
+                onUpdate();
+              }}
+              onCancel={cancelEditing}
+            />
+          )}
+
+          {/* Divider between OAuth and manual paste */}
+          {(isClaude || isGitHub) && (
             <div className="flex items-center gap-3 text-xs text-gray-600">
               <div className="flex-1 border-t border-border" />
               <span>or paste credentials manually</span>

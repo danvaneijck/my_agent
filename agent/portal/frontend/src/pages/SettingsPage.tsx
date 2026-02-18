@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { pageVariants } from "@/utils/animations";
-import { ShieldOff, Sun, Moon, Monitor } from "lucide-react";
+import { ShieldOff, Sun, Moon, Monitor, CheckCircle, XCircle } from "lucide-react";
 import { api } from "@/api/client";
 import { useTheme } from "@/contexts/ThemeContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -43,12 +44,14 @@ interface ConnectedAccount {
 
 export default function SettingsPage() {
   usePageTitle("Settings");
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>("appearance");
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [services, setServices] = useState<ServiceCredentialInfo[]>([]);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
+  const [oauthMessage, setOauthMessage] = useState<{ type: "success" | "error"; provider: string; message: string } | null>(null);
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   const fetchData = useCallback(async () => {
@@ -87,6 +90,38 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Check for OAuth callback status in URL query params
+  useEffect(() => {
+    const oauth = searchParams.get("oauth");
+    const status = searchParams.get("status");
+    const message = searchParams.get("message");
+
+    if (oauth && status) {
+      if (status === "success") {
+        setOauthMessage({
+          type: "success",
+          provider: oauth,
+          message: `Successfully connected ${oauth.charAt(0).toUpperCase() + oauth.slice(1)} account`,
+        });
+        setTab("credentials"); // Switch to credentials tab
+      } else if (status === "error") {
+        setOauthMessage({
+          type: "error",
+          provider: oauth,
+          message: message || `Failed to connect ${oauth.charAt(0).toUpperCase() + oauth.slice(1)} account`,
+        });
+        setTab("credentials"); // Switch to credentials tab
+      }
+      // Clear OAuth params from URL
+      setSearchParams({});
+
+      // Auto-dismiss success messages after 5 seconds
+      if (status === "success") {
+        setTimeout(() => setOauthMessage(null), 5000);
+      }
+    }
+  }, [searchParams, setSearchParams]);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "appearance", label: "Appearance" },
@@ -140,6 +175,39 @@ export default function SettingsPage() {
           </button>
         ))}
       </div>
+
+      {/* OAuth callback message */}
+      {oauthMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          className={`rounded-xl border p-4 flex items-start gap-3 ${
+            oauthMessage.type === "success"
+              ? "bg-green-500/10 border-green-500/30"
+              : "bg-red-500/10 border-red-500/30"
+          }`}
+        >
+          {oauthMessage.type === "success" ? (
+            <CheckCircle size={20} className="text-green-400 mt-0.5 shrink-0" />
+          ) : (
+            <XCircle size={20} className="text-red-400 mt-0.5 shrink-0" />
+          )}
+          <div className="flex-1">
+            <p className={`text-sm font-medium ${
+              oauthMessage.type === "success" ? "text-green-300" : "text-red-300"
+            }`}>
+              {oauthMessage.message}
+            </p>
+          </div>
+          <button
+            onClick={() => setOauthMessage(null)}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <XCircle size={16} />
+          </button>
+        </motion.div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-12">

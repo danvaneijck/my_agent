@@ -51,6 +51,7 @@ async def cleanup_terminal_containers_loop() -> None:
 async def startup() -> None:
     global tools, _credential_store
     tools = ClaudeCodeTools()
+    await tools.async_init()
     settings = get_settings()
     if settings.credential_encryption_key:
         _credential_store = CredentialStore(settings.credential_encryption_key)
