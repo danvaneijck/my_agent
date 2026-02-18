@@ -395,7 +395,7 @@ class ClaudeCodeTools:
         task = self.tasks.get(task_id)
         if not task:
             raise ValueError(f"Task not found: {task_id}")
-        if user_id and task.user_id != user_id:
+        if user_id and task.user_id and task.user_id != user_id:
             raise ValueError(f"Task not found: {task_id}")
         return task
 
@@ -1945,8 +1945,11 @@ class ClaudeCodeTools:
         """Assemble the ``docker run`` argument list."""
         # Mount only this task's workspace — NOT the entire TASK_VOLUME.
         # This prevents cross-user workspace access.
-        host_workspace = os.path.join(TASK_VOLUME, task.id)
-        container_workspace = os.path.join(TASK_BASE_DIR, task.id)
+        # For continuation tasks, workspace may belong to the parent task,
+        # so derive the directory name from the workspace path, not task.id.
+        workspace_dir_name = os.path.basename(task.workspace)
+        host_workspace = os.path.join(TASK_VOLUME, workspace_dir_name)
+        container_workspace = task.workspace
 
         # Network isolation: tasks with repo_url need network for git;
         # all others run with no network access.
