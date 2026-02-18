@@ -7,7 +7,7 @@ import secrets
 
 import redis.asyncio as aioredis
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -486,8 +486,10 @@ async def github_oauth_start(user: PortalUser = Depends(require_auth)) -> dict:
 
 @router.get("/credentials/github/oauth/callback")
 async def github_oauth_callback(
-    code: str,
-    state: str,
+    code: str | None = Query(None, description="Authorization code from GitHub"),
+    state: str | None = Query(None, description="OAuth state parameter"),
+    error: str | None = Query(None, description="OAuth error from GitHub"),
+    error_description: str | None = Query(None, description="OAuth error description"),
 ) -> dict:
     """GitHub OAuth callback endpoint.
 
@@ -495,9 +497,27 @@ async def github_oauth_callback(
     This endpoint is public (no auth required) because browser redirects can't include auth headers.
     The user_id is retrieved from the state stored in Redis.
     """
+    from fastapi.responses import RedirectResponse
     from uuid import UUID
     provider = _get_github_provider()
     settings = get_settings()
+
+    # Handle OAuth errors
+    if error:
+        error_msg = error_description or error
+        logger.error("github_oauth_error", error=error, description=error_description)
+        return RedirectResponse(
+            url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=github&status=error&message={error_msg}",
+            status_code=302,
+        )
+
+    # Validate required parameters
+    if not code or not state:
+        logger.error("github_oauth_missing_params", code=bool(code), state=bool(state))
+        return RedirectResponse(
+            url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=github&status=error&message=No authorization code received",
+            status_code=302,
+        )
 
     # Retrieve user_id from state stored in Redis
     r = await _get_redis()
@@ -557,7 +577,6 @@ async def github_oauth_callback(
     )
 
     # Redirect to success page
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(
         url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=github&status=success",
         status_code=302,
@@ -670,8 +689,10 @@ async def bitbucket_oauth_start(user: PortalUser = Depends(require_auth)) -> dic
 
 @router.get("/credentials/bitbucket/oauth/callback")
 async def bitbucket_oauth_callback(
-    code: str,
-    state: str,
+    code: str | None = Query(None, description="Authorization code from Bitbucket"),
+    state: str | None = Query(None, description="OAuth state parameter"),
+    error: str | None = Query(None, description="OAuth error from Bitbucket"),
+    error_description: str | None = Query(None, description="OAuth error description"),
 ) -> dict:
     """Bitbucket OAuth callback endpoint.
 
@@ -679,9 +700,27 @@ async def bitbucket_oauth_callback(
     This endpoint is public (no auth required) because browser redirects can't include auth headers.
     The user_id is retrieved from the state stored in Redis.
     """
+    from fastapi.responses import RedirectResponse
     from uuid import UUID
     provider = _get_bitbucket_provider()
     settings = get_settings()
+
+    # Handle OAuth errors
+    if error:
+        error_msg = error_description or error
+        logger.error("bitbucket_oauth_error", error=error, description=error_description)
+        return RedirectResponse(
+            url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=bitbucket&status=error&message={error_msg}",
+            status_code=302,
+        )
+
+    # Validate required parameters
+    if not code or not state:
+        logger.error("bitbucket_oauth_missing_params", code=bool(code), state=bool(state))
+        return RedirectResponse(
+            url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=bitbucket&status=error&message=No authorization code received",
+            status_code=302,
+        )
 
     # Retrieve user_id from state stored in Redis
     r = await _get_redis()
@@ -740,7 +779,6 @@ async def bitbucket_oauth_callback(
     )
 
     # Redirect to success page
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(
         url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=bitbucket&status=success",
         status_code=302,
