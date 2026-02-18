@@ -23,7 +23,7 @@ _BLOCKED_HOSTNAMES = {
     "file-manager", "code-executor", "knowledge", "scheduler",
     "deployer", "claude-code", "location", "research",
     "project-planner", "skills-modules", "git-platform",
-    "atlassian", "garmin", "myfitnesspal", "renpho-biometrics",
+    "atlassian", "garmin", "renpho-biometrics",
     "injective", "weather", "portal", "dashboard",
     "discord-bot", "telegram-bot", "slack-bot",
 }

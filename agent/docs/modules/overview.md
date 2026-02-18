@@ -61,7 +61,7 @@ Before executing a tool call, the orchestrator injects:
 ## Timeouts
 
 - Default tool execution timeout: 30 seconds
-- Slow modules get 120 seconds: `myfitnesspal`, `garmin`, `renpho_biometrics`, `claude_code`, `deployer`
+- Slow modules get 120 seconds: `garmin`, `renpho_biometrics`, `claude_code`, `deployer`
 - Configured via `settings.slow_modules` in `shared/config.py`
 
 ## Workflow Chaining
@@ -119,5 +119,4 @@ See `agent/docs/ADDING_MODULES.md` for the full guide on creating new modules.
 | renpho_biometrics | | | | Renpho API |
 | location | x | | x | OwnTracks, geocoder |
 | git_platform | x | | | GitHub/Bitbucket API |
-| myfitnesspal | | | | MyFitnessPal API |
 | injective | | | | Injective RPC |

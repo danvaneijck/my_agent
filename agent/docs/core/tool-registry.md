@@ -441,12 +441,12 @@ async def execute_tool(self, tool_call: ToolCall) -> ToolResult:
 
 **Configuration**: `shared/config.py`
 ```python
-slow_modules: str = "myfitnesspal,garmin,renpho_biometrics,claude_code,deployer"
+slow_modules: str = "garmin,renpho_biometrics,claude_code,deployer"
 tool_execution_timeout: int = 120
 ```
 
 **Why Longer Timeouts?**
-- `myfitnesspal`, `garmin`, `renpho_biometrics` — External API calls with slow responses
+- `garmin`, `renpho_biometrics` — External API calls with slow responses
 - `claude_code` — May compile code, run tests
 - `deployer` — Docker build and container startup
 
@@ -623,7 +623,6 @@ module_services: dict[str, str] = {
     "renpho_biometrics": "http://renpho-biometrics:8000",
     "location": "http://location:8000",
     "git_platform": "http://git-platform:8000",
-    "myfitnesspal": "http://myfitnesspal:8000",
     "project_planner": "http://project-planner:8000",
     "injective": "http://injective:8000",
 }
@@ -637,7 +636,7 @@ module_services: dict[str, str] = {
 ### Slow Modules
 
 ```python
-slow_modules: str = "myfitnesspal,garmin,renpho_biometrics,claude_code,deployer"
+slow_modules: str = "garmin,renpho_biometrics,claude_code,deployer"
 tool_execution_timeout: int = 120
 ```
 

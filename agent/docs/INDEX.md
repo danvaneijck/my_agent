@@ -94,7 +94,6 @@ Individual module documentation with implementation details and usage patterns.
 | [renpho_biometrics](modules/renpho_biometrics.md) | Renpho smart scale data | Working with Renpho integration |
 | [location](modules/location.md) | OwnTracks geofencing and tracking | Working with location features |
 | [git_platform](modules/git_platform.md) | GitHub/Bitbucket integration | Working with Git platform features |
-| [myfitnesspal](modules/myfitnesspal.md) | Nutrition tracking | Working with MyFitnessPal integration |
 | [project_planner](modules/project_planner.md) | Project planning and execution | Working with project management |
 | [injective](modules/injective.md) | Blockchain trading | Working with trading features |
 | [portal](modules/portal.md) | Web portal interface | Working with web UI |

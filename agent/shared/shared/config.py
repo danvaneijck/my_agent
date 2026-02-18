@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     tool_execution_timeout: int = 120
     # Modules that need extra time (Selenium, long-running tasks)
     # uses tool_execution_timeout; all others use 30s default
-    slow_modules: str = "myfitnesspal,garmin,renpho_biometrics,claude_code,deployer"
+    slow_modules: str = "garmin,renpho_biometrics,claude_code,deployer"
 
     # Token efficiency
     # Max characters for a single tool result before truncation (in context)
@@ -132,11 +132,6 @@ class Settings(BaseSettings):
     garmin_email: str = ""
     garmin_password: str = ""
 
-    # MyFitnessPal
-    mfp_username: str = ""
-    mfp_password: str = ""
-    mfp_cookie_string: str = ""
-
     # Atlassian
     atlassian_url: str = ""
     atlassian_username: str = ""
@@ -169,7 +164,6 @@ class Settings(BaseSettings):
         "atlassian": "http://atlassian:8000",
         "renpho_biometrics": "http://renpho-biometrics:8000",
         "garmin": "http://garmin:8000",
-        "myfitnesspal": "http://myfitnesspal:8000",
         "claude_code": "http://claude-code:8000",
         "deployer": "http://deployer:8000",
         "scheduler": "http://scheduler:8000",
