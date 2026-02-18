@@ -233,6 +233,7 @@ services:
       - ./data/claude_tasks:/tmp/claude_tasks
     networks:
       - agent-net
+      - infra-net
     restart: unless-stopped
 
   # Build-only: produces the my-claude-code-image used by claude-code module.
