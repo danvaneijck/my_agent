@@ -507,7 +507,7 @@ async def github_oauth_callback(
         error_msg = error_description or error
         logger.error("github_oauth_error", error=error, description=error_description)
         return RedirectResponse(
-            url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=github&status=error&message={error_msg}",
+            url=f"{settings.portal_base_url}/settings?oauth=github&status=error&message={error_msg}",
             status_code=302,
         )
 
@@ -515,7 +515,7 @@ async def github_oauth_callback(
     if not code or not state:
         logger.error("github_oauth_missing_params", code=bool(code), state=bool(state))
         return RedirectResponse(
-            url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=github&status=error&message=No authorization code received",
+            url=f"{settings.portal_base_url}/settings?oauth=github&status=error&message=No authorization code received",
             status_code=302,
         )
 
@@ -578,7 +578,7 @@ async def github_oauth_callback(
 
     # Redirect to success page
     return RedirectResponse(
-        url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=github&status=success",
+        url=f"{settings.portal_base_url}/settings?oauth=github&status=success",
         status_code=302,
     )
 
@@ -710,7 +710,7 @@ async def bitbucket_oauth_callback(
         error_msg = error_description or error
         logger.error("bitbucket_oauth_error", error=error, description=error_description)
         return RedirectResponse(
-            url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=bitbucket&status=error&message={error_msg}",
+            url=f"{settings.portal_base_url}/settings?oauth=bitbucket&status=error&message={error_msg}",
             status_code=302,
         )
 
@@ -718,7 +718,7 @@ async def bitbucket_oauth_callback(
     if not code or not state:
         logger.error("bitbucket_oauth_missing_params", code=bool(code), state=bool(state))
         return RedirectResponse(
-            url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=bitbucket&status=error&message=No authorization code received",
+            url=f"{settings.portal_base_url}/settings?oauth=bitbucket&status=error&message=No authorization code received",
             status_code=302,
         )
 
@@ -780,7 +780,7 @@ async def bitbucket_oauth_callback(
 
     # Redirect to success page
     return RedirectResponse(
-        url=f"{settings.portal_oauth_redirect_uri.replace('/api/settings/credentials', '')}/settings?oauth=bitbucket&status=success",
+        url=f"{settings.portal_base_url}/settings?oauth=bitbucket&status=success",
         status_code=302,
     )
 

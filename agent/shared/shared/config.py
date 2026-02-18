@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     # Web portal
     portal_api_key: str = ""
     portal_user_id: str = ""
+    portal_base_url: str = "http://localhost:8080"  # Frontend base URL (no trailing slash)
     # Discord OAuth2 (for portal login)
     discord_client_id: str = ""
     discord_client_secret: str = ""
