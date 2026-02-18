@@ -145,6 +145,17 @@ class Settings(BaseSettings):
     git_platform_username: str = ""  # Required for Bitbucket (app password owner)
     git_platform_base_url: str = "https://api.github.com"  # or "https://api.bitbucket.org/2.0"
 
+    # GitHub OAuth (for portal git credential setup)
+    github_oauth_client_id: str = ""
+    github_oauth_client_secret: str = ""
+
+    # Bitbucket OAuth (for portal git credential setup)
+    bitbucket_oauth_client_id: str = ""
+    bitbucket_oauth_client_secret: str = ""
+
+    # Git OAuth redirect base (provider-specific path appended: /github/oauth/callback, /bitbucket/oauth/callback)
+    git_oauth_redirect_uri: str = "http://localhost:8080/api/settings/credentials"
+
     # OwnTracks
     owntracks_endpoint_url: str = "https://your-agent.com/pub"
 

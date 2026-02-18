@@ -4,7 +4,7 @@ Bitbucket terminology mapping:
   - "owner" in the provider interface maps to Bitbucket "workspace"
   - "repo" maps to "repo_slug"
   - Issues must be explicitly enabled per-repository in Bitbucket settings
-  - Auth uses Basic auth (username + app password)
+  - Auth supports both Basic auth (username + app password) and OAuth 2.0 (Bearer token)
 """
 
 from __future__ import annotations
@@ -40,16 +40,53 @@ _MERGE_METHOD_MAP = {
 
 
 class BitbucketProvider(GitProvider):
-    """Bitbucket Cloud REST API v2 provider."""
+    """Bitbucket Cloud REST API v2 provider.
 
-    def __init__(self, username: str, app_password: str, base_url: str = _DEFAULT_BASE):
+    Supports two authentication methods:
+    1. OAuth 2.0 Bearer token (recommended): Initialize with token parameter
+    2. Basic Auth (username + app password): Initialize with username and app_password parameters
+    """
+
+    def __init__(
+        self,
+        username: str | None = None,
+        app_password: str | None = None,
+        token: str | None = None,
+        base_url: str = _DEFAULT_BASE,
+    ):
+        """Initialize Bitbucket provider.
+
+        Args:
+            username: Bitbucket username (for Basic Auth)
+            app_password: App password or API token (for Basic Auth)
+            token: OAuth 2.0 access token (for Bearer Auth)
+            base_url: API base URL
+
+        Raises:
+            ValueError: If neither OAuth token nor Basic Auth credentials provided
+        """
         self.base_url = base_url.rstrip("/")
-        self._client = httpx.AsyncClient(
-            base_url=self.base_url,
-            auth=(username, app_password),
-            headers={"Accept": "application/json"},
-            timeout=30.0,
-        )
+
+        if token:
+            # OAuth 2.0 Bearer token authentication
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
+                timeout=30.0,
+            )
+        elif username and app_password:
+            # Basic authentication (username + app password)
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url,
+                auth=(username, app_password),
+                headers={"Accept": "application/json"},
+                timeout=30.0,
+            )
+        else:
+            raise ValueError("Must provide either token or username+app_password")
 
     # ------------------------------------------------------------------
     # Internal helpers
