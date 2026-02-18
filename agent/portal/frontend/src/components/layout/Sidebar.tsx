@@ -15,6 +15,7 @@ import {
   BarChart3,
   Settings,
   X,
+  Lightbulb,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { to: "/chat", icon: MessageSquare, label: "Chat", badgeKey: "chat" },
   { to: "/tasks", icon: LayoutDashboard, label: "Tasks", badgeKey: "tasks" },
   { to: "/projects", icon: FolderKanban, label: "Projects" },
+  { to: "/skills", icon: Lightbulb, label: "Skills" },
   { to: "/repos", icon: GitBranch, label: "Repos" },
   { to: "/pulls", icon: GitPullRequest, label: "Pull Requests", badgeKey: "pulls" },
   { to: "/code", icon: Code2, label: "Code" },

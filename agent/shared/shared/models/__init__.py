@@ -10,12 +10,15 @@ from shared.models.owntracks_credential import OwnTracksCredential
 from shared.models.persona import Persona
 from shared.models.project import Project
 from shared.models.project_phase import ProjectPhase
+from shared.models.project_skill import ProjectSkill
 from shared.models.project_task import ProjectTask
 from shared.models.scheduled_job import ScheduledJob
+from shared.models.task_skill import TaskSkill
 from shared.models.token_usage import TokenLog
 from shared.models.user import User, UserPlatformLink
 from shared.models.user_credential import UserCredential
 from shared.models.user_location import UserLocation
+from shared.models.user_skill import UserSkill
 
 __all__ = [
     "Base",
@@ -28,12 +31,15 @@ __all__ = [
     "Persona",
     "Project",
     "ProjectPhase",
+    "ProjectSkill",
     "ProjectTask",
     "ScheduledJob",
+    "TaskSkill",
     "TokenLog",
     "User",
     "UserCredential",
     "UserLocation",
     "UserNamedPlace",
     "UserPlatformLink",
+    "UserSkill",
 ]

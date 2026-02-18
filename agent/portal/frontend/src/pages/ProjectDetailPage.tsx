@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw, CheckCircle, Archive } from "lucide-react";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw, CheckCircle, Archive, Lightbulb, Plus, X } from "lucide-react";
 import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase } from "@/hooks/useProjects";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { api } from "@/api/client";
@@ -8,6 +8,8 @@ import ConfirmDialog from "@/components/common/ConfirmDialog";
 import PlanningTaskPanel from "@/components/projects/PlanningTaskPanel";
 import ProjectExecutionPanel from "@/components/projects/ProjectExecutionPanel";
 import MultiStateProgressBar from "@/components/projects/MultiStateProgressBar";
+import { useProjectSkills, attachSkillToProject, detachSkillFromProject } from "@/hooks/useProjectSkills";
+import SkillPicker from "@/components/skills/SkillPicker";
 import type { ProjectPhase } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -110,7 +112,12 @@ export default function ProjectDetailPage() {
   const [reapplying, setReapplying] = useState(false);
   const [reapplyProgress, setReapplyProgress] = useState("");
   const [retryingPhase, setRetryingPhase] = useState<string | null>(null);
+  const [showSkillPicker, setShowSkillPicker] = useState(false);
+  const [removingSkillId, setRemovingSkillId] = useState<string | null>(null);
   const syncedRef = useRef(false);
+
+  // Fetch project skills
+  const { skills: projectSkills, loading: skillsLoading, refetch: refetchSkills } = useProjectSkills(projectId);
 
   // Sort phases by order_index to ensure consistent top-to-bottom ordering
   // Must be called before early returns to comply with Rules of Hooks
@@ -230,6 +237,25 @@ export default function ProjectDetailPage() {
       // Error
     } finally {
       setRetryingPhase(null);
+    }
+  };
+
+  const handleAttachSkill = async (skillId: string) => {
+    if (!projectId) return;
+    await attachSkillToProject(projectId, skillId);
+    refetchSkills();
+  };
+
+  const handleDetachSkill = async (skillId: string) => {
+    if (!projectId) return;
+    setRemovingSkillId(skillId);
+    try {
+      await detachSkillFromProject(projectId, skillId);
+      refetchSkills();
+    } catch {
+      // Error
+    } finally {
+      setRemovingSkillId(null);
     }
   };
 
@@ -487,6 +513,61 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
+      {/* Skills */}
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-light-border dark:border-border flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
+            <Lightbulb size={16} className="text-accent" />
+            Skills ({projectSkills.length})
+          </h3>
+          <button
+            onClick={() => setShowSkillPicker(true)}
+            className="inline-flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover px-2 py-1 rounded hover:bg-accent/10 transition-colors"
+          >
+            <Plus size={12} />
+            Add Skill
+          </button>
+        </div>
+        {skillsLoading ? (
+          <div className="px-4 py-8 flex justify-center">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent"></div>
+          </div>
+        ) : projectSkills.length === 0 ? (
+          <div className="px-4 py-8 text-center text-gray-500 text-sm">
+            No skills attached yet
+          </div>
+        ) : (
+          <div className="p-4 flex flex-wrap gap-2">
+            {projectSkills.map((skill) => (
+              <div
+                key={skill.skill_id}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface-lighter border border-border rounded-lg text-sm"
+              >
+                <Lightbulb size={14} className="text-accent" />
+                <span className="text-white">{skill.skill_name}</span>
+                {skill.skill_category && (
+                  <span className="text-xs px-1.5 py-0.5 bg-surface rounded text-gray-400">
+                    {skill.skill_category}
+                  </span>
+                )}
+                <button
+                  onClick={() => handleDetachSkill(skill.skill_id)}
+                  disabled={removingSkillId === skill.skill_id}
+                  className="ml-1 p-0.5 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50"
+                  title="Remove skill"
+                >
+                  {removingSkillId === skill.skill_id ? (
+                    <div className="animate-spin rounded-full h-3 w-3 border border-red-400 border-t-transparent"></div>
+                  ) : (
+                    <X size={12} />
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Design Document */}
       {project.design_document && (
         <details className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
@@ -573,6 +654,15 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Skill Picker Modal */}
+      <SkillPicker
+        open={showSkillPicker}
+        onClose={() => setShowSkillPicker(false)}
+        onAttach={handleAttachSkill}
+        attachedSkillIds={projectSkills.map((s) => s.skill_id)}
+        title="Attach Skill to Project"
+      />
     </div>
   );
 }
