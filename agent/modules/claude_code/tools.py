@@ -55,6 +55,31 @@ MAX_WORKSPACES_PER_USER = 10  # maximum number of workspaces a user can have
 
 _GIT_REF_PATTERN = re.compile(r"^[a-zA-Z0-9._/:\-]+$")
 
+WORKER_NETWORK = "worker-net"
+
+
+async def _resolve_network_name(hint: str = WORKER_NETWORK) -> str:
+    """Find the real Docker network name matching *hint*.
+
+    Docker Compose prefixes network names with the project name, so a
+    compose-defined ``worker-net`` becomes e.g. ``agent_worker-net`` on the
+    host.  We pick the first network whose name ends with the hint.
+    Falls back to the hint unchanged.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "network", "ls", "--format", "{{.Name}}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await proc.communicate()
+        for name in stdout.decode().splitlines():
+            if name == hint or name.endswith(f"_{hint}"):
+                return name
+    except Exception:
+        pass
+    return hint
+
 # Anthropic OAuth constants (same as Claude Code CLI uses)
 _CLAUDE_CODE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 _CLAUDE_OAUTH_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
@@ -297,6 +322,7 @@ class ClaudeCodeTools:
 
     def __init__(self) -> None:
         self.tasks: dict[str, Task] = {}
+        self._worker_network: str = WORKER_NETWORK
         os.makedirs(TASK_BASE_DIR, exist_ok=True)
         self._load_persisted_tasks()
         if not TASK_VOLUME:
@@ -304,6 +330,11 @@ class ClaudeCodeTools:
                 "CLAUDE_TASK_VOLUME not set — worker containers need the "
                 "absolute host path to the task directory for bind mounts"
             )
+
+    async def async_init(self) -> None:
+        """Resolve Docker network names (must be called after __init__)."""
+        self._worker_network = await _resolve_network_name(WORKER_NETWORK)
+        logger.info("resolved_worker_network", network=self._worker_network)
 
     # ------------------------------------------------------------------
     # Persistence
@@ -1919,7 +1950,7 @@ class ClaudeCodeTools:
 
         # Network isolation: tasks with repo_url need network for git;
         # all others run with no network access.
-        network = "worker-net" if task.repo_url else "none"
+        network = self._worker_network if task.repo_url else "none"
 
         cmd: list[str] = [
             "docker", "run", "--rm", "--init",
@@ -2394,7 +2425,7 @@ class ClaudeCodeTools:
         cmd: list[str] = [
             "docker", "run", "--rm", "--init",
             "--name", container_name,
-            "--network=worker-net",
+            f"--network={self._worker_network}",
             "-v", f"{host_workspace}:{container_workspace}",
             "-w", task.workspace,
             "-e", f"GIT_CMD={git_command}",
