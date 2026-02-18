@@ -7,6 +7,7 @@ import json
 import httpx
 import structlog
 
+from shared.auth import get_service_auth_headers
 from shared.config import Settings, parse_list
 from shared.redis import get_redis
 from shared.schemas.tools import ModuleManifest, ToolCall, ToolDefinition, ToolResult
@@ -27,7 +28,8 @@ class ToolRegistry:
     async def discover_all(self) -> None:
         """Query all configured modules for their manifests and cache them."""
         redis = await get_redis()
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        auth_headers = get_service_auth_headers()
+        async with httpx.AsyncClient(timeout=10.0, headers=auth_headers) as client:
             for module_name, url in self.settings.module_services.items():
                 try:
                     resp = await client.get(f"{url}/manifest")
@@ -114,8 +116,63 @@ class ToolRegistry:
             })
         return openai_tools
 
-    async def execute_tool(self, tool_call: ToolCall) -> ToolResult:
-        """Route a tool call to the correct module service."""
+    def check_permission(
+        self, tool_name: str, user_permission: str,
+    ) -> str | None:
+        """Return an error message if the user lacks permission for this tool.
+
+        Returns None if the user has sufficient permission.
+        """
+        parts = tool_name.split(".", 1)
+        if len(parts) != 2:
+            return None  # let execute_tool handle bad names
+        module_name = parts[0]
+        manifest = self.manifests.get(module_name)
+        if not manifest:
+            return None  # let execute_tool handle unknown modules
+        for tool in manifest.tools:
+            if tool.name == tool_name:
+                user_level = (
+                    PERMISSION_LEVELS.index(user_permission)
+                    if user_permission in PERMISSION_LEVELS
+                    else 0
+                )
+                required_level = (
+                    PERMISSION_LEVELS.index(tool.required_permission)
+                    if tool.required_permission in PERMISSION_LEVELS
+                    else 0
+                )
+                if user_level < required_level:
+                    return (
+                        f"Permission denied: {tool_name} requires "
+                        f"'{tool.required_permission}' but user has '{user_permission}'"
+                    )
+                return None
+        return None
+
+    async def execute_tool(
+        self, tool_call: ToolCall, user_permission: str | None = None,
+    ) -> ToolResult:
+        """Route a tool call to the correct module service.
+
+        When *user_permission* is provided, a server-side permission check is
+        performed **before** forwarding the call to the module.
+        """
+        # Server-side permission enforcement
+        if user_permission:
+            perm_error = self.check_permission(tool_call.tool_name, user_permission)
+            if perm_error:
+                logger.warning(
+                    "permission_denied",
+                    tool=tool_call.tool_name,
+                    user_permission=user_permission,
+                )
+                return ToolResult(
+                    tool_name=tool_call.tool_name,
+                    success=False,
+                    error=perm_error,
+                )
+
         # Extract module name from tool name (e.g. "file_manager.create_document" -> "file_manager")
         parts = tool_call.tool_name.split(".", 1)
         if len(parts) != 2:
@@ -136,7 +193,8 @@ class ToolRegistry:
         url = self.settings.module_services[module_name]
         slow_modules = parse_list(self.settings.slow_modules)
         timeout = float(self.settings.tool_execution_timeout) if module_name in slow_modules else 30.0
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        auth_headers = get_service_auth_headers()
+        async with httpx.AsyncClient(timeout=timeout, headers=auth_headers) as client:
             try:
                 payload = {
                     "tool_name": tool_call.tool_name,

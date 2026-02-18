@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from modules.injective.manifest import MANIFEST
 from modules.injective.tools import InjectiveTools
 from shared.schemas.common import HealthResponse
+from shared.auth import require_service_auth
 from shared.schemas.tools import ModuleManifest, ToolCall, ToolResult
 
 structlog.configure(
@@ -56,13 +57,13 @@ async def startup():
 
 
 @app.get("/manifest", response_model=ModuleManifest)
-async def manifest():
+async def manifest(_=Depends(require_service_auth)):
     """Return the module manifest."""
     return MANIFEST
 
 
 @app.post("/execute", response_model=ToolResult)
-async def execute(call: ToolCall):
+async def execute(call: ToolCall, _=Depends(require_service_auth)):
     """Execute a tool call."""
     if tools is None:
         return ToolResult(tool_name=call.tool_name, success=False, error="Module not ready")
@@ -81,8 +82,8 @@ async def execute(call: ToolCall):
         result = await method(**call.arguments)
         return ToolResult(tool_name=call.tool_name, success=True, result=result)
     except Exception as e:
-        logger.error("tool_execution_error", tool=call.tool_name, error=str(e))
-        return ToolResult(tool_name=call.tool_name, success=False, error=str(e))
+        logger.error("tool_execution_error", tool=call.tool_name, error=str(e), exc_info=True)
+        return ToolResult(tool_name=call.tool_name, success=False, error="Internal error processing request")
 
 
 @app.get("/health", response_model=HealthResponse)

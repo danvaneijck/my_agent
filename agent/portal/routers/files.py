@@ -62,6 +62,9 @@ async def list_files(
     }
 
 
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+
+
 @router.post("")
 async def upload_file(
     file: UploadFile = File(...),
@@ -69,6 +72,8 @@ async def upload_file(
 ) -> dict:
     """Upload a file via multipart form."""
     content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, f"File too large (max {MAX_UPLOAD_SIZE // (1024 * 1024)} MB)")
     b64 = base64.b64encode(content).decode()
 
     result = await call_tool(

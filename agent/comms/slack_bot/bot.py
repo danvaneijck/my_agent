@@ -15,6 +15,7 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 from comms.slack_bot.normalizer import SlackNormalizer
+from shared.auth import get_service_auth_headers
 from shared.config import Settings
 from shared.file_utils import upload_attachment
 from shared.schemas.messages import AgentResponse
@@ -131,7 +132,7 @@ class AgentSlackBot:
                 incoming.content = "(attached files)"
 
             # Call Orchestrator
-            async with httpx.AsyncClient(timeout=120.0) as http_client:
+            async with httpx.AsyncClient(timeout=120.0, headers=get_service_auth_headers()) as http_client:
                 resp = await http_client.post(
                     f"{self.settings.orchestrator_url}/message",
                     json=incoming.model_dump(),

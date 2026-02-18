@@ -248,17 +248,21 @@ class AgentLoop:
                     if tool_call.tool_name == "scheduler.add_job":
                         tool_call.arguments["conversation_id"] = str(conversation.id)
 
-                # Execute tool
-                result = await self.tool_registry.execute_tool(tool_call)
+                # Execute tool (with server-side permission check)
+                result = await self.tool_registry.execute_tool(
+                    tool_call, user_permission=user.permission_level,
+                )
 
                 # If first attempt fails, retry once
-                if not result.success:
+                if not result.success and "Permission denied" not in (result.error or ""):
                     logger.warning(
                         "tool_call_failed_retrying",
                         tool=tool_call.tool_name,
                         error=result.error,
                     )
-                    result = await self.tool_registry.execute_tool(tool_call)
+                    result = await self.tool_registry.execute_tool(
+                        tool_call, user_permission=user.permission_level,
+                    )
 
                 # Track tool call for metadata
                 tool_call_summaries.append(
@@ -368,8 +372,9 @@ class AgentLoop:
             if incoming.platform_username and link.platform_username != incoming.platform_username:
                 link.platform_username = incoming.platform_username
 
+            # Lock the user row to prevent concurrent budget race conditions
             result = await session.execute(
-                select(User).where(User.id == link.user_id)
+                select(User).where(User.id == link.user_id).with_for_update()
             )
             user = result.scalar_one()
 

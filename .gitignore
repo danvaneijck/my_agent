@@ -1,3 +1,9 @@
+# Environment / Secrets
+.env
+**/.env
+*.env.local
+*.env.production
+
 # Claude Code task files
 task_*.log
 task_meta_*.json

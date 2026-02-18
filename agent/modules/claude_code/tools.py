@@ -360,11 +360,11 @@ class ClaudeCodeTools:
     # ------------------------------------------------------------------
 
     def _get_task(self, task_id: str, user_id: str | None = None) -> Task:
-        """Look up a task, enforcing ownership when user_id is provided."""
+        """Look up a task, always enforcing ownership when user_id is provided."""
         task = self.tasks.get(task_id)
         if not task:
             raise ValueError(f"Task not found: {task_id}")
-        if user_id and task.user_id and task.user_id != user_id:
+        if user_id and task.user_id != user_id:
             raise ValueError(f"Task not found: {task_id}")
         return task
 
@@ -647,10 +647,9 @@ class ClaudeCodeTools:
         user_id: str | None = None,
     ) -> dict:
         """List tasks for the given user, optionally filtered by status."""
-        if user_id:
-            tasks = [t for t in self.tasks.values() if t.user_id == user_id]
-        else:
-            tasks = list(self.tasks.values())
+        if not user_id:
+            return {"tasks": [], "total": 0}
+        tasks = [t for t in self.tasks.values() if t.user_id == user_id]
         if status_filter:
             tasks = [t for t in tasks if t.status == status_filter]
 

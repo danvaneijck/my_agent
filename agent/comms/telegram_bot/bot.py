@@ -20,6 +20,7 @@ from telegram.ext import (
 )
 
 from comms.telegram_bot.normalizer import TelegramNormalizer, to_telegram_markdown_v2
+from shared.auth import get_service_auth_headers
 from shared.config import Settings
 from shared.file_utils import upload_attachment
 from shared.schemas.messages import AgentResponse
@@ -164,7 +165,7 @@ class AgentTelegramBot:
         incoming.attachments = await self._ingest_attachments(message, context)
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=60.0, headers=get_service_auth_headers()) as client:
                 resp = await client.post(
                     f"{self.settings.orchestrator_url}/message",
                     json=incoming.model_dump(),

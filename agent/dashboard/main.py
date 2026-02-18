@@ -93,7 +93,7 @@ async def _get_session() -> AsyncSession:
         yield session
 
 
-@app.get("/api/overview")
+@app.get("/api/overview", dependencies=[Depends(require_admin)])
 async def overview():
     """High-level system stats."""
     factory = get_session_factory()
@@ -145,7 +145,7 @@ async def overview():
         }
 
 
-@app.get("/api/users")
+@app.get("/api/users", dependencies=[Depends(require_admin)])
 async def users_list():
     """All users with platform links and usage stats."""
     factory = get_session_factory()
@@ -207,7 +207,7 @@ async def users_list():
         return data
 
 
-@app.get("/api/token-usage")
+@app.get("/api/token-usage", dependencies=[Depends(require_admin)])
 async def token_usage():
     """Token usage grouped by day and model for the last 30 days."""
     factory = get_session_factory()
@@ -266,7 +266,7 @@ async def token_usage():
         }
 
 
-@app.get("/api/conversations")
+@app.get("/api/conversations", dependencies=[Depends(require_admin)])
 async def conversations_list(limit: int = 50):
     """Recent conversations with message counts."""
     factory = get_session_factory()
@@ -308,7 +308,7 @@ async def conversations_list(limit: int = 50):
         return data
 
 
-@app.get("/api/personas")
+@app.get("/api/personas", dependencies=[Depends(require_admin)])
 async def personas_list():
     """All configured personas."""
     factory = get_session_factory()
@@ -338,7 +338,7 @@ async def personas_list():
         return data
 
 
-@app.get("/api/tool-usage")
+@app.get("/api/tool-usage", dependencies=[Depends(require_admin)])
 async def tool_usage():
     """Tool call frequency from messages."""
     factory = get_session_factory()
@@ -369,7 +369,7 @@ async def tool_usage():
         ]
 
 
-@app.get("/api/platform-stats")
+@app.get("/api/platform-stats", dependencies=[Depends(require_admin)])
 async def platform_stats():
     """Breakdown of usage by platform."""
     factory = get_session_factory()
@@ -407,7 +407,7 @@ async def platform_stats():
         }
 
 
-@app.get("/api/system-health")
+@app.get("/api/system-health", dependencies=[Depends(require_admin)])
 async def system_health():
     """Check health of all module services."""
     import httpx
@@ -422,8 +422,8 @@ async def system_health():
                     "status": "healthy" if resp.status_code == 200 else "unhealthy",
                     "status_code": resp.status_code,
                 }
-            except Exception as e:
-                results[name] = {"status": "unreachable", "error": str(e)}
+            except Exception:
+                results[name] = {"status": "unreachable", "error": "unreachable"}
 
     # Check core orchestrator
     try:
@@ -433,8 +433,8 @@ async def system_health():
                 "status": "healthy" if resp.status_code == 200 else "unhealthy",
                 "status_code": resp.status_code,
             }
-    except Exception as e:
-        results["core"] = {"status": "unreachable", "error": str(e)}
+    except Exception:
+        results["core"] = {"status": "unreachable", "error": "unreachable"}
 
     return results
 

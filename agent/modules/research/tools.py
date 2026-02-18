@@ -2,13 +2,63 @@
 
 from __future__ import annotations
 
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
 import structlog
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 
 import httpx
 
+from shared.auth import get_service_auth_headers
+
 logger = structlog.get_logger()
+
+
+# Internal Docker service hostnames that must never be fetched
+_BLOCKED_HOSTNAMES = {
+    "core", "postgres", "redis", "minio", "localhost",
+    "file-manager", "code-executor", "knowledge", "scheduler",
+    "deployer", "claude-code", "location", "research",
+    "project-planner", "skills-modules", "git-platform",
+    "atlassian", "garmin", "myfitnesspal", "renpho-biometrics",
+    "injective", "weather", "portal", "dashboard",
+    "discord-bot", "telegram-bot", "slack-bot",
+}
+
+
+def _validate_url_for_ssrf(url: str) -> str | None:
+    """Return an error message if the URL targets an internal/private resource."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return "Invalid URL"
+
+    # Only allow http and https schemes
+    if parsed.scheme not in ("http", "https"):
+        return f"Blocked URL scheme: {parsed.scheme}"
+
+    hostname = parsed.hostname or ""
+    if not hostname:
+        return "No hostname in URL"
+
+    # Block known internal Docker hostnames
+    if hostname.lower() in _BLOCKED_HOSTNAMES:
+        return f"Blocked internal hostname: {hostname}"
+
+    # Resolve DNS and check for private/internal IPs
+    try:
+        resolved = socket.getaddrinfo(hostname, None)
+        for _, _, _, _, sockaddr in resolved:
+            ip = ipaddress.ip_address(sockaddr[0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return f"Blocked private/internal IP: {ip}"
+    except socket.gaierror:
+        return f"DNS resolution failed for: {hostname}"
+
+    return None
 
 
 class ResearchTools:
@@ -55,6 +105,11 @@ class ResearchTools:
 
     async def fetch_webpage(self, url: str) -> dict:
         """Fetch and extract text content from a URL."""
+        # SSRF protection: block internal/private URLs
+        ssrf_error = _validate_url_for_ssrf(url)
+        if ssrf_error:
+            raise RuntimeError(f"URL blocked: {ssrf_error}")
+
         try:
             async with httpx.AsyncClient(
                 timeout=15.0,
@@ -93,7 +148,7 @@ class ResearchTools:
     async def summarize_text(self, text: str, max_length: int = 500) -> dict:
         """Summarize text using the LLM router via the core service."""
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, headers=get_service_auth_headers()) as client:
                 # Use the core orchestrator's LLM endpoint
                 # We send a summarization request through the message endpoint
                 # For simplicity, we do a direct internal summarization

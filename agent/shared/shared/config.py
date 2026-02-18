@@ -25,16 +25,20 @@ def parse_list(v: object) -> list[str]:
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    # Database
-    database_url: str = "postgresql+asyncpg://agent:changeme@postgres:5432/agent"
+    # Database (no default password — must be set via env)
+    database_url: str = "postgresql+asyncpg://agent:CHANGEME@postgres:5432/agent"
 
-    # Redis
+    # Redis (set REDIS_PASSWORD in .env for production)
     redis_url: str = "redis://redis:6379"
+    redis_password: str = ""
 
-    # MinIO
+    # MinIO (no default credentials — must be set via env)
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "changeme"
+    minio_secret_key: str = "CHANGEME"
+
+    # Inter-service authentication token (required for production)
+    service_auth_token: str = ""
     minio_bucket: str = "agent-files"
     minio_public_url: str = "https://yourdomain.com/files"
 
@@ -179,17 +183,20 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     def model_post_init(self, __context: object) -> None:
-        """Sync top-level model settings into model_routing.
+        """Post-init hook to sync derived settings.
 
-        The ``SUMMARIZATION_MODEL``, ``DEFAULT_MODEL``, and ``EMBEDDING_MODEL``
-        env vars are the user-facing knobs.  ``model_routing`` is the internal
-        dispatch table.  Keep them in sync so task_type-based routing honours
-        the env vars.
+        - Syncs top-level model settings into model_routing
+        - Injects redis_password into redis_url if provided
         """
         self.model_routing["default"] = self.default_model
         self.model_routing["summarization"] = self.summarization_model
         self.model_routing["memory_summarization"] = self.summarization_model
         self.model_routing["embedding"] = self.embedding_model
+
+        # Inject Redis password into URL if set and not already in URL
+        if self.redis_password and ":@" not in self.redis_url and "@" not in self.redis_url:
+            # redis://redis:6379 → redis://:password@redis:6379
+            self.redis_url = self.redis_url.replace("redis://", f"redis://:{self.redis_password}@", 1)
 
 
 @lru_cache
