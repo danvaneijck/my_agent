@@ -113,6 +113,10 @@ class Settings(BaseSettings):
     # Path to custom tokens JSON file (same format as injective-lists)
     injective_custom_tokens: str = ""
 
+    # Benchmarker
+    benchmarker_api_url: str = ""
+    benchmarker_api_key: str = ""
+
     # Renpho
     renpho_email: str = ""
     renpho_password: str = ""
@@ -167,6 +171,7 @@ class Settings(BaseSettings):
         "project_planner": "http://project-planner:8000",
         "skills_modules": "http://skills-modules:8000",
         "weather": "http://weather:8000",
+        "benchmarker": "http://benchmarker:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)
