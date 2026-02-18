@@ -121,7 +121,7 @@ class Settings(BaseSettings):
     # Path to custom tokens JSON file (same format as injective-lists)
     injective_custom_tokens: str = ""
 
-    # Benchmarker
+    # Benchmarker (fallback credentials - users can configure per-user credentials in portal)
     benchmarker_api_url: str = ""
     benchmarker_api_key: str = ""
 
