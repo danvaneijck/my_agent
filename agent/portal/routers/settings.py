@@ -87,6 +87,13 @@ SERVICE_DEFINITIONS = {
             {"key": "api_token", "label": "API Token", "type": "password"},
         ],
     },
+    "benchmarker": {
+        "label": "Benchmarker IoT Platform",
+        "keys": [
+            {"key": "api_url", "label": "API URL", "type": "text"},
+            {"key": "api_key", "label": "API Key", "type": "password"},
+        ],
+    },
 }
 
 
