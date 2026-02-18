@@ -60,9 +60,6 @@ jobs:
           - service: garmin
             dockerfile: agent/modules/garmin/Dockerfile
             context: ./agent
-          - service: myfitnesspal
-            dockerfile: agent/modules/myfitnesspal/Dockerfile
-            context: ./agent
           - service: renpho-biometrics
             dockerfile: agent/modules/renpho_biometrics/Dockerfile
             context: ./agent

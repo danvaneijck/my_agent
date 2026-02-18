@@ -477,6 +477,10 @@ function PullRequestsCard({
 }) {
   const navigate = useNavigate();
 
+  const isNotConfigured = error
+    ? /not configured|no provider configured/i.test(error)
+    : false;
+
   const stats = useMemo(() => {
     const open = pullRequests.filter((pr) => pr.state === "open").length;
     const merged = pullRequests.filter(
@@ -497,6 +501,25 @@ function PullRequestsCard({
       )
       .slice(0, 5);
   }, [pullRequests]);
+
+  if (isNotConfigured) {
+    return (
+      <DashboardCard title="Pull Requests" icon={GitPullRequest}>
+        <div className="px-4 py-6 text-center">
+          <GitPullRequest size={32} className="mx-auto text-gray-400 mb-3" />
+          <p className="text-sm text-gray-500 mb-3">
+            Connect a GitHub or Bitbucket account to see your pull requests here.
+          </p>
+          <button
+            onClick={() => navigate("/settings")}
+            className="text-xs text-accent hover:text-accent-hover font-medium"
+          >
+            Go to Settings
+          </button>
+        </div>
+      </DashboardCard>
+    );
+  }
 
   return (
     <DashboardCard

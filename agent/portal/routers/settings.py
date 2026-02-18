@@ -241,15 +241,19 @@ async def claude_oauth_exchange(
         await r.aclose()
 
     verifier = pkce["verifier"]
+    state = pkce.get("state")
 
     # Handle code#state format from Anthropic's callback page
     code = body.code.strip()
     if "#" in code:
-        code = code.split("#")[0]
+        code, returned_state = code.split("#", 1)
+        # Use the state from the callback if available
+        if returned_state:
+            state = returned_state
 
     # Exchange code for tokens
     try:
-        token_data = await claude_exchange_code(code, verifier)
+        token_data = await claude_exchange_code(code, verifier, state=state)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

@@ -217,17 +217,6 @@ services:
         max-size: "5m"
         max-file: "3"
 
-  myfitnesspal:
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
-
   renpho-biometrics:
     deploy:
       resources:

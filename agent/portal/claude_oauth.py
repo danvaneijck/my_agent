@@ -18,8 +18,8 @@ CLAUDE_CODE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 
 # Endpoints
 CLAUDE_OAUTH_AUTHORIZE_URL = "https://claude.ai/oauth/authorize"
-CLAUDE_OAUTH_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
-CLAUDE_OAUTH_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback"
+CLAUDE_OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+CLAUDE_OAUTH_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback"
 CLAUDE_OAUTH_SCOPES = "user:inference user:profile user:sessions:claude_code"
 
 
@@ -53,22 +53,25 @@ def build_authorize_url(challenge: str, state: str) -> str:
     return f"{CLAUDE_OAUTH_AUTHORIZE_URL}?{params}"
 
 
-async def exchange_code(code: str, verifier: str) -> dict:
+async def exchange_code(code: str, verifier: str, state: str | None = None) -> dict:
     """Exchange an authorization code for tokens using PKCE.
 
     Returns the raw token response dict from Anthropic (access_token, refresh_token, etc.).
     Raises ValueError on failure.
     """
+    payload: dict[str, str] = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": CLAUDE_CODE_CLIENT_ID,
+        "redirect_uri": CLAUDE_OAUTH_REDIRECT_URI,
+        "code_verifier": verifier,
+    }
+    if state:
+        payload["state"] = state
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
             CLAUDE_OAUTH_TOKEN_URL,
-            json={
-                "grant_type": "authorization_code",
-                "code": code,
-                "client_id": CLAUDE_CODE_CLIENT_ID,
-                "redirect_uri": CLAUDE_OAUTH_REDIRECT_URI,
-                "code_verifier": verifier,
-            },
+            json=payload,
             headers={"Content-Type": "application/json"},
         )
         if resp.status_code != 200:

@@ -86,7 +86,6 @@ Detailed per-module docs live in `agent/docs/modules/`:
 - [renpho_biometrics](agent/docs/modules/renpho_biometrics.md) — Renpho smart scale body composition
 - [location](agent/docs/modules/location.md) — OwnTracks geofence reminders + tracking
 - [git_platform](agent/docs/modules/git_platform.md) — GitHub/Bitbucket repos, issues, PRs, CI
-- [myfitnesspal](agent/docs/modules/myfitnesspal.md) — nutrition and meal tracking
 - [project_planner](agent/docs/modules/project_planner.md) — project planning, tracking + autonomous execution
 - [skills_modules](agent/docs/modules/skills_modules.md) — reusable skill definitions with project/task attachment
 - [injective](agent/docs/modules/injective.md) — blockchain spot and perpetual trading
