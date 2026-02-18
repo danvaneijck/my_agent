@@ -140,6 +140,8 @@ function LoginScreen() {
                     ? "bg-[#5865F2] hover:bg-[#4752C4] text-white"
                     : p.name === "google"
                     ? "bg-white text-gray-800 hover:bg-gray-50 border border-gray-300"
+                    : p.name === "slack"
+                    ? "bg-[#4A154B] hover:bg-[#611f69] text-white"
                     : "bg-accent hover:bg-accent-hover text-white"
                 }`}
               >
@@ -154,6 +156,14 @@ function LoginScreen() {
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
                     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                  </svg>
+                )}
+                {p.name === "slack" && (
+                  <svg width="20" height="20" viewBox="0 0 54 54" fill="currentColor">
+                    <path d="M19.7 34.4c0 2.7-2.2 4.9-4.9 4.9s-4.9-2.2-4.9-4.9 2.2-4.9 4.9-4.9h4.9v4.9zm2.5 0c0-2.7 2.2-4.9 4.9-4.9s4.9 2.2 4.9 4.9v12.3c0 2.7-2.2 4.9-4.9 4.9s-4.9-2.2-4.9-4.9V34.4z" />
+                    <path d="M27.1 19.6c-2.7 0-4.9-2.2-4.9-4.9s2.2-4.9 4.9-4.9 4.9 2.2 4.9 4.9v4.9h-4.9zm0 2.5c2.7 0 4.9 2.2 4.9 4.9s-2.2 4.9-4.9 4.9H14.8c-2.7 0-4.9-2.2-4.9-4.9s2.2-4.9 4.9-4.9h12.3z" />
+                    <path d="M41.9 27c0-2.7 2.2-4.9 4.9-4.9s4.9 2.2 4.9 4.9-2.2 4.9-4.9 4.9h-4.9V27zm-2.5 0c0 2.7-2.2 4.9-4.9 4.9s-4.9-2.2-4.9-4.9V14.7c0-2.7 2.2-4.9 4.9-4.9s4.9 2.2 4.9 4.9V27z" />
+                    <path d="M34.5 41.8c2.7 0 4.9 2.2 4.9 4.9s-2.2 4.9-4.9 4.9-4.9-2.2-4.9-4.9v-4.9h4.9zm0-2.5c-2.7 0-4.9-2.2-4.9-4.9s2.2-4.9 4.9-4.9h12.3c2.7 0 4.9 2.2 4.9 4.9s-2.2 4.9-4.9 4.9H34.5z" />
                   </svg>
                 )}
                 {loading ? "Redirecting..." : `Sign in with ${p.label}`}
@@ -187,11 +197,11 @@ function AuthCallback() {
       return;
     }
 
-    // Detect provider from URL path: /auth/callback/discord or /auth/callback/google
+    // Detect provider from URL path: /auth/callback/discord, /auth/callback/google, or /auth/callback/slack
     // Fall back to "discord" for legacy /auth/callback URLs
     const pathParts = window.location.pathname.split("/");
     const lastPart = pathParts[pathParts.length - 1];
-    const provider = ["discord", "google"].includes(lastPart)
+    const provider = ["discord", "google", "slack"].includes(lastPart)
       ? lastPart
       : "discord";
 

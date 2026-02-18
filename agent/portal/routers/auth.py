@@ -14,6 +14,7 @@ from portal.auth import JWT_ALGORITHM, PortalUser, require_auth
 from portal.oauth_providers import (
     DiscordOAuthProvider,
     GoogleOAuthProvider,
+    SlackOAuthProvider,
     OAuthProvider,
     OAuthUserProfile,
 )
@@ -51,13 +52,20 @@ def _get_google_provider() -> GoogleOAuthProvider:
     return GoogleOAuthProvider(settings.google_client_id, settings.google_client_secret)
 
 
+def _get_slack_provider() -> SlackOAuthProvider:
+    settings = get_settings()
+    if not settings.slack_client_id or not settings.slack_client_secret:
+        raise HTTPException(503, "Slack OAuth not configured")
+    return SlackOAuthProvider(settings.slack_client_id, settings.slack_client_secret)
+
+
 def _get_redirect_uri(provider: str) -> str:
     """Build the redirect URI for a given provider."""
     settings = get_settings()
     base = settings.portal_oauth_redirect_uri.rstrip("/")
     # Support both /auth/callback (legacy) and /auth/callback/{provider} patterns.
     # If the base already ends with a provider name, strip it for the new format.
-    for p in ("discord", "google"):
+    for p in ("discord", "google", "slack"):
         if base.endswith(f"/{p}"):
             base = base[: -len(f"/{p}")]
             break
@@ -189,6 +197,8 @@ async def get_providers() -> dict:
         providers.append({"name": "discord", "label": "Discord"})
     if settings.google_client_id and settings.google_client_secret:
         providers.append({"name": "google", "label": "Google"})
+    if settings.slack_client_id and settings.slack_client_secret:
+        providers.append({"name": "slack", "label": "Slack"})
     return {"providers": providers}
 
 
@@ -235,6 +245,31 @@ async def google_callback(body: TokenExchangeRequest) -> dict:
     """Exchange a Google auth code for a portal JWT."""
     provider = _get_google_provider()
     redirect_uri = _get_redirect_uri("google")
+    try:
+        profile = await provider.exchange_code(body.code, redirect_uri)
+    except ValueError as e:
+        raise HTTPException(401, str(e))
+    return await _handle_oauth_callback(profile)
+
+
+# ---------------------------------------------------------------------------
+# Slack OAuth2
+# ---------------------------------------------------------------------------
+
+
+@router.get("/slack/url")
+async def get_slack_auth_url() -> dict:
+    """Return the Slack OAuth2 authorization URL."""
+    provider = _get_slack_provider()
+    redirect_uri = _get_redirect_uri("slack")
+    return {"url": provider.get_auth_url(redirect_uri)}
+
+
+@router.post("/slack/callback")
+async def slack_callback(body: TokenExchangeRequest) -> dict:
+    """Exchange a Slack auth code for a portal JWT."""
+    provider = _get_slack_provider()
+    redirect_uri = _get_redirect_uri("slack")
     try:
         profile = await provider.exchange_code(body.code, redirect_uri)
     except ValueError as e:

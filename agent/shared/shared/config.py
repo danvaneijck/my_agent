@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
 
+    # Slack OAuth2 (for portal login)
+    slack_client_id: str = ""
+    slack_client_secret: str = ""
+
     # Credential encryption (Fernet key for encrypting user credentials at rest)
     credential_encryption_key: str = ""
 
