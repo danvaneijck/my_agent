@@ -1120,10 +1120,15 @@ class ClaudeCodeTools:
         # Create new terminal container
         logger.info("creating_terminal_container", task_id=task_id)
 
+        # Mount only this task's workspace — NOT the entire TASK_VOLUME.
+        host_workspace = os.path.join(TASK_VOLUME, task.id)
+        container_workspace = os.path.join(TASK_BASE_DIR, task.id)
+
         cmd = [
             "docker", "run", "-d",  # Detached, NOT --rm
             "--name", container_name,
-            "-v", f"{TASK_VOLUME}:{TASK_BASE_DIR}",
+            "--network=none",
+            "-v", f"{host_workspace}:{container_workspace}",
             "-w", task.workspace,
             "-e", "TERM=xterm-256color",
             "--label", f"user_id={user_id or 'unknown'}",
@@ -1556,6 +1561,22 @@ class ClaudeCodeTools:
             task.save()
             if heartbeat_handle:
                 heartbeat_handle.cancel()
+
+            # Clean up decrypted credentials from disk — they should not
+            # persist between tasks.  Workspace itself is kept for browsing.
+            if user_id:
+                creds_dir = os.path.join(USER_CREDS_DIR, user_id)
+                try:
+                    if os.path.isdir(creds_dir):
+                        shutil.rmtree(creds_dir)
+                        logger.info("user_credentials_cleaned", user_id=user_id)
+                except Exception as cleanup_err:
+                    logger.warning(
+                        "user_credentials_cleanup_failed",
+                        user_id=user_id,
+                        error=str(cleanup_err),
+                    )
+
             logger.info(
                 "task_finished",
                 task_id=task.id,
@@ -1891,10 +1912,20 @@ class ClaudeCodeTools:
         user_mounts: dict[str, str] | None = None,
     ) -> list[str]:
         """Assemble the ``docker run`` argument list."""
+        # Mount only this task's workspace — NOT the entire TASK_VOLUME.
+        # This prevents cross-user workspace access.
+        host_workspace = os.path.join(TASK_VOLUME, task.id)
+        container_workspace = os.path.join(TASK_BASE_DIR, task.id)
+
+        # Network isolation: tasks with repo_url need network for git;
+        # all others run with no network access.
+        network = "worker-net" if task.repo_url else "none"
+
         cmd: list[str] = [
             "docker", "run", "--rm", "--init",
             "--name", container_name,
-            "-v", f"{TASK_VOLUME}:{TASK_BASE_DIR}",
+            f"--network={network}",
+            "-v", f"{host_workspace}:{container_workspace}",
             "-w", task.workspace,
             "-e", f"PROMPT={prompt}",
         ]
@@ -2356,10 +2387,15 @@ class ClaudeCodeTools:
             'exec su -p claude -c /tmp/git_run.sh\n'
         )
 
+        # Mount only this task's workspace for git operations
+        host_workspace = os.path.join(TASK_VOLUME, task.id)
+        container_workspace = os.path.join(TASK_BASE_DIR, task.id)
+
         cmd: list[str] = [
             "docker", "run", "--rm", "--init",
             "--name", container_name,
-            "-v", f"{TASK_VOLUME}:{TASK_BASE_DIR}",
+            "--network=worker-net",
+            "-v", f"{host_workspace}:{container_workspace}",
             "-w", task.workspace,
             "-e", f"GIT_CMD={git_command}",
         ]

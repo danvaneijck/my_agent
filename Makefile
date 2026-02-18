@@ -1,5 +1,7 @@
 COMPOSE = docker compose -f agent/docker-compose.yml
+COMPOSE_PROD = docker compose -f agent/docker-compose.yml -f agent/docker-compose.prod.yml
 CLI = $(COMPOSE) exec core python /app/cli.py
+CLI_PROD = $(COMPOSE_PROD) exec core python /app/cli.py
 
 # ──────────────────────────────────────────────
 # Lifecycle
@@ -198,6 +200,61 @@ test: ## Run the test suite
 
 test-cov: ## Run tests with coverage report
 	cd agent && python -m pytest tests/ -v --cov=modules --cov=core --cov-report=term-missing
+
+# ──────────────────────────────────────────────
+# Production
+# ──────────────────────────────────────────────
+
+.PHONY: prod-up prod-down prod-build prod-logs prod-status ssl-init ssl-renew
+
+prod-up: ## Start all services in production mode (with nginx + TLS)
+	$(COMPOSE_PROD) up -d
+
+prod-down: ## Stop all production services
+	$(COMPOSE_PROD) down
+
+prod-build: ## Rebuild all images for production
+	$(COMPOSE_PROD) build
+
+prod-logs: ## Tail production logs
+	$(COMPOSE_PROD) logs -f --tail=100
+
+prod-status: ## Show production service status
+	$(COMPOSE_PROD) ps
+
+prod-restart-module: ## Rebuild and restart a module in production (usage: make prod-restart-module M=research)
+ifndef M
+	@echo "Usage: make prod-restart-module M=<module-name>"
+	@exit 1
+endif
+	$(COMPOSE_PROD) build $(M)
+	$(COMPOSE_PROD) up -d --no-deps $(M)
+
+ssl-init: ## Generate initial Let's Encrypt certificates
+	@if [ -z "$(DOMAIN)" ]; then echo "Usage: make ssl-init DOMAIN=agent.yourdomain.com EMAIL=you@email.com"; exit 1; fi
+	@if [ -z "$(EMAIL)" ]; then echo "Usage: make ssl-init DOMAIN=agent.yourdomain.com EMAIL=you@email.com"; exit 1; fi
+	@echo "Generating SSL certificate for $(DOMAIN)..."
+	$(COMPOSE_PROD) run --rm certbot certbot certonly \
+		--webroot -w /var/www/certbot \
+		-d $(DOMAIN) \
+		--email $(EMAIL) \
+		--agree-tos --no-eff-email
+	@echo "Certificate generated. Restart nginx: make prod-up"
+
+ssl-init-wildcard: ## Generate wildcard cert via DNS challenge (usage: make ssl-init-wildcard DOMAIN=projects.yourdomain.com EMAIL=you@email.com)
+	@if [ -z "$(DOMAIN)" ]; then echo "Usage: make ssl-init-wildcard DOMAIN=projects.yourdomain.com EMAIL=you@email.com"; exit 1; fi
+	@if [ -z "$(EMAIL)" ]; then echo "Usage: make ssl-init-wildcard DOMAIN=projects.yourdomain.com EMAIL=you@email.com"; exit 1; fi
+	@echo "Generating wildcard SSL certificate for *.$(DOMAIN)..."
+	@echo "This requires manual DNS TXT record verification."
+	$(COMPOSE_PROD) run --rm certbot certbot certonly \
+		--manual --preferred-challenges dns \
+		-d "*.$(DOMAIN)" -d "$(DOMAIN)" \
+		--email $(EMAIL) \
+		--agree-tos --no-eff-email
+
+ssl-renew: ## Renew Let's Encrypt certificates
+	$(COMPOSE_PROD) run --rm certbot certbot renew --quiet
+	$(COMPOSE_PROD) exec nginx nginx -s reload
 
 # ──────────────────────────────────────────────
 # Cleanup

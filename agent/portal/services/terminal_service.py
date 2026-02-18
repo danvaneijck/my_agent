@@ -487,21 +487,22 @@ class TerminalService:
                 workspace_path=workspace_path,
             )
 
-            # Mount the entire /tmp/claude_tasks directory like task containers do
-            # This ensures task chains work correctly (workspace may be named after first task)
-            # The workspace_path is the container path like /tmp/claude_tasks/{task_id}
-            # Portal service has ./data/claude_tasks mounted at /tmp/claude_tasks
-            # So we mount /tmp/claude_tasks:/tmp/claude_tasks in terminal containers too
+            # Mount only this task's workspace — NOT the entire /tmp/claude_tasks.
+            # This prevents users from accessing other users' workspaces.
+            host_workspace = f"/tmp/claude_tasks/{task_id}"
+            container_workspace = f"/tmp/claude_tasks/{task_id}"
+
             container = self.docker_client.containers.run(
                 image="my-claude-code-image",
                 command=["/bin/bash", "-c", "sleep infinity"],
                 detach=True,
                 remove=False,  # Don't auto-remove so we can reuse it
                 name=f"terminal-{task_id}",
-                working_dir=workspace_path,  # Use actual workspace path (works for task chains)
+                network_mode="none",
+                working_dir=workspace_path,
                 volumes={
-                    "/tmp/claude_tasks": {
-                        "bind": "/tmp/claude_tasks",
+                    host_workspace: {
+                        "bind": container_workspace,
                         "mode": "rw",
                     }
                 },

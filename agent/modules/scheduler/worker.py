@@ -12,6 +12,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shared.auth import get_service_auth_headers
 from shared.config import Settings
 from shared.models.scheduled_job import ScheduledJob
 from shared.schemas.notifications import Notification
@@ -276,10 +277,12 @@ async def _check_poll_module(
         user_id=str(job.user_id),
     )
 
+    headers = get_service_auth_headers()
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{module_url}/execute",
             json=call.model_dump(),
+            headers=headers,
         )
         resp.raise_for_status()
 
@@ -354,10 +357,12 @@ async def _resume_conversation(
     }
 
     try:
+        headers = get_service_auth_headers()
         async with httpx.AsyncClient(timeout=180.0) as client:
             resp = await client.post(
                 f"{settings.orchestrator_url}/continue",
                 json=payload,
+                headers=headers,
             )
             resp.raise_for_status()
             response_data = resp.json()

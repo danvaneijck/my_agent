@@ -1,0 +1,165 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/my_agent
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 4
+      matrix:
+        include:
+          # Core
+          - service: core
+            dockerfile: agent/core/Dockerfile
+            context: ./agent
+          # Communication bots
+          - service: discord-bot
+            dockerfile: agent/comms/discord_bot/Dockerfile
+            context: ./agent
+          - service: telegram-bot
+            dockerfile: agent/comms/telegram_bot/Dockerfile
+            context: ./agent
+          - service: slack-bot
+            dockerfile: agent/comms/slack_bot/Dockerfile
+            context: ./agent
+          # Portal & Dashboard
+          - service: portal
+            dockerfile: agent/portal/Dockerfile
+            context: ./agent
+          - service: dashboard
+            dockerfile: agent/dashboard/Dockerfile
+            context: ./agent
+          # Modules
+          - service: research
+            dockerfile: agent/modules/research/Dockerfile
+            context: ./agent
+          - service: file-manager
+            dockerfile: agent/modules/file_manager/Dockerfile
+            context: ./agent
+          - service: code-executor
+            dockerfile: agent/modules/code_executor/Dockerfile
+            context: ./agent
+          - service: knowledge
+            dockerfile: agent/modules/knowledge/Dockerfile
+            context: ./agent
+          - service: atlassian
+            dockerfile: agent/modules/atlassian/Dockerfile
+            context: ./agent
+          - service: garmin
+            dockerfile: agent/modules/garmin/Dockerfile
+            context: ./agent
+          - service: myfitnesspal
+            dockerfile: agent/modules/myfitnesspal/Dockerfile
+            context: ./agent
+          - service: renpho-biometrics
+            dockerfile: agent/modules/renpho_biometrics/Dockerfile
+            context: ./agent
+          - service: claude-code
+            dockerfile: agent/modules/claude_code/Dockerfile
+            context: ./agent
+          - service: claude-code-worker
+            dockerfile: agent/modules/claude_code/Dockerfile.worker
+            context: ./agent
+          - service: deployer
+            dockerfile: agent/modules/deployer/Dockerfile
+            context: ./agent
+          - service: scheduler
+            dockerfile: agent/modules/scheduler/Dockerfile
+            context: ./agent
+          - service: location
+            dockerfile: agent/modules/location/Dockerfile
+            context: ./agent
+          - service: git-platform
+            dockerfile: agent/modules/git_platform/Dockerfile
+            context: ./agent
+          - service: project-planner
+            dockerfile: agent/modules/project_planner/Dockerfile
+            context: ./agent
+          - service: skills-modules
+            dockerfile: agent/modules/skills_modules/Dockerfile
+            context: ./agent
+          - service: weather
+            dockerfile: agent/modules/weather/Dockerfile
+            context: ./agent
+          - service: benchmarker
+            dockerfile: agent/modules/benchmarker/Dockerfile
+            context: ./agent
+          - service: injective
+            dockerfile: agent/modules/injective/Dockerfile
+            context: ./agent
+          # Nginx (context is the nginx dir itself)
+          - service: nginx
+            dockerfile: agent/nginx/Dockerfile
+            context: ./agent/nginx
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version tag
+        id: version
+        run: echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ steps.version.outputs.tag }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # After all images are built, update the deploy repo
+  update-deploy-repo:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout deploy repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/my_agent_deploy
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          path: deploy
+
+      - name: Extract version tag
+        id: version
+        run: echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Update image tag in compose file
+        run: |
+          cd deploy
+          sed -i "s|IMAGE_TAG:-[^}]*|IMAGE_TAG:-${{ steps.version.outputs.tag }}|g" docker-compose.yml
+
+      - name: Commit and push
+        run: |
+          cd deploy
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docker-compose.yml
+          git diff --cached --quiet || git commit -m "Update image tag to ${{ steps.version.outputs.tag }}"
+          git push
