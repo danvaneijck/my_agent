@@ -1076,12 +1076,12 @@ class ClaudeCodeTools:
     ) -> dict:
         """Create or get a persistent terminal container for workspace access.
 
-        Terminal containers are lightweight Alpine Linux containers that provide
-        shell access to workspaces after task execution completes. They share
-        the same workspace volume as the task container but use minimal resources.
+        Terminal containers use the same worker image as task execution to
+        provide shell access to workspaces after task execution completes.
+        They share the same workspace volume as the task container.
 
         Container specifications:
-        - Image: alpine:latest with bash and git
+        - Image: CLAUDE_CODE_IMAGE (same as worker, has bash/git pre-installed)
         - Command: tail -f /dev/null (keeps container running)
         - Name: claude-terminal-{task_id}
         - Volume: Same workspace mount as task container
@@ -1097,10 +1097,10 @@ class ClaudeCodeTools:
                 "message": str
             }
         """
-        task = self._get_task(task_id, user_id)
         container_name = f"claude-terminal-{task_id}"
 
-        # Check if terminal container already exists
+        # Check if terminal container already exists BEFORE looking up
+        # task metadata — the container may outlive the in-memory task dict.
         try:
             proc = await asyncio.create_subprocess_exec(
                 "docker", "inspect",
@@ -1112,12 +1112,14 @@ class ClaudeCodeTools:
             stdout, stderr = await proc.communicate()
 
             if proc.returncode == 0:
-                # Container exists
                 output = stdout.decode().strip()
                 container_id, container_status = output.split("|")
 
                 if container_status == "running":
-                    # Container already running, return it
+                    # Container already running — derive workspace from task
+                    # if available, otherwise use the container's working dir
+                    task = self.tasks.get(task_id)
+                    workspace = task.workspace if task else os.path.join(TASK_BASE_DIR, task_id)
                     logger.info(
                         "terminal_container_exists",
                         task_id=task_id,
@@ -1126,7 +1128,7 @@ class ClaudeCodeTools:
                     return {
                         "container_id": container_id,
                         "container_name": container_name,
-                        "workspace": task.workspace,
+                        "workspace": workspace,
                         "status": "existing",
                         "message": "Terminal container already running",
                     }
@@ -1148,13 +1150,22 @@ class ClaudeCodeTools:
             )
             # Container doesn't exist, continue to create
 
+        # Need task metadata to create a new container (for workspace paths)
+        task = self._get_task(task_id, user_id)
+
         # Create new terminal container
         logger.info("creating_terminal_container", task_id=task_id)
 
         # Mount only this task's workspace — NOT the entire TASK_VOLUME.
-        host_workspace = os.path.join(TASK_VOLUME, task.id)
-        container_workspace = os.path.join(TASK_BASE_DIR, task.id)
+        # For continuation tasks, workspace may belong to the parent task,
+        # so derive the directory name from the workspace path, not task.id.
+        workspace_dir_name = os.path.basename(task.workspace)
+        host_workspace = os.path.join(TASK_VOLUME, workspace_dir_name)
+        container_workspace = task.workspace
 
+        # Use the same worker image as task execution — it already has
+        # bash, git, and all required tooling pre-installed.  This avoids
+        # the race condition with Alpine's runtime `apk add bash`.
         cmd = [
             "docker", "run", "-d",  # Detached, NOT --rm
             "--name", container_name,
@@ -1166,8 +1177,8 @@ class ClaudeCodeTools:
             "--label", f"task_id={task_id}",
             "--label", "type=terminal",
             "--label", f"created_at={int(time.time())}",
-            "alpine:latest",
-            "sh", "-c", "apk add --no-cache bash git && tail -f /dev/null",
+            CLAUDE_CODE_IMAGE,
+            "tail", "-f", "/dev/null",
         ]
 
         try:
@@ -1188,38 +1199,6 @@ class ClaudeCodeTools:
                 raise RuntimeError(f"Failed to create terminal container: {error_msg}")
 
             container_id = stdout.decode().strip()
-
-            # Wait for bash to be installed (check up to 10 times with 1s delay)
-            logger.info(
-                "waiting_for_bash_installation",
-                task_id=task_id,
-                container_id=container_id,
-            )
-
-            for attempt in range(10):
-                await asyncio.sleep(1)
-
-                # Check if bash is available
-                check_proc = await asyncio.create_subprocess_exec(
-                    "docker", "exec", container_name, "which", "bash",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await check_proc.communicate()
-
-                if check_proc.returncode == 0:
-                    logger.info(
-                        "bash_installation_complete",
-                        task_id=task_id,
-                        attempt=attempt + 1,
-                    )
-                    break
-            else:
-                logger.warning(
-                    "bash_installation_timeout",
-                    task_id=task_id,
-                    message="Bash may not be fully installed yet",
-                )
 
             logger.info(
                 "terminal_container_created",

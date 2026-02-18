@@ -257,13 +257,29 @@ class TerminalService:
         )
 
         try:
-            # Create exec instance for interactive bash shell
+            # Create exec instance for interactive shell
             # tty=True enables terminal features (colors, line editing, etc.)
             # stdin=True allows sending input to the shell
             # privileged=False for security (no root capabilities)
+            # Try /bin/bash first, fall back to /bin/sh if not available
+            shell_cmd = ["/bin/bash"]
+            try:
+                check = self.docker_client.api.exec_create(
+                    container=container.id,
+                    cmd=["which", "bash"],
+                )
+                check_out = self.docker_client.api.exec_start(check["Id"])
+                check_info = self.docker_client.api.exec_inspect(check["Id"])
+                if check_info.get("ExitCode", 1) != 0:
+                    shell_cmd = ["/bin/sh"]
+                    logger.info("bash_not_found_using_sh", container_id=container_id)
+            except Exception:
+                shell_cmd = ["/bin/sh"]
+                logger.info("bash_check_failed_using_sh", container_id=container_id)
+
             exec_instance = self.docker_client.api.exec_create(
                 container=container.id,
-                cmd=["/bin/bash"],
+                cmd=shell_cmd,
                 stdin=True,
                 tty=True,
                 privileged=False,

@@ -15,8 +15,6 @@ export interface TerminalViewProps {
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 
-const HISTORY_STORAGE_KEY = "terminal_command_history";
-const MAX_HISTORY_SIZE = 100;
 const THEME_STORAGE_KEY = "terminal_theme";
 
 // Terminal theme definitions
@@ -147,11 +145,6 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<string>("dark");
 
-  // Command history management
-  const commandHistoryRef = useRef<string[]>([]);
-  const historyIndexRef = useRef<number>(-1);
-  const currentLineRef = useRef<string>("");
-
   // Output buffer for rate limiting
   const outputBufferRef = useRef<string[]>([]);
   const flushTimerRef = useRef<number | null>(null);
@@ -165,18 +158,6 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       }
     } catch (e) {
       console.error("Failed to load theme preference:", e);
-    }
-  }, []);
-
-  // Load command history from sessionStorage on mount
-  useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem(HISTORY_STORAGE_KEY);
-      if (stored) {
-        commandHistoryRef.current = JSON.parse(stored);
-      }
-    } catch (e) {
-      console.error("Failed to load command history:", e);
     }
   }, []);
 
@@ -196,36 +177,6 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [showThemePicker]);
-
-  // Save command to history
-  const addToHistory = (command: string) => {
-    const trimmed = command.trim();
-    if (!trimmed) return;
-
-    // Don't add duplicate consecutive commands
-    const last = commandHistoryRef.current[commandHistoryRef.current.length - 1];
-    if (last === trimmed) return;
-
-    commandHistoryRef.current.push(trimmed);
-
-    // Keep only last MAX_HISTORY_SIZE commands
-    if (commandHistoryRef.current.length > MAX_HISTORY_SIZE) {
-      commandHistoryRef.current = commandHistoryRef.current.slice(-MAX_HISTORY_SIZE);
-    }
-
-    // Save to sessionStorage
-    try {
-      sessionStorage.setItem(
-        HISTORY_STORAGE_KEY,
-        JSON.stringify(commandHistoryRef.current)
-      );
-    } catch (e) {
-      console.error("Failed to save command history:", e);
-    }
-
-    // Reset history navigation
-    historyIndexRef.current = commandHistoryRef.current.length;
-  };
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -281,6 +232,15 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
 
         if (message.type === "ready") {
           setStatus("connected");
+          // Refit now that layout is stable and send dimensions to backend
+          fitAddon.fit();
+          ws.send(
+            JSON.stringify({
+              type: "resize",
+              rows: term.rows,
+              cols: term.cols,
+            })
+          );
           // Show welcome message
           term.writeln("\x1b[32m✓ Connected to workspace terminal\x1b[0m");
           term.writeln("\x1b[90mTip: Use arrow keys to navigate command history\x1b[0m");
@@ -333,83 +293,14 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       }
     };
 
-    // Handle terminal input with command history support
+    // Pass all input straight through to the shell — bash/sh handles
+    // arrow-key history, tab completion, etc. natively via readline.
     const disposable = term.onData((data) => {
       if (ws.readyState !== WebSocket.OPEN) return;
-
-      const code = data.charCodeAt(0);
-
-      // Handle special keys
-      if (data === "\x1b[A") {
-        // Up arrow - previous command
-        if (commandHistoryRef.current.length === 0) return;
-
-        if (historyIndexRef.current === commandHistoryRef.current.length) {
-          // Save current line before navigating history
-          currentLineRef.current = "";
-        }
-
-        if (historyIndexRef.current > 0) {
-          historyIndexRef.current--;
-          const command = commandHistoryRef.current[historyIndexRef.current];
-
-          // Clear current line and write command
-          ws.send(
-            JSON.stringify({
-              type: "input",
-              data: "\r\x1b[K" + command,
-            })
-          );
-        }
-        return;
-      }
-
-      if (data === "\x1b[B") {
-        // Down arrow - next command
-        if (commandHistoryRef.current.length === 0) return;
-
-        if (
-          historyIndexRef.current < commandHistoryRef.current.length - 1
-        ) {
-          historyIndexRef.current++;
-          const command = commandHistoryRef.current[historyIndexRef.current];
-
-          // Clear current line and write command
-          ws.send(
-            JSON.stringify({
-              type: "input",
-              data: "\r\x1b[K" + command,
-            })
-          );
-        } else if (historyIndexRef.current === commandHistoryRef.current.length - 1) {
-          // At end of history, show saved current line (empty)
-          historyIndexRef.current = commandHistoryRef.current.length;
-          ws.send(
-            JSON.stringify({
-              type: "input",
-              data: "\r\x1b[K" + currentLineRef.current,
-            })
-          );
-        }
-        return;
-      }
-
-      // Track Enter key to save commands to history
-      if (code === 13) {
-        // Enter key
-        // Note: We can't reliably extract the command from the terminal,
-        // so we just track that a command was sent. The actual command
-        // tracking happens on the backend or would require more complex
-        // terminal state management.
-        historyIndexRef.current = commandHistoryRef.current.length;
-        currentLineRef.current = "";
-      }
-
-      // Send input to backend
       ws.send(JSON.stringify({ type: "input", data }));
     });
 
-    // Handle window resize
+    // Refit terminal and notify backend of new dimensions
     const handleResize = () => {
       fitAddon.fit();
       if (ws.readyState === WebSocket.OPEN) {
@@ -423,11 +314,22 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       }
     };
 
+    // Use ResizeObserver to refit when the container size changes
+    // (panel resize, maximize/restore, layout shifts — not just window resize)
+    let resizeObserver: ResizeObserver | null = null;
+    if (terminalRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        handleResize();
+      });
+      resizeObserver.observe(terminalRef.current);
+    }
+
     window.addEventListener("resize", handleResize);
 
     // Cleanup
     return () => {
       window.removeEventListener("resize", handleResize);
+      resizeObserver?.disconnect();
       disposable.dispose();
 
       // Close WebSocket with immediate timeout
@@ -479,7 +381,7 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
   const backgroundColor = THEMES[currentTheme]?.background || "#0d0e14";
 
   return (
-    <div className="flex flex-col h-full relative" style={{ backgroundColor }}>
+    <div className="flex flex-col h-full min-h-0 relative" style={{ backgroundColor }}>
       {/* Theme picker button */}
       <button
         onClick={() => setShowThemePicker(!showThemePicker)}
@@ -549,7 +451,7 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       {/* Terminal container */}
       <div
         ref={terminalRef}
-        className="flex-1 p-2 cursor-text"
+        className="flex-1 min-h-0 overflow-hidden cursor-text"
         onClick={() => {
           if (xtermRef.current && status === "connected") {
             xtermRef.current.focus();

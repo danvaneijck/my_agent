@@ -210,7 +210,7 @@ export default function TerminalPanel({
       </div>
 
       {/* Terminal content - only render active tab */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {tabs.map((tab) => (
           <div
             key={tab.id}
