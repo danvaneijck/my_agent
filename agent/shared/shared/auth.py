@@ -44,7 +44,13 @@ async def require_service_auth(request: Request) -> None:
     settings = get_settings()
     expected = settings.service_auth_token
     if not expected:
-        # No token configured — allow (development mode)
+        # No token configured — allow (development mode).
+        # Log once per path to make it visible in logs without flooding.
+        logger.warning(
+            "service_auth_disabled",
+            path=request.url.path,
+            hint="Set SERVICE_AUTH_TOKEN in .env for production",
+        )
         return
 
     auth_header = request.headers.get("authorization", "")

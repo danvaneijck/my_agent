@@ -7,6 +7,8 @@ networks:
     internal: true      # no outbound internet — DB/cache/storage only
   deploy-net:
     driver: bridge      # isolated network for user-deployed containers
+  worker-net:
+    driver: bridge      # outbound internet for claude-code workers (git operations)
 
 services:
   # --- Infrastructure ---
@@ -234,6 +236,7 @@ services:
     networks:
       - agent-net
       - infra-net
+      - worker-net
     restart: unless-stopped
 
   # Build-only: produces the my-claude-code-image used by claude-code module.

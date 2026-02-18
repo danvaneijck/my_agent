@@ -25,6 +25,9 @@ def parse_list(v: object) -> list[str]:
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
+    # Production mode — enables strict validation of required secrets at startup
+    production_mode: bool = False
+
     # Database (no default password — must be set via env)
     database_url: str = "postgresql+asyncpg://agent:CHANGEME@postgres:5432/agent"
 
@@ -196,6 +199,7 @@ class Settings(BaseSettings):
 
         - Syncs top-level model settings into model_routing
         - Injects redis_password into redis_url if provided
+        - Validates required secrets in production mode
         """
         self.model_routing["default"] = self.default_model
         self.model_routing["summarization"] = self.summarization_model
@@ -206,6 +210,24 @@ class Settings(BaseSettings):
         if self.redis_password and ":@" not in self.redis_url and "@" not in self.redis_url:
             # redis://redis:6379 → redis://:password@redis:6379
             self.redis_url = self.redis_url.replace("redis://", f"redis://:{self.redis_password}@", 1)
+
+        # Strict validation in production mode
+        if self.production_mode:
+            errors: list[str] = []
+            if not self.service_auth_token:
+                errors.append("SERVICE_AUTH_TOKEN must be set in production")
+            if not self.credential_encryption_key:
+                errors.append("CREDENTIAL_ENCRYPTION_KEY must be set in production")
+            if not self.portal_jwt_secret:
+                errors.append("PORTAL_JWT_SECRET must be set in production")
+            if "CHANGEME" in self.database_url:
+                errors.append("DATABASE_URL still contains default CHANGEME password")
+            if self.minio_secret_key in ("CHANGEME", "minioadmin"):
+                errors.append("MINIO_SECRET_KEY must be changed from default")
+            if errors:
+                raise ValueError(
+                    "Production mode validation failed:\n  - " + "\n  - ".join(errors)
+                )
 
 
 @lru_cache

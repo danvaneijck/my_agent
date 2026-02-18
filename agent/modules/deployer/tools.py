@@ -524,6 +524,89 @@ class DeployerTools:
         return resolved
 
     # ------------------------------------------------------------------
+    # Security validation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_project_path(project_path: str) -> None:
+        """Ensure project_path is within the allowed workspace directory.
+
+        Prevents deploying arbitrary host paths via path traversal.
+        """
+        real_path = os.path.realpath(project_path)
+        if not real_path.startswith(TASK_BASE_DIR + "/"):
+            raise ValueError(
+                f"Project path must be under {TASK_BASE_DIR}/, "
+                f"got: {project_path}"
+            )
+
+    @staticmethod
+    def _validate_compose_file(compose_path: str) -> None:
+        """Reject compose files with dangerous Docker options.
+
+        Checks for privileged mode, host network, capability additions,
+        host PID/IPC, and volume mounts outside the allowed workspace.
+        """
+        with open(compose_path, "r") as f:
+            compose_data = yaml.safe_load(f)
+
+        if not isinstance(compose_data, dict):
+            return
+
+        services = compose_data.get("services", {})
+        if not isinstance(services, dict):
+            return
+
+        for svc_name, svc_config in services.items():
+            if not isinstance(svc_config, dict):
+                continue
+
+            if svc_config.get("privileged"):
+                raise ValueError(
+                    f"Service '{svc_name}' uses 'privileged: true' — not allowed"
+                )
+
+            if svc_config.get("cap_add"):
+                raise ValueError(
+                    f"Service '{svc_name}' uses 'cap_add' — not allowed"
+                )
+
+            net_mode = svc_config.get("network_mode", "")
+            if net_mode == "host":
+                raise ValueError(
+                    f"Service '{svc_name}' uses 'network_mode: host' — not allowed"
+                )
+
+            if svc_config.get("pid") == "host":
+                raise ValueError(
+                    f"Service '{svc_name}' uses 'pid: host' — not allowed"
+                )
+
+            if svc_config.get("ipc") == "host":
+                raise ValueError(
+                    f"Service '{svc_name}' uses 'ipc: host' — not allowed"
+                )
+
+            # Check volume mounts for dangerous host paths
+            volumes = svc_config.get("volumes", [])
+            for vol in volumes:
+                vol_str = str(vol) if not isinstance(vol, str) else vol
+                # Block docker socket mounts
+                if "docker.sock" in vol_str:
+                    raise ValueError(
+                        f"Service '{svc_name}' mounts Docker socket — not allowed"
+                    )
+                # Block host root mounts (e.g. "/:/mnt")
+                if isinstance(vol, str) and ":" in vol:
+                    host_part = vol.split(":")[0]
+                    real_host = os.path.realpath(host_part)
+                    if real_host == "/" or real_host.startswith("/var/run"):
+                        raise ValueError(
+                            f"Service '{svc_name}' mounts dangerous host path "
+                            f"'{host_part}' — not allowed"
+                        )
+
+    # ------------------------------------------------------------------
     # Public tools
     # ------------------------------------------------------------------
 
@@ -537,6 +620,9 @@ class DeployerTools:
         user_id: str | None = None,
     ) -> dict:
         """Build and deploy a project. Returns a live URL."""
+        # Validate project path is within allowed workspace
+        self._validate_project_path(project_path)
+
         # Auto-detect compose project if compose file present and type not explicitly set
         if project_type not in ("compose",) and self._find_compose_file(project_path):
             project_type = "compose"
@@ -974,11 +1060,17 @@ class DeployerTools:
         avoid collisions.  Internal service-to-service communication is
         unaffected (compose creates an isolated network).
         """
+        # Validate project path
+        self._validate_project_path(project_path)
+
         compose_file = self._find_compose_file(project_path)
         if not compose_file:
             raise ValueError(
                 f"No docker-compose.yml or compose.yml found in {project_path}"
             )
+
+        # Validate compose file for dangerous options
+        self._validate_compose_file(compose_file)
 
         deploy_id = uuid.uuid4().hex[:8]
         env_vars = env_vars or {}

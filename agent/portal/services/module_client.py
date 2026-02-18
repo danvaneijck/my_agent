@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
+from shared.auth import get_service_auth_headers
 from shared.config import get_settings
 
 logger = structlog.get_logger()
@@ -34,8 +35,9 @@ async def call_tool(
     if user_id:
         payload["user_id"] = user_id
 
+    headers = get_service_auth_headers()
     async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(f"{base_url}/execute", json=payload)
+        resp = await client.post(f"{base_url}/execute", json=payload, headers=headers)
         resp.raise_for_status()
 
     result = resp.json()
