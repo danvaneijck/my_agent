@@ -467,10 +467,12 @@ async def github_oauth_start(user: PortalUser = Depends(require_auth)) -> dict:
     settings = get_settings()
     state = secrets.token_urlsafe(32)
 
-    # Store state in Redis with short TTL
+    # Store user_id + state in Redis with short TTL
+    # We embed user_id in the OAuth state so the callback can identify the user
     r = await _get_redis()
     try:
-        await r.setex(f"git_oauth:github:{user.user_id}", _OAUTH_STATE_TTL, state)
+        state_data = json.dumps({"user_id": str(user.user_id), "state": state})
+        await r.setex(f"git_oauth:github:{state}", _OAUTH_STATE_TTL, state_data)
     finally:
         await r.aclose()
 
@@ -486,25 +488,33 @@ async def github_oauth_start(user: PortalUser = Depends(require_auth)) -> dict:
 async def github_oauth_callback(
     code: str,
     state: str,
-    user: PortalUser = Depends(require_auth),
 ) -> dict:
     """GitHub OAuth callback endpoint.
 
     GitHub redirects here after user authorization with code and state parameters.
-    Exchange the code for tokens and store them.
+    This endpoint is public (no auth required) because browser redirects can't include auth headers.
+    The user_id is retrieved from the state stored in Redis.
     """
+    from uuid import UUID
     provider = _get_github_provider()
     settings = get_settings()
 
-    # Validate state
+    # Retrieve user_id from state stored in Redis
     r = await _get_redis()
     try:
-        stored_state = await r.get(f"git_oauth:github:{user.user_id}")
-        if not stored_state or stored_state.decode() != state:
+        state_data_raw = await r.get(f"git_oauth:github:{state}")
+        if not state_data_raw:
             raise HTTPException(400, "Invalid or expired OAuth state")
-        await r.delete(f"git_oauth:github:{user.user_id}")
+        state_data = json.loads(state_data_raw.decode())
+        await r.delete(f"git_oauth:github:{state}")
     finally:
         await r.aclose()
+
+    # Extract user_id from state data
+    try:
+        user_id = UUID(state_data["user_id"])
+    except (KeyError, ValueError):
+        raise HTTPException(400, "Invalid state format")
 
     # Exchange code for tokens
     redirect_uri = f"{settings.git_oauth_redirect_uri}/github/oauth/callback"
@@ -538,11 +548,11 @@ async def github_oauth_callback(
         if user_info:
             creds_to_store["github_username"] = user_info.username
 
-        await store.set_many(session, user.user_id, "github", creds_to_store)
+        await store.set_many(session, user_id, "github", creds_to_store)
 
     logger.info(
         "github_oauth_success",
-        user_id=str(user.user_id),
+        user_id=str(user_id),
         username=user_info.username if user_info else None,
     )
 
@@ -641,10 +651,12 @@ async def bitbucket_oauth_start(user: PortalUser = Depends(require_auth)) -> dic
     settings = get_settings()
     state = secrets.token_urlsafe(32)
 
-    # Store state in Redis
+    # Store user_id + state in Redis with short TTL
+    # We embed user_id in the OAuth state so the callback can identify the user
     r = await _get_redis()
     try:
-        await r.setex(f"git_oauth:bitbucket:{user.user_id}", _OAUTH_STATE_TTL, state)
+        state_data = json.dumps({"user_id": str(user.user_id), "state": state})
+        await r.setex(f"git_oauth:bitbucket:{state}", _OAUTH_STATE_TTL, state_data)
     finally:
         await r.aclose()
 
@@ -660,21 +672,33 @@ async def bitbucket_oauth_start(user: PortalUser = Depends(require_auth)) -> dic
 async def bitbucket_oauth_callback(
     code: str,
     state: str,
-    user: PortalUser = Depends(require_auth),
 ) -> dict:
-    """Bitbucket OAuth callback endpoint."""
+    """Bitbucket OAuth callback endpoint.
+
+    Bitbucket redirects here after user authorization with code and state parameters.
+    This endpoint is public (no auth required) because browser redirects can't include auth headers.
+    The user_id is retrieved from the state stored in Redis.
+    """
+    from uuid import UUID
     provider = _get_bitbucket_provider()
     settings = get_settings()
 
-    # Validate state
+    # Retrieve user_id from state stored in Redis
     r = await _get_redis()
     try:
-        stored_state = await r.get(f"git_oauth:bitbucket:{user.user_id}")
-        if not stored_state or stored_state.decode() != state:
+        state_data_raw = await r.get(f"git_oauth:bitbucket:{state}")
+        if not state_data_raw:
             raise HTTPException(400, "Invalid or expired OAuth state")
-        await r.delete(f"git_oauth:bitbucket:{user.user_id}")
+        state_data = json.loads(state_data_raw.decode())
+        await r.delete(f"git_oauth:bitbucket:{state}")
     finally:
         await r.aclose()
+
+    # Extract user_id from state data
+    try:
+        user_id = UUID(state_data["user_id"])
+    except (KeyError, ValueError):
+        raise HTTPException(400, "Invalid state format")
 
     # Exchange code for tokens
     redirect_uri = f"{settings.git_oauth_redirect_uri}/bitbucket/oauth/callback"
@@ -707,11 +731,11 @@ async def bitbucket_oauth_callback(
         if user_info:
             creds_to_store["bitbucket_username"] = user_info.username
 
-        await store.set_many(session, user.user_id, "bitbucket", creds_to_store)
+        await store.set_many(session, user_id, "bitbucket", creds_to_store)
 
     logger.info(
         "bitbucket_oauth_success",
-        user_id=str(user.user_id),
+        user_id=str(user_id),
         username=user_info.username if user_info else None,
     )
 
