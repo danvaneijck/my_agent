@@ -183,6 +183,8 @@ class FileManagerTools:
             query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
             if user_id:
                 query = query.where(FileRecord.user_id == uuid.UUID(user_id))
+            else:
+                logger.warning("read_document_called_without_user_id", file_id=file_id)
             result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
@@ -209,12 +211,15 @@ class FileManagerTools:
 
     async def list_files(self, user_id: str | None = None) -> list[dict]:
         """List files for the given user."""
+        if not user_id:
+            logger.warning("list_files_called_without_user_id")
+            return []
         async with self.session_factory() as session:
-            query = select(FileRecord).order_by(FileRecord.created_at.desc())
-            if user_id:
-                query = query.where(FileRecord.user_id == uuid.UUID(user_id))
-            else:
-                logger.warning("list_files_called_without_user_id")
+            query = (
+                select(FileRecord)
+                .where(FileRecord.user_id == uuid.UUID(user_id))
+                .order_by(FileRecord.created_at.desc())
+            )
 
             result = await session.execute(query.limit(50))
             records = result.scalars().all()
@@ -236,10 +241,12 @@ class FileManagerTools:
             query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
             if user_id:
                 query = query.where(FileRecord.user_id == uuid.UUID(user_id))
+            else:
+                logger.warning("get_file_link_called_without_user_id", file_id=file_id)
             result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
-                raise ValueError(f"File not found: {file_id}")
+                raise ValueError("File not found")
 
             return {
                 "file_id": str(record.id),
@@ -253,10 +260,12 @@ class FileManagerTools:
             query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
             if user_id:
                 query = query.where(FileRecord.user_id == uuid.UUID(user_id))
+            else:
+                logger.warning("delete_file_called_without_user_id", file_id=file_id)
             result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
-                raise ValueError(f"File not found: {file_id}")
+                raise ValueError("File not found")
 
             # Delete from MinIO
             try:

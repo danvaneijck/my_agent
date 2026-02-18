@@ -13,6 +13,7 @@ from discord import Intents
 from minio import Minio
 
 from comms.discord_bot.normalizer import DiscordNormalizer
+from shared.auth import get_service_auth_headers
 from shared.config import Settings
 from shared.file_utils import upload_attachment
 from shared.schemas.notifications import Notification
@@ -108,7 +109,7 @@ class AgentDiscordBot(discord.Client):
         # Show typing indicator while processing
         async with message.channel.typing():
             try:
-                async with httpx.AsyncClient(timeout=120) as client:
+                async with httpx.AsyncClient(timeout=120, headers=get_service_auth_headers()) as client:
                     resp = await client.post(
                         f"{self.settings.orchestrator_url}/message",
                         json=incoming.model_dump(),

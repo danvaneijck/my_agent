@@ -223,12 +223,13 @@ class CodeExecutorTools:
             except OSError:
                 pass
 
-    async def load_file(self, file_id: str) -> dict:
+    async def load_file(self, file_id: str, user_id: str | None = None) -> dict:
         """Download a file from the file manager into /tmp so Python code can use it."""
         async with self.session_factory() as session:
-            result = await session.execute(
-                select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
-            )
+            query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
+            if user_id:
+                query = query.where(FileRecord.user_id == uuid.UUID(user_id))
+            result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
                 raise ValueError(f"File not found: {file_id}")
@@ -253,34 +254,59 @@ class CodeExecutorTools:
             "mime_type": record.mime_type,
         }
 
+    def _collect_exec_output_files(self, exec_dir: str) -> list[dict]:
+        """Collect output files from a per-execution temp directory."""
+        uploaded: list[dict] = []
+        output_dir = os.path.join(exec_dir, "output")
+
+        # Check explicit output directory
+        if os.path.isdir(output_dir):
+            for fname in os.listdir(output_dir):
+                fpath = os.path.join(output_dir, fname)
+                if os.path.isfile(fpath):
+                    uploaded.extend(self._upload_file(fpath, fname))
+
+        # Scan exec dir for files with known output extensions
+        for fname in os.listdir(exec_dir):
+            if fname == "script.py":
+                continue
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in self._OUTPUT_EXTENSIONS:
+                continue
+            fpath = os.path.join(exec_dir, fname)
+            if os.path.isfile(fpath):
+                uploaded.extend(self._upload_file(fpath, fname))
+
+        return uploaded
+
     async def run_python(self, code: str, timeout: int = 30, user_id: str | None = None) -> dict:
         """Execute Python code in an isolated subprocess."""
         timeout = min(max(timeout, 1), 60)
 
-        self._clean_output_dir()
-        pre_snapshot = self._snapshot_tmp()
+        # Use a per-execution temp directory to isolate runs from each other
+        exec_dir = tempfile.mkdtemp(prefix="pyexec_")
+        output_dir = os.path.join(exec_dir, "output")
+        os.makedirs(output_dir, exist_ok=True)
 
-        # Write code to a temp file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, dir="/tmp"
-        ) as f:
+        # Write code to a temp file in the execution dir
+        script_path = os.path.join(exec_dir, "script.py")
+        with open(script_path, "w") as f:
             f.write(code)
-            script_path = f.name
-
-        # Add the script itself to the snapshot so it's not treated as output
-        pre_snapshot.add(os.path.basename(script_path))
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 "python3", script_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                # Provide a minimal, clean environment — no inherited env vars
                 env={
                     "PATH": "/usr/local/bin:/usr/bin:/bin",
-                    "HOME": "/tmp",
+                    "HOME": exec_dir,
+                    "TMPDIR": exec_dir,
                     "PYTHONDONTWRITEBYTECODE": "1",
                     "MPLBACKEND": "Agg",
                 },
+                cwd=exec_dir,
             )
             try:
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -300,8 +326,8 @@ class CodeExecutorTools:
             stdout = _truncate(stdout_bytes.decode("utf-8", errors="replace"))
             stderr = _truncate(stderr_bytes.decode("utf-8", errors="replace"))
 
-            # Upload files from /tmp/output/ AND any new files in /tmp with known extensions
-            files = self._collect_output_files(pre_snapshot)
+            # Upload output files from the execution directory
+            files = self._collect_exec_output_files(exec_dir)
 
             # Register files in the DB so they appear in file_manager.list_files
             await self._register_file_records(files, user_id)
@@ -321,8 +347,10 @@ class CodeExecutorTools:
                 "files": files,
             }
         finally:
+            # Clean up the per-execution temp directory
+            import shutil
             try:
-                os.unlink(script_path)
+                shutil.rmtree(exec_dir, ignore_errors=True)
             except OSError:
                 pass
 
@@ -340,16 +368,21 @@ class CodeExecutorTools:
                 "exit_code": -1,
             }
 
+        # Use a per-execution temp directory
+        exec_dir = tempfile.mkdtemp(prefix="shexec_")
+
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                # Clean env — no inherited secrets
                 env={
                     "PATH": "/usr/local/bin:/usr/bin:/bin",
-                    "HOME": "/tmp",
+                    "HOME": exec_dir,
+                    "TMPDIR": exec_dir,
                 },
-                cwd="/tmp",
+                cwd=exec_dir,
             )
             try:
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -381,3 +414,9 @@ class CodeExecutorTools:
                 "stderr": str(e),
                 "exit_code": -1,
             }
+        finally:
+            import shutil
+            try:
+                shutil.rmtree(exec_dir, ignore_errors=True)
+            except OSError:
+                pass

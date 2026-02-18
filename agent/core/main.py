@@ -6,7 +6,9 @@ import asyncio
 import json
 
 import structlog
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+
+from shared.auth import require_service_auth
 
 from sqlalchemy import select
 
@@ -176,7 +178,7 @@ async def shutdown():
 
 
 @app.post("/message", response_model=AgentResponse)
-async def handle_message(incoming: IncomingMessage) -> AgentResponse:
+async def handle_message(incoming: IncomingMessage, _=Depends(require_service_auth)) -> AgentResponse:
     """Receive a normalized message and return the agent's response."""
     if agent_loop is None:
         raise HTTPException(status_code=503, detail="Orchestrator not ready")
@@ -207,7 +209,7 @@ async def health():
 
 
 @app.post("/refresh-tools")
-async def refresh_tools():
+async def refresh_tools(_=Depends(require_service_auth)):
     """Re-discover all module manifests."""
     if tool_registry is None:
         raise HTTPException(status_code=503, detail="Orchestrator not ready")
@@ -236,7 +238,7 @@ class ContinueRequest(BaseModel):
 
 
 @app.post("/continue", response_model=AgentResponse)
-async def continue_conversation(req: ContinueRequest) -> AgentResponse:
+async def continue_conversation(req: ContinueRequest, _=Depends(require_service_auth)) -> AgentResponse:
     """Resume a conversation after a scheduler job completes.
 
     This is called by the scheduler worker when a job with
@@ -348,7 +350,7 @@ async def continue_conversation(req: ContinueRequest) -> AgentResponse:
 
 
 @app.post("/embed")
-async def embed(req: EmbedRequest):
+async def embed(req: EmbedRequest, _=Depends(require_service_auth)):
     """Generate an embedding for a given text. Used by modules like knowledge."""
     if llm_router is None:
         raise HTTPException(status_code=503, detail="LLM router not ready")
@@ -357,4 +359,5 @@ async def embed(req: EmbedRequest):
         embedding = await llm_router.embed(req.text)
         return {"embedding": embedding}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("embed_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal error processing request")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import structlog
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from modules.claude_code.manifest import MANIFEST
 from modules.claude_code.tools import ClaudeCodeTools
@@ -12,6 +12,7 @@ from shared.config import get_settings
 from shared.credential_store import CredentialStore
 from shared.database import get_session_factory
 from shared.schemas.common import HealthResponse
+from shared.auth import require_service_auth
 from shared.schemas.tools import ModuleManifest, ToolCall, ToolResult
 
 structlog.configure(
@@ -85,12 +86,12 @@ async def _get_user_credentials(user_id: str) -> dict[str, dict[str, str]]:
 
 
 @app.get("/manifest", response_model=ModuleManifest)
-async def manifest() -> ModuleManifest:
+async def manifest(_=Depends(require_service_auth)) -> ModuleManifest:
     return MANIFEST
 
 
 @app.post("/execute", response_model=ToolResult)
-async def execute(call: ToolCall) -> ToolResult:
+async def execute(call: ToolCall, _=Depends(require_service_auth)) -> ToolResult:
     if tools is None:
         return ToolResult(tool_name=call.tool_name, success=False, error="Module not ready")
 
@@ -148,8 +149,8 @@ async def execute(call: ToolCall) -> ToolResult:
             )
         return ToolResult(tool_name=call.tool_name, success=True, result=result)
     except Exception as e:
-        logger.error("tool_execution_error", tool=call.tool_name, error=str(e))
-        return ToolResult(tool_name=call.tool_name, success=False, error=str(e))
+        logger.error("tool_execution_error", tool=call.tool_name, error=str(e), exc_info=True)
+        return ToolResult(tool_name=call.tool_name, success=False, error="Internal error processing request")
 
 
 @app.get("/health", response_model=HealthResponse)

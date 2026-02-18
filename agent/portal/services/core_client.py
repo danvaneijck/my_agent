@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 import structlog
 
+from shared.auth import get_service_auth_headers
 from shared.config import get_settings
 
 logger = structlog.get_logger()
@@ -31,7 +32,7 @@ async def send_message(
         "attachments": attachments or [],
     }
 
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=180.0, headers=get_service_auth_headers()) as client:
         resp = await client.post(
             f"{settings.orchestrator_url}/message",
             json=payload,

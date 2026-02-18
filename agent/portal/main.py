@@ -87,13 +87,11 @@ async def _notification_listener() -> None:
                     "platform_channel_id": notification.platform_channel_id,
                     "conversation_id": conversation_id,
                 }
-                # Send to all connected clients for this user
+                # Send only to connected clients for this specific user
                 user_id = notification.user_id or ""
                 clients = _notification_clients.get(user_id, [])
-                # Also broadcast to all clients (in case user_id matching is loose)
-                all_clients = [ws for wss in _notification_clients.values() for ws in wss]
                 sent_to: set[int] = set()
-                for ws in clients + all_clients:
+                for ws in clients:
                     if id(ws) in sent_to:
                         continue
                     sent_to.add(id(ws))

@@ -7,7 +7,8 @@ import uuid
 from datetime import datetime, timezone
 
 import structlog
-from jinja2 import Template, TemplateSyntaxError, UndefinedError
+from jinja2 import TemplateSyntaxError, UndefinedError
+from jinja2.sandbox import SandboxedEnvironment
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -621,7 +622,8 @@ class SkillsTools:
         # Render template if is_template, otherwise return content as-is
         if skill.is_template:
             try:
-                template = Template(skill.content)
+                sandbox = SandboxedEnvironment()
+                template = sandbox.from_string(skill.content)
                 rendered = template.render(**(variables or {}))
             except TemplateSyntaxError as e:
                 raise ValueError(f"Template syntax error: {e}")

@@ -10,6 +10,9 @@ from minio import Minio
 
 logger = structlog.get_logger()
 
+# Maximum file upload size: 50 MB
+MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
+
 MIME_MAP = {
     "png": "image/png",
     "jpg": "image/jpeg",
@@ -48,7 +51,15 @@ def upload_attachment(
 
     Returns a dict suitable for IncomingMessage.attachments:
         {filename, url, minio_key, mime_type, size_bytes}
+
+    Raises ValueError if file exceeds MAX_UPLOAD_SIZE_BYTES.
     """
+    if len(raw_bytes) > MAX_UPLOAD_SIZE_BYTES:
+        raise ValueError(
+            f"File too large: {len(raw_bytes)} bytes "
+            f"(max {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB)"
+        )
+
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
     mime_type = MIME_MAP.get(ext, "application/octet-stream")
 
