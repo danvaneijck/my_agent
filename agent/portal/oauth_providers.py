@@ -14,13 +14,16 @@ logger = structlog.get_logger()
 DISCORD_API = "https://discord.com/api/v10"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+SLACK_AUTH_URL = "https://slack.com/oauth/v2/authorize"
+SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access"
+SLACK_USERINFO_URL = "https://slack.com/api/users.identity"
 
 
 @dataclass
 class OAuthUserProfile:
     """Normalized user profile from an OAuth provider."""
 
-    provider: str  # "discord" or "google"
+    provider: str  # "discord", "google", or "slack"
     provider_user_id: str
     username: str
     email: str | None = None
@@ -172,4 +175,81 @@ class GoogleOAuthProvider(OAuthProvider):
             provider_user_id=google_user["sub"],
             username=google_user.get("name") or google_user.get("email", ""),
             email=google_user.get("email"),
+        )
+
+
+class SlackOAuthProvider(OAuthProvider):
+    """Slack OAuth2 provider."""
+
+    def __init__(self, client_id: str, client_secret: str) -> None:
+        self.client_id = client_id
+        self.client_secret = client_secret
+
+    @property
+    def name(self) -> str:
+        return "slack"
+
+    def get_auth_url(self, redirect_uri: str) -> str:
+        params = urlencode(
+            {
+                "client_id": self.client_id,
+                "redirect_uri": redirect_uri,
+                "scope": "identity.basic,identity.email",
+                "user_scope": "identity.basic,identity.email",
+            }
+        )
+        return f"{SLACK_AUTH_URL}?{params}"
+
+    async def exchange_code(
+        self, code: str, redirect_uri: str
+    ) -> OAuthUserProfile:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Exchange code for access token
+            token_resp = await client.post(
+                SLACK_TOKEN_URL,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            if token_resp.status_code != 200:
+                logger.warning(
+                    "slack_token_exchange_failed",
+                    status=token_resp.status_code,
+                    body=token_resp.text,
+                )
+                raise ValueError("Slack authentication failed")
+
+            token_data = token_resp.json()
+            if not token_data.get("ok"):
+                logger.warning(
+                    "slack_token_exchange_error",
+                    error=token_data.get("error"),
+                )
+                raise ValueError("Slack authentication failed")
+
+            access_token = token_data["authed_user"]["access_token"]
+
+            # Fetch user profile
+            user_resp = await client.get(
+                SLACK_USERINFO_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            if user_resp.status_code != 200:
+                raise ValueError("Failed to fetch Slack profile")
+
+            slack_user = user_resp.json()
+            if not slack_user.get("ok"):
+                raise ValueError("Failed to fetch Slack profile")
+
+            user_info = slack_user["user"]
+
+        return OAuthUserProfile(
+            provider="slack",
+            provider_user_id=user_info["id"],
+            username=user_info.get("name") or user_info.get("email", ""),
+            email=user_info.get("email"),
         )
