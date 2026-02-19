@@ -140,6 +140,7 @@ class PostgresInstallationStore(AsyncInstallationStore):
             bot_scopes=bot.bot_scopes,
             is_enterprise_install=bot.is_enterprise_install,
             installed_at=bot.installed_at,
+            user_id=user_id or bot.bot_user_id,
         )
 
     async def async_delete_installation(
