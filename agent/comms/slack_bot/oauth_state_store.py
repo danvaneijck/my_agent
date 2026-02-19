@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import logging
+import sys
 import uuid
-from logging import Logger
+from logging import Logger, getLogger
 
 import redis.asyncio as aioredis
 from slack_sdk.oauth.state_store.async_state_store import AsyncOAuthStateStore
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 
 class RedisOAuthStateStore(AsyncOAuthStateStore):
@@ -30,16 +30,19 @@ class RedisOAuthStateStore(AsyncOAuthStateStore):
         state = str(uuid.uuid4())
         key = f"slack_oauth_state:{state}"
         await self.redis.setex(key, self.expiration_seconds, "valid")
-        logger.info("oauth_state_issued: %s (ttl=%d)", state, self.expiration_seconds)
         # Verify it was stored
         check = await self.redis.get(key)
-        logger.info("oauth_state_verify_after_issue: key=%s exists=%s", key, check is not None)
+        print(f"[STATE-STORE] ISSUE state={state} stored={check is not None}", flush=True, file=sys.stderr)
         return state
 
     async def async_consume(self, state: str) -> bool:
         key = f"slack_oauth_state:{state}"
+        # List all oauth state keys for debugging
+        all_keys = [k async for k in self.redis.scan_iter(match="slack_oauth_state:*")]
+        print(f"[STATE-STORE] CONSUME state={state} key={key}", flush=True, file=sys.stderr)
+        print(f"[STATE-STORE] All state keys in Redis: {all_keys}", flush=True, file=sys.stderr)
         value = await self.redis.get(key)
-        logger.info("oauth_state_consume: key=%s found=%s", key, value is not None)
+        print(f"[STATE-STORE] GET result: {value}", flush=True, file=sys.stderr)
         if value is not None:
             await self.redis.delete(key)
             return True
