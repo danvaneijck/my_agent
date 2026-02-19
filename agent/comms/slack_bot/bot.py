@@ -483,6 +483,7 @@ class AgentSlackBot:
                 bot_token=self.settings.slack_bot_token,
                 bot_id=bot_id,
                 bot_user_id=bot_user_id,
+                user_id=bot_user_id,
             )
             await self.installation_store.async_save(installation)
             logger.info("legacy_installation_seeded", team_id=team_id)
