@@ -13,6 +13,7 @@ from shared.models.project_phase import ProjectPhase
 from shared.models.project_skill import ProjectSkill
 from shared.models.project_task import ProjectTask
 from shared.models.scheduled_job import ScheduledJob
+from shared.models.slack_installation import SlackInstallation
 from shared.models.task_skill import TaskSkill
 from shared.models.token_usage import TokenLog
 from shared.models.user import User, UserPlatformLink
@@ -34,6 +35,7 @@ __all__ = [
     "ProjectSkill",
     "ProjectTask",
     "ScheduledJob",
+    "SlackInstallation",
     "TaskSkill",
     "TokenLog",
     "User",

@@ -11,6 +11,7 @@ class Notification(BaseModel):
     platform: str  # "discord" | "telegram" | "slack"
     platform_channel_id: str  # where to send the message
     platform_thread_id: str | None = None  # optional thread
+    platform_server_id: str | None = None  # workspace/guild ID for multi-workspace
     content: str  # the message text
     user_id: str | None = None  # internal user UUID (for logging)
     job_id: str | None = None  # scheduler job ID that triggered this

@@ -26,9 +26,18 @@ def main():
 
     settings = get_settings()
 
-    if not settings.slack_bot_token or not settings.slack_app_token:
-        logger.warning("slack_tokens_not_set", msg="Set SLACK_BOT_TOKEN and SLACK_APP_TOKEN to enable. Sleeping.")
-        # Sleep indefinitely so Docker doesn't restart-loop and spam logs
+    has_oauth = (
+        settings.slack_signing_secret
+        and settings.slack_client_id
+        and settings.slack_client_secret
+    )
+
+    if not has_oauth:
+        logger.warning(
+            "slack_config_missing",
+            msg="Set SLACK_SIGNING_SECRET, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET "
+                "to enable multi-workspace OAuth mode. Sleeping.",
+        )
         while True:
             time.sleep(86400)
 

@@ -245,6 +245,7 @@ class AgentLoop:
                     tool_call.arguments["platform"] = conversation.platform
                     tool_call.arguments["platform_channel_id"] = conversation.platform_channel_id
                     tool_call.arguments["platform_thread_id"] = conversation.platform_thread_id
+                    tool_call.arguments["platform_server_id"] = incoming.platform_server_id
                     if tool_call.tool_name == "scheduler.add_job":
                         tool_call.arguments["conversation_id"] = str(conversation.id)
 

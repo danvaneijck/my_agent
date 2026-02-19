@@ -16,4 +16,6 @@ COPY comms/slack_bot/ /app/comms/slack_bot/
 
 ENV PYTHONPATH="/app:/shared"
 
+EXPOSE 8000
+
 CMD ["python", "-m", "comms.slack_bot.main"]

@@ -24,6 +24,7 @@ class ScheduledJob(Base):
     platform: Mapped[str]
     platform_channel_id: Mapped[str]
     platform_thread_id: Mapped[str | None] = mapped_column(default=None)
+    platform_server_id: Mapped[str | None] = mapped_column(default=None)
 
     # What to check
     job_type: Mapped[str]  # "poll_module" | "delay" | "poll_url"

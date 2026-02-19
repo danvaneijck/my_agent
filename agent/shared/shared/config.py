@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     telegram_token: str = ""
     slack_bot_token: str = ""
     slack_app_token: str = ""
+    slack_signing_secret: str = ""
 
     # Agent
     orchestrator_url: str = "http://core:8000"

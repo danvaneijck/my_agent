@@ -423,6 +423,7 @@ async def _publish_notification(
         platform=job.platform,
         platform_channel_id=job.platform_channel_id,
         platform_thread_id=job.platform_thread_id,
+        platform_server_id=job.platform_server_id,
         content=message,
         user_id=str(job.user_id),
         job_id=str(job.id),

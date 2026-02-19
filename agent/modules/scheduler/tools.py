@@ -35,6 +35,7 @@ class SchedulerTools:
         platform: str | None = None,
         platform_channel_id: str | None = None,
         platform_thread_id: str | None = None,
+        platform_server_id: str | None = None,
         conversation_id: str | None = None,
         user_id: str | None = None,
     ) -> dict:
@@ -64,6 +65,7 @@ class SchedulerTools:
                 platform=platform,
                 platform_channel_id=platform_channel_id,
                 platform_thread_id=platform_thread_id,
+                platform_server_id=platform_server_id,
                 job_type=job_type,
                 check_config=check_config,
                 interval_seconds=interval_seconds,

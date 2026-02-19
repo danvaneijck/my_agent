@@ -12,3 +12,5 @@ redis>=5.0
 tiktoken>=0.5
 minio>=7.2
 slackify-markdown==0.2.0
+fastapi>=0.109
+uvicorn[standard]>=0.27
