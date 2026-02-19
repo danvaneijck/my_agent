@@ -36,6 +36,17 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # Credential service definitions — describes which keys each service accepts
 SERVICE_DEFINITIONS = {
+    "llm_settings": {
+        "label": "LLM API Keys & Models",
+        "keys": [
+            {"key": "anthropic_api_key",  "label": "Anthropic API Key",   "type": "password"},
+            {"key": "openai_api_key",      "label": "OpenAI API Key",      "type": "password"},
+            {"key": "google_api_key",      "label": "Google API Key",      "type": "password"},
+            {"key": "default_model",       "label": "Default Chat Model",  "type": "text"},
+            {"key": "summarization_model", "label": "Summarisation Model", "type": "text"},
+            {"key": "embedding_model",     "label": "Embedding Model",     "type": "text"},
+        ],
+    },
     "claude_code": {
         "label": "Claude Code",
         "keys": [
@@ -202,6 +213,38 @@ async def delete_credential_key(
     async with factory() as session:
         count = await store.delete(session, user.user_id, service, key)
     return {"status": "ok", "deleted": count}
+
+
+# ---------------------------------------------------------------------------
+# LLM settings status (which providers are configured, stored model prefs)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/llm-settings/status")
+async def get_llm_settings_status(user: PortalUser = Depends(require_auth)) -> dict:
+    """Return which LLM providers the user has configured and their model prefs.
+
+    Secret key values are never returned — only boolean presence flags and
+    plain-text model name preferences.
+    """
+    store = _get_credential_store()
+    factory = get_session_factory()
+    async with factory() as session:
+        creds = await store.get_all(session, user.user_id, "llm_settings")
+
+    api_keys = {"anthropic_api_key", "openai_api_key", "google_api_key"}
+    configured_keys = list(creds.keys())
+
+    return {
+        "configured_keys": configured_keys,
+        "has_anthropic": "anthropic_api_key" in creds,
+        "has_openai": "openai_api_key" in creds,
+        "has_google": "google_api_key" in creds,
+        "has_any_key": bool(api_keys & set(creds.keys())),
+        "default_model": creds.get("default_model"),
+        "summarization_model": creds.get("summarization_model"),
+        "embedding_model": creds.get("embedding_model"),
+    }
 
 
 # ---------------------------------------------------------------------------

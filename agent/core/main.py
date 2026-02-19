@@ -18,6 +18,7 @@ from core.orchestrator.agent_loop import AgentLoop
 from core.orchestrator.context_builder import ContextBuilder
 from core.orchestrator.tool_registry import ToolRegistry
 from shared.config import get_settings
+from shared.credential_store import CredentialStore
 from shared.database import get_engine, get_session_factory
 from shared.models.persona import Persona
 from shared.redis import close_redis
@@ -143,6 +144,16 @@ async def startup():
                 await session.commit()
                 logger.info("updated_default_persona_modules", modules=all_modules)
 
+    # Build credential store for per-user LLM key lookups (optional — requires
+    # CREDENTIAL_ENCRYPTION_KEY to be set).
+    cred_store: CredentialStore | None = None
+    if settings.credential_encryption_key:
+        try:
+            cred_store = CredentialStore(settings.credential_encryption_key)
+            logger.info("credential_store_ready")
+        except Exception as e:
+            logger.warning("credential_store_init_failed", error=str(e))
+
     # Initialize context builder and agent loop
     context_builder = ContextBuilder(settings, llm_router)
     agent_loop = AgentLoop(
@@ -151,6 +162,7 @@ async def startup():
         tool_registry=tool_registry,
         context_builder=context_builder,
         session_factory=session_factory,
+        credential_store=cred_store,
     )
 
     # Initialize memory summarizer

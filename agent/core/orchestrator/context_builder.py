@@ -89,8 +89,13 @@ class ContextBuilder:
         incoming_message: str,
         model: str | None = None,
         tool_count: int = 0,
+        llm_router=None,
     ) -> list[dict]:
         """Build the context messages list for an LLM call.
+
+        The optional *llm_router* parameter overrides ``self.llm_router`` when
+        provided (used when a user has configured personal API keys so that
+        embedding calls for semantic memory use their keys).
 
         Structure:
         1. System prompt (persona + tools + datetime)
@@ -115,7 +120,9 @@ class ContextBuilder:
             messages.append({"role": "system", "content": project_context})
 
         # 3. Semantic memories (if embedding/llm_router is available)
-        memories = await self._get_semantic_memories(session, user, incoming_message)
+        # Use the per-request router override when the user has personal API keys.
+        _router = llm_router or self.llm_router
+        memories = await self._get_semantic_memories(session, user, incoming_message, router=_router)
         if memories:
             memory_text = "Relevant context from past conversations:\n"
             for mem in memories:
@@ -354,17 +361,21 @@ class ContextBuilder:
         user: User,
         query: str,
         max_results: int = 3,
+        router=None,
     ) -> list[MemorySummary]:
         """Retrieve semantically relevant memories via vector search.
 
         Only returns memories whose cosine distance is below the configured
         relevance threshold, avoiding injection of irrelevant context.
+
+        The optional *router* parameter overrides ``self.llm_router`` when provided.
         """
-        if not self.llm_router:
+        active_router = router or self.llm_router
+        if not active_router:
             return []
 
         try:
-            query_embedding = await self.llm_router.embed(query)
+            query_embedding = await active_router.embed(query)
         except Exception as e:
             logger.warning("embedding_failed", error=str(e))
             return []

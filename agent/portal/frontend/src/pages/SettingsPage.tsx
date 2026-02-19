@@ -8,8 +8,9 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import CredentialCard from "@/components/settings/CredentialCard";
 import ConnectedAccounts from "@/components/settings/ConnectedAccounts";
+import LlmSettingsCard from "@/components/settings/LlmSettingsCard";
 
-type Tab = "appearance" | "profile" | "accounts" | "credentials";
+type Tab = "appearance" | "profile" | "accounts" | "credentials" | "llm";
 
 interface ProfileData {
   user_id: string;
@@ -125,6 +126,7 @@ export default function SettingsPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "appearance", label: "Appearance" },
+    { key: "llm", label: "LLM Settings" },
     { key: "credentials", label: "Credentials" },
     { key: "accounts", label: "Connected Accounts" },
     { key: "profile", label: "Profile" },
@@ -363,6 +365,24 @@ export default function SettingsPage() {
           {/* Connected Accounts tab */}
           {tab === "accounts" && (
             <ConnectedAccounts accounts={accounts} />
+          )}
+
+          {/* LLM Settings tab */}
+          {tab === "llm" && (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                  LLM API Keys &amp; Models
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                  Provide your own API keys to use your provider accounts directly.
+                  When your own keys are active, token budget limits are not
+                  enforced — you pay the provider directly. Your usage is still
+                  recorded for analytics.
+                </p>
+                <LlmSettingsCard onUpdate={fetchData} />
+              </div>
+            </div>
           )}
 
           {/* Credentials tab */}

@@ -16,6 +16,7 @@ from core.llm_router.token_counter import estimate_cost
 from core.orchestrator.context_builder import ContextBuilder
 from core.orchestrator.tool_registry import ToolRegistry
 from shared.config import Settings, parse_list
+from shared.llm_settings_resolver import get_user_llm_overrides
 from shared.models.conversation import Conversation, Message
 from shared.models.file import FileRecord
 from shared.models.persona import Persona
@@ -41,12 +42,14 @@ class AgentLoop:
         tool_registry: ToolRegistry,
         context_builder: ContextBuilder,
         session_factory,
+        credential_store=None,
     ):
         self.settings = settings
         self.llm_router = llm_router
         self.tool_registry = tool_registry
         self.context_builder = context_builder
         self.session_factory = session_factory
+        self.credential_store = credential_store
 
     async def run(self, incoming: IncomingMessage) -> AgentResponse:
         """Execute the agent loop for an incoming message."""
@@ -68,8 +71,23 @@ class AgentLoop:
         # 1. Resolve user
         user = await self._resolve_user(session, incoming)
 
-        # 2. Check token budget
-        if not self._check_budget(user):
+        # 2a. Check for user-configured LLM API keys.
+        # If the user has stored personal keys we build a one-off LLMRouter
+        # that uses those keys instead of the global env-var ones.
+        user_overrides = await get_user_llm_overrides(
+            session, user.id, self.credential_store
+        )
+        if user_overrides:
+            user_settings = self.settings.model_copy(update=user_overrides)
+            active_router = LLMRouter(user_settings)
+            user_has_own_keys = True
+            logger.info("using_user_llm_keys", user_id=str(user.id))
+        else:
+            active_router = self.llm_router
+            user_has_own_keys = False
+
+        # 2b. Check token budget — skipped when user brings their own API keys.
+        if not user_has_own_keys and not self._check_budget(user):
             return AgentResponse(
                 content="You've exceeded your monthly token budget. Please contact an admin to increase your limit."
             )
@@ -137,7 +155,8 @@ class AgentLoop:
             )
             message_content += file_context
 
-        # 8. Build context
+        # 8. Build context — pass the active router so semantic memory embeddings
+        # also use the user's own keys when configured.
         context = await self.context_builder.build(
             session=session,
             user=user,
@@ -146,6 +165,7 @@ class AgentLoop:
             incoming_message=message_content,
             model=model,
             tool_count=len(tools),
+            llm_router=active_router,
         )
 
         # Save the incoming user message
@@ -167,8 +187,8 @@ class AgentLoop:
         while iteration < self.settings.max_agent_iterations:
             iteration += 1
 
-            # Call LLM
-            llm_response: LLMResponse = await self.llm_router.chat(
+            # Call LLM — use per-user router when the user has personal API keys.
+            llm_response: LLMResponse = await active_router.chat(
                 messages=context,
                 tools=openai_tools,
                 model=model,
