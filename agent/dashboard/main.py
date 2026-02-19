@@ -12,6 +12,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -745,3 +746,7 @@ async def admin_portal():
     """Serve the admin portal HTML."""
     html_path = Path(__file__).parent / "static" / "admin.html"
     return HTMLResponse(content=html_path.read_text())
+
+
+# Mount static files last so explicit routes take priority
+app.mount("/", StaticFiles(directory=Path(__file__).parent / "static"), name="static")

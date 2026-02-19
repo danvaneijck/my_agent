@@ -139,6 +139,26 @@
   .tool-group.expanded .tool-group-detail { display: block; }
   .tool-group.expanded .expand-icon { transform: rotate(90deg); }
 
+  /* Login gate */
+  .login-gate {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 80vh; flex-direction: column; gap: 16px;
+  }
+  .login-gate input {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 16px; border-radius: 8px; font-size: 14px; width: 300px;
+    font-family: inherit;
+  }
+  .login-gate input:focus { outline: none; border-color: var(--accent); }
+  .login-gate button {
+    background: var(--accent); color: #fff; border: none; padding: 10px 24px;
+    border-radius: 8px; cursor: pointer; font-size: 14px; font-family: inherit;
+  }
+  .login-gate button:hover { opacity: 0.9; }
+  .login-error { color: var(--red); font-size: 13px; display: none; }
+  .app-content { display: none; }
+  .app-content.visible { display: block; }
+
   /* Loading */
   .loading { text-align: center; padding: 40px; color: var(--text-dim); }
   .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
@@ -180,6 +200,16 @@
   </div>
 </div>
 
+<!-- Login Gate -->
+<div class="login-gate" id="login-gate">
+  <h2>Admin Dashboard</h2>
+  <p style="color:var(--text-dim);font-size:13px">Enter your admin API key to continue</p>
+  <input type="password" id="admin-key-input" placeholder="Admin API Key" onkeydown="if(event.key==='Enter')doLogin()">
+  <button onclick="doLogin()">Login</button>
+  <div class="login-error" id="login-error"></div>
+</div>
+
+<div class="app-content" id="app-content">
 <div class="container">
   <!-- Overview Stats -->
   <div class="stats-grid" id="stats-grid">
@@ -256,6 +286,7 @@
     </div>
   </div>
 </div>
+</div><!-- /app-content -->
 
 <script>
 // Theme management (synced with portal)
@@ -296,6 +327,43 @@ function toggleTheme() {
 // Initialize theme on page load
 applyTheme(getTheme());
 
+// --- Auth ---
+function getAdminKey() { return sessionStorage.getItem('admin_api_key') || ''; }
+
+function showApp() {
+  document.getElementById('login-gate').style.display = 'none';
+  document.getElementById('app-content').classList.add('visible');
+}
+
+function showLogin() {
+  document.getElementById('login-gate').style.display = 'flex';
+  document.getElementById('app-content').classList.remove('visible');
+}
+
+async function doLogin() {
+  const key = document.getElementById('admin-key-input').value.trim();
+  if (!key) return;
+  try {
+    const resp = await fetch('/api/overview', { headers: {'X-Admin-Key': key} });
+    if (resp.ok) {
+      sessionStorage.setItem('admin_api_key', key);
+      document.getElementById('login-error').style.display = 'none';
+      showApp();
+      loadAll();
+    } else {
+      document.getElementById('login-error').textContent = 'Invalid admin key';
+      document.getElementById('login-error').style.display = 'block';
+    }
+  } catch(e) {
+    document.getElementById('login-error').textContent = 'Connection error';
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function authHeaders() {
+  return {'X-Admin-Key': getAdminKey()};
+}
+
 const fmt = (n) => n == null ? '-' : Number(n).toLocaleString();
 const fmtCost = (n) => n == null ? '-' : '$' + Number(n).toFixed(4);
 const fmtDate = (iso) => {
@@ -311,7 +379,7 @@ const healthTag = (s) => `<span class="tag tag-${s}">${s}</span>`;
 
 async function loadOverview() {
   try {
-    const data = await (await fetch('/api/overview')).json();
+    const data = await (await fetch('/api/overview', {headers: authHeaders()})).json();
     document.getElementById('stats-grid').innerHTML = `
       <div class="stat-card"><div class="label">Users</div><div class="value">${fmt(data.total_users)}</div></div>
       <div class="stat-card"><div class="label">Conversations</div><div class="value">${fmt(data.total_conversations)}</div>
@@ -329,7 +397,7 @@ async function loadOverview() {
 
 async function loadHealth() {
   try {
-    const data = await (await fetch('/api/system-health')).json();
+    const data = await (await fetch('/api/system-health', {headers: authHeaders()})).json();
     const body = document.getElementById('health-body');
     body.innerHTML = Object.entries(data).map(([name, info]) => `
       <tr><td><strong>${name}</strong></td>
@@ -341,7 +409,7 @@ async function loadHealth() {
 
 async function loadTokenUsage() {
   try {
-    const data = await (await fetch('/api/token-usage')).json();
+    const data = await (await fetch('/api/token-usage', {headers: authHeaders()})).json();
     const el = document.getElementById('model-chart');
     if (!data.by_model.length) { el.innerHTML = '<div class="loading">No token usage data yet</div>'; return; }
     const max = Math.max(...data.by_model.map(m => m.total_tokens));
@@ -358,7 +426,7 @@ async function loadTokenUsage() {
 
 async function loadToolUsage() {
   try {
-    const data = await (await fetch('/api/tool-usage')).json();
+    const data = await (await fetch('/api/tool-usage', {headers: authHeaders()})).json();
     const el = document.getElementById('tool-chart');
     if (!data.length) { el.innerHTML = '<div class="loading">No tool usage data yet</div>'; return; }
 
@@ -401,7 +469,7 @@ async function loadToolUsage() {
 
 async function loadPlatformStats() {
   try {
-    const data = await (await fetch('/api/platform-stats')).json();
+    const data = await (await fetch('/api/platform-stats', {headers: authHeaders()})).json();
     const platforms = new Set([
       ...Object.keys(data.users || {}),
       ...Object.keys(data.conversations || {}),
@@ -420,7 +488,7 @@ async function loadPlatformStats() {
 
 async function loadPersonas() {
   try {
-    const data = await (await fetch('/api/personas')).json();
+    const data = await (await fetch('/api/personas', {headers: authHeaders()})).json();
     const body = document.getElementById('persona-body');
     if (!data.length) { body.innerHTML = '<tr><td colspan="4" class="loading">No personas</td></tr>'; return; }
     body.innerHTML = data.map(p => `
@@ -434,7 +502,7 @@ async function loadPersonas() {
 
 async function loadUsers() {
   try {
-    const data = await (await fetch('/api/users')).json();
+    const data = await (await fetch('/api/users', {headers: authHeaders()})).json();
     document.getElementById('user-count').textContent = data.length;
     const body = document.getElementById('users-body');
     if (!data.length) { body.innerHTML = '<tr><td colspan="9" class="loading">No users</td></tr>'; return; }
@@ -469,7 +537,7 @@ async function loadUsers() {
 
 async function loadConversations() {
   try {
-    const data = await (await fetch('/api/conversations')).json();
+    const data = await (await fetch('/api/conversations', {headers: authHeaders()})).json();
     const body = document.getElementById('convs-body');
     if (!data.length) { body.innerHTML = '<tr><td colspan="7" class="loading">No conversations</td></tr>'; return; }
     body.innerHTML = data.map(c => `
@@ -497,9 +565,15 @@ function loadAll() {
   loadConversations();
 }
 
-loadAll();
-// Auto-refresh every 30 seconds
-setInterval(loadAll, 30000);
+// Auto-login if key exists in session
+if (getAdminKey()) {
+  showApp();
+  loadAll();
+} else {
+  showLogin();
+}
+// Auto-refresh every 30 seconds (only if authenticated)
+setInterval(() => { if (getAdminKey()) loadAll(); }, 30000);
 </script>
 </body>
 </html>

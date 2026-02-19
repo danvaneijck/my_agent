@@ -623,7 +623,7 @@ let availableModules = [];
 
 async function loadModules() {
   try {
-    const data = await (await fetch('/api/system-health')).json();
+    const data = await (await fetch('/api/system-health', {headers: {'X-Admin-Key': getAdminKey()}})).json();
     availableModules = Object.keys(data).filter(m => m !== 'core').sort();
     renderModulePicker('new-persona-modules', ['research', 'file_manager', 'code_executor']);
     renderModulePicker('edit-persona-modules', []);
