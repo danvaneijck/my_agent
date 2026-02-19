@@ -1862,6 +1862,20 @@ class ClaudeCodeTools:
                 TASK_VOLUME, ".user_creds", user_id, ".claude"
             )
             mounts["claude_auth"] = host_claude_dir
+            logger.info(
+                "claude_credentials_written",
+                user_id=user_id,
+                creds_file=creds_file,
+                host_mount=host_claude_dir,
+                creds_length=len(credentials_json),
+                has_oauth_key="claudeAiOauth" in credentials_json,
+            )
+        else:
+            logger.warning(
+                "no_claude_credentials_found",
+                user_id=user_id,
+                claude_code_keys=list(claude_creds.keys()),
+            )
 
         # -- SSH private key --
         github_creds = user_credentials.get("github", {})
@@ -2010,16 +2024,18 @@ class ClaudeCodeTools:
             '\n'
             '# --- Running as root: copy read-only credentials ---------------\n'
             'if [ -d /tmp/.claude-ro ]; then\n'
-            '    cp -r /tmp/.claude-ro "$CLAUDE_HOME/.claude"\n'
+            '    mkdir -p "$CLAUDE_HOME/.claude"\n'
+            '    cp -a /tmp/.claude-ro/. "$CLAUDE_HOME/.claude/"\n'
             'fi\n'
             'if [ -d /tmp/.ssh-ro ]; then\n'
-            '    cp -r /tmp/.ssh-ro "$CLAUDE_HOME/.ssh"\n'
+            '    mkdir -p "$CLAUDE_HOME/.ssh"\n'
+            '    cp -a /tmp/.ssh-ro/. "$CLAUDE_HOME/.ssh/"\n'
             '    chmod 700 "$CLAUDE_HOME/.ssh"\n'
             '    chmod 600 "$CLAUDE_HOME/.ssh"/* 2>/dev/null || true\n'
             'fi\n'
             'if [ -d /tmp/.gh-ro ]; then\n'
-            '    mkdir -p "$CLAUDE_HOME/.config"\n'
-            '    cp -r /tmp/.gh-ro "$CLAUDE_HOME/.config/gh"\n'
+            '    mkdir -p "$CLAUDE_HOME/.config/gh"\n'
+            '    cp -a /tmp/.gh-ro/. "$CLAUDE_HOME/.config/gh/"\n'
             'fi\n'
             'if [ -f /tmp/.gitconfig-ro ]; then\n'
             '    cp /tmp/.gitconfig-ro "$CLAUDE_HOME/.gitconfig"\n'
@@ -2028,7 +2044,16 @@ class ClaudeCodeTools:
             '# Restore persisted session data for --continue support\n'
             'SESSION_DIR="$PWD/.claude_sessions"\n'
             'if [ "$CONTINUE_SESSION" = "1" ] && [ -d "$SESSION_DIR" ]; then\n'
+            '    mkdir -p "$CLAUDE_HOME/.claude"\n'
             '    cp -r "$SESSION_DIR/projects" "$CLAUDE_HOME/.claude/projects" 2>/dev/null || true\n'
+            'fi\n'
+            '\n'
+            '# Verify credentials are in place\n'
+            'if [ -f "$CLAUDE_HOME/.claude/.credentials.json" ]; then\n'
+            '    echo "[entrypoint] Claude credentials file found"\n'
+            'else\n'
+            '    echo "[entrypoint] WARNING: No Claude credentials file at $CLAUDE_HOME/.claude/.credentials.json"\n'
+            '    ls -la "$CLAUDE_HOME/.claude/" 2>/dev/null || echo "[entrypoint] .claude dir does not exist"\n'
             'fi\n'
             '\n'
             '# Fix ownership so claude user can read/write everything\n'

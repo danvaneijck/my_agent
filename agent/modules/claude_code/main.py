@@ -69,6 +69,7 @@ async def startup() -> None:
 async def _get_user_credentials(user_id: str) -> dict[str, dict[str, str]]:
     """Look up per-user credentials for claude_code and github services."""
     if not _credential_store:
+        logger.warning("credential_store_not_available", user_id=user_id)
         return {}
     try:
         factory = get_session_factory()
@@ -80,6 +81,13 @@ async def _get_user_credentials(user_id: str) -> dict[str, dict[str, str]]:
             result["claude_code"] = claude_creds
         if github_creds:
             result["github"] = github_creds
+        logger.info(
+            "credential_lookup_result",
+            user_id=user_id,
+            claude_keys=list(claude_creds.keys()) if claude_creds else [],
+            github_keys=list(github_creds.keys()) if github_creds else [],
+            has_credentials=bool(result),
+        )
         return result
     except Exception as e:
         logger.warning("credential_lookup_failed", user_id=user_id, error=str(e))
