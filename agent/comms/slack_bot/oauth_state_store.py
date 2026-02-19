@@ -28,16 +28,18 @@ class RedisOAuthStateStore(AsyncOAuthStateStore):
 
     async def async_issue(self, *args, **kwargs) -> str:
         state = str(uuid.uuid4())
-        await self.redis.setex(
-            f"slack_oauth_state:{state}",
-            self.expiration_seconds,
-            "valid",
-        )
+        key = f"slack_oauth_state:{state}"
+        await self.redis.setex(key, self.expiration_seconds, "valid")
+        logger.info("oauth_state_issued: %s (ttl=%d)", state, self.expiration_seconds)
+        # Verify it was stored
+        check = await self.redis.get(key)
+        logger.info("oauth_state_verify_after_issue: key=%s exists=%s", key, check is not None)
         return state
 
     async def async_consume(self, state: str) -> bool:
         key = f"slack_oauth_state:{state}"
         value = await self.redis.get(key)
+        logger.info("oauth_state_consume: key=%s found=%s", key, value is not None)
         if value is not None:
             await self.redis.delete(key)
             return True
