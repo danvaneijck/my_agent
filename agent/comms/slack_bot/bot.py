@@ -86,32 +86,36 @@ class AgentSlackBot:
         redirect_uri = f"{public_base_url}/slack/oauth_redirect"
 
         # Build slack-bolt app with OAuth
+        oauth_settings = AsyncOAuthSettings(
+            client_id=settings.slack_client_id,
+            client_secret=settings.slack_client_secret,
+            scopes=[
+                "app_mentions:read",
+                "channels:history",
+                "channels:read",
+                "chat:write",
+                "files:read",
+                "files:write",
+                "groups:history",
+                "groups:read",
+                "im:history",
+                "im:read",
+                "mpim:history",
+                "users:read",
+            ],
+            state_store=self.state_store,
+            install_path="/slack/install",
+            redirect_uri_path="/slack/oauth_redirect",
+            redirect_uri=redirect_uri,
+        )
+        # Override state_utils after construction to skip cookie-based
+        # browser check that breaks behind SSL-terminating proxies
+        oauth_settings.state_utils = _ProxyAwareStateUtils()
+
         self.app = AsyncApp(
             signing_secret=settings.slack_signing_secret,
             installation_store=self.installation_store,
-            oauth_settings=AsyncOAuthSettings(
-                client_id=settings.slack_client_id,
-                client_secret=settings.slack_client_secret,
-                scopes=[
-                    "app_mentions:read",
-                    "channels:history",
-                    "channels:read",
-                    "chat:write",
-                    "files:read",
-                    "files:write",
-                    "groups:history",
-                    "groups:read",
-                    "im:history",
-                    "im:read",
-                    "mpim:history",
-                    "users:read",
-                ],
-                state_store=self.state_store,
-                state_utils=_ProxyAwareStateUtils(),
-                install_path="/slack/install",
-                redirect_uri_path="/slack/oauth_redirect",
-                redirect_uri=redirect_uri,
-            ),
+            oauth_settings=oauth_settings,
         )
         self._setup_handlers()
 
