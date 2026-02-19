@@ -47,7 +47,7 @@ class PostgresInstallationStore(AsyncInstallationStore):
                 existing.bot_token = installation.bot_token
                 existing.bot_id = installation.bot_id
                 existing.bot_user_id = installation.bot_user_id
-                existing.bot_scopes = installation.bot_scopes_to_string() if installation.bot_scopes else None
+                existing.bot_scopes = ",".join(installation.bot_scopes) if installation.bot_scopes else None
                 existing.team_name = installation.team_name
                 existing.enterprise_id = installation.enterprise_id
                 existing.enterprise_name = installation.enterprise_name
@@ -66,7 +66,7 @@ class PostgresInstallationStore(AsyncInstallationStore):
                     bot_token=installation.bot_token,
                     bot_id=installation.bot_id,
                     bot_user_id=installation.bot_user_id,
-                    bot_scopes=installation.bot_scopes_to_string() if installation.bot_scopes else None,
+                    bot_scopes=",".join(installation.bot_scopes) if installation.bot_scopes else None,
                     installed_by_user_id=installation.user_id,
                     is_enterprise_install=installation.is_enterprise_install or False,
                 )
