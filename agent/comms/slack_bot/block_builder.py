@@ -9,10 +9,22 @@ class BlockBuilder:
     """
 
     @staticmethod
+    def _md_to_slack(text: str) -> str:
+        """Convert standard Markdown formatting to Slack mrkdwn."""
+        # **bold** → *bold*
+        text = re.sub(r"\*\*(.*?)\*\*", r"*\1*", text)
+        # [Link](URL) → <URL|Link>
+        text = re.sub(r"\[(.*?)\]\((.*?)\)", r"<\2|\1>", text)
+        return text
+
+    @staticmethod
     def text_to_blocks(text: str) -> List[Dict[str, Any]]:
         blocks = []
         if not text:
             return blocks
+
+        # Pre-clean markdown before block parsing
+        text = BlockBuilder._md_to_slack(text)
 
         lines = text.split("\n")
 
@@ -166,12 +178,6 @@ class BlockBuilder:
         text = "\n".join(buffer).strip()
         if not text:
             return
-
-        # Simple Markdown Cleanup for Slack mrkdwn format
-        # Convert **bold** to *bold*
-        text = re.sub(r"\*\*(.*?)\*\*", r"*\1*", text)
-        # Convert [Link](URL) to <URL|Link>
-        text = re.sub(r"\[(.*?)\]\((.*?)\)", r"<\2|\1>", text)
 
         blocks.append(
             {
