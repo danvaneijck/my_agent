@@ -102,6 +102,7 @@ class AgentSlackBot:
                 "im:read",
                 "mpim:history",
                 "users:read",
+                "users:write",
             ],
             state_store=self.state_store,
             install_path="/slack/install",
