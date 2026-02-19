@@ -1944,9 +1944,9 @@ class ClaudeCodeTools:
         host_workspace = os.path.join(TASK_VOLUME, workspace_dir_name)
         container_workspace = task.workspace
 
-        # Network isolation: tasks with repo_url need network for git;
-        # all others run with no network access.
-        network = self._worker_network if task.repo_url else "none"
+        # Workers always need network for Anthropic API calls.
+        # The worker-net bridge provides outbound internet access.
+        network = self._worker_network
 
         cmd: list[str] = [
             "docker", "run", "--rm", "--init",
@@ -2023,6 +2023,8 @@ class ClaudeCodeTools:
             'CLAUDE_HOME=/home/claude\n'
             '\n'
             '# --- Running as root: copy read-only credentials ---------------\n'
+            'echo "[entrypoint] mount check: /tmp/.claude-ro"\n'
+            'ls -la /tmp/.claude-ro/ 2>/dev/null || echo "[entrypoint] /tmp/.claude-ro does not exist"\n'
             'if [ -d /tmp/.claude-ro ]; then\n'
             '    mkdir -p "$CLAUDE_HOME/.claude"\n'
             '    cp -a /tmp/.claude-ro/. "$CLAUDE_HOME/.claude/"\n'
