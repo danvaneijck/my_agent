@@ -14,6 +14,7 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_bolt.oauth.async_oauth_settings import AsyncOAuthSettings
 from slack_sdk.oauth.installation_store.models.installation import Installation
+from slack_sdk.oauth.state_utils import OAuthStateUtils
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import select
 
@@ -41,6 +42,18 @@ THINKING_FRAMES = [
 ]
 
 
+class _ProxyAwareStateUtils(OAuthStateUtils):
+    """Skip cookie-based browser check when behind a reverse proxy.
+
+    The Redis state store already validates the OAuth state parameter,
+    so the cookie is a redundant CSRF check that breaks behind SSL-terminating
+    proxies where the bot sees HTTP internally.
+    """
+
+    def is_valid_browser(self, state: str, request_headers: dict) -> bool:
+        return True
+
+
 class AgentSlackBot:
     """Slack bot using HTTP mode with multi-workspace OAuth support."""
 
@@ -66,6 +79,12 @@ class AgentSlackBot:
             expiration_seconds=600,
         )
 
+        # Derive public base URL for OAuth redirect
+        from urllib.parse import urlparse
+        parsed = urlparse(settings.minio_public_url)
+        public_base_url = f"{parsed.scheme}://{parsed.netloc}"
+        redirect_uri = f"{public_base_url}/slack/oauth_redirect"
+
         # Build slack-bolt app with OAuth
         self.app = AsyncApp(
             signing_secret=settings.slack_signing_secret,
@@ -88,8 +107,10 @@ class AgentSlackBot:
                     "users:read",
                 ],
                 state_store=self.state_store,
+                state_utils=_ProxyAwareStateUtils(),
                 install_path="/slack/install",
                 redirect_uri_path="/slack/oauth_redirect",
+                redirect_uri=redirect_uri,
             ),
         )
         self._setup_handlers()
