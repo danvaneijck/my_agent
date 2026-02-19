@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 
 import httpx
 import redis.asyncio as aioredis
@@ -31,15 +30,6 @@ from shared.schemas.messages import AgentResponse
 from shared.schemas.notifications import Notification
 
 logger = structlog.get_logger()
-
-THINKING_FRAMES = [
-    ":thinking_face: *Thinking...*",
-    ":hourglass_flowing_sand: *Processing...*",
-    ":gear: *Working on it...*",
-    ":brain: *Reasoning...*",
-    ":mag: *Researching...*",
-    ":pencil2: *Composing response...*",
-]
 
 
 class _ProxyAwareStateUtils(OAuthStateUtils):
@@ -146,7 +136,7 @@ class AgentSlackBot:
         @self.app.event("app_mention")
         async def handle_mention(event, say, client, context):
             logger.info("event_mention_received", user=event.get("user"))
-            await self._handle_message(event, say, client, is_mention=True, context=context)
+            await self._handle_message(event, client, is_mention=True, context=context)
 
         @self.app.event("message")
         async def handle_message(event, say, client, context):
@@ -165,7 +155,7 @@ class AgentSlackBot:
             # 1. Handle Direct Messages (Always reply)
             if channel_type == "im":
                 logger.info("handling_im_message")
-                await self._handle_message(event, say, client, is_mention=False, context=context)
+                await self._handle_message(event, client, is_mention=False, context=context)
                 return
 
             # 2. Handle Threads (Check logic)
@@ -177,11 +167,11 @@ class AgentSlackBot:
                 logger.info("thread_decision_made", should_reply=should_reply)
 
                 if should_reply:
-                    await self._handle_message(event, say, client, is_mention=False, context=context)
+                    await self._handle_message(event, client, is_mention=False, context=context)
             else:
                 logger.info("ignoring_channel_message_no_thread")
 
-    async def _handle_message(self, event, say, client, is_mention: bool, context=None):
+    async def _handle_message(self, event, client, is_mention: bool, context=None):
         if event.get("bot_id"):
             return
 
@@ -194,17 +184,18 @@ class AgentSlackBot:
             except Exception:
                 pass
 
-        # 1. SEND "THINKING" STATUS
         thread_ts = event.get("thread_ts") or event.get("ts")
         channel_id = event.get("channel")
 
-        loading_msg = await say(
-            text=THINKING_FRAMES[0], thread_ts=thread_ts
-        )
-        loading_ts = loading_msg["ts"]
-
-        # Start animated thinking indicator
-        stop_thinking = await self._animate_thinking(client, channel_id, loading_ts)
+        # Set native thinking status (auto-clears when we post a message)
+        try:
+            await client.assistant_threads_setStatus(
+                status="is thinking...",
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+            )
+        except Exception:
+            pass  # Not supported in all surfaces (e.g. channel mentions)
 
         try:
             incoming = self.normalizer.to_incoming(event, bot_user_id)
@@ -213,8 +204,6 @@ class AgentSlackBot:
             incoming.attachments = await self._ingest_attachments(event, client)
 
             if not incoming.content and not incoming.attachments:
-                stop_thinking.set()
-                await client.chat_delete(channel=channel_id, ts=loading_ts)
                 return
 
             if not incoming.content:
@@ -234,21 +223,11 @@ class AgentSlackBot:
                         error=f"HTTP {resp.status_code}",
                     )
 
-            # Stop the thinking animation before updating with the real response
-            stop_thinking.set()
-
-            # Format Response
-            raw_text = self.normalizer.format_response(response)
-            formatted_text = self._clean_markdown_for_slack(raw_text)
-
-            response_blocks = BlockBuilder.text_to_blocks(response.content)
-
-            # 2. UPDATE THE "THINKING" MESSAGE WITH THE REAL RESPONSE
-            await client.chat_update(
-                channel=channel_id,
-                ts=loading_ts,
-                text=formatted_text,
-                blocks=response_blocks,
+            await BlockBuilder.post_response(
+                client=client,
+                channel_id=channel_id,
+                text=response.content,
+                thread_ts=thread_ts,
             )
 
             # Upload response files natively to Slack (if any)
@@ -256,26 +235,13 @@ class AgentSlackBot:
                 await self._upload_response_file(client, channel_id, thread_ts, f)
 
         except Exception as e:
-            stop_thinking.set()
             logger.error("slack_processing_error", error=str(e))
 
-            await client.chat_update(
+            await client.chat_postMessage(
                 channel=channel_id,
-                ts=loading_ts,
                 text=f":warning: I encountered an error: {str(e)}",
+                thread_ts=thread_ts,
             )
-
-    def _clean_markdown_for_slack(self, text: str) -> str:
-        """Manually convert standard Markdown to Slack mrkdwn."""
-        if not text:
-            return ""
-
-        text = re.sub(r"^#{1,6}\s+(.*?)$", r"*\1*", text, flags=re.MULTILINE)
-        text = re.sub(r"\*\*(.*?)\*\*", r"*\1*", text)
-        text = re.sub(r"\*\*\s+(.*?)\s+\*\*", r"*\1*", text)
-        text = re.sub(r"\[(.*?)\]\((.*?)\)", r"<\2|\1>", text)
-
-        return text
 
     async def _should_reply_to_thread(self, client, event, bot_user_id: str | None = None) -> bool:
         """Check if the bot should reply to a generic thread message."""
@@ -396,26 +362,6 @@ class AgentSlackBot:
             )
         except Exception as e:
             logger.error("slack_file_upload_failed", filename=filename, error=str(e))
-
-    async def _animate_thinking(self, client, channel: str, ts: str) -> asyncio.Event:
-        """Update the thinking message every few seconds to show the bot is active."""
-        stop = asyncio.Event()
-
-        async def _loop():
-            frame = 1
-            while not stop.is_set():
-                await asyncio.sleep(3)
-                if stop.is_set():
-                    break
-                try:
-                    text = THINKING_FRAMES[frame % len(THINKING_FRAMES)]
-                    await client.chat_update(channel=channel, ts=ts, text=text)
-                    frame += 1
-                except Exception:
-                    break
-
-        asyncio.create_task(_loop())
-        return stop
 
     async def _presence_heartbeat(self):
         """Periodically re-assert 'auto' presence for all installed workspaces."""

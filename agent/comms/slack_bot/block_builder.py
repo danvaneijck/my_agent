@@ -1,251 +1,152 @@
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
+
+import structlog
+
+logger = structlog.get_logger()
 
 
 class BlockBuilder:
-    """
-    Advanced Markdown to Slack Block Kit converter.
-    Handles: Headers, Tables, Lists, Code Blocks, Blockquotes, Images, and Dividers.
+    """Convert LLM markdown responses to Slack's native markdown blocks.
+
+    Uses Slack's {"type": "markdown", "text": "..."} block type which renders
+    standard markdown natively. Handles chunking for Slack's 12,000 character
+    cumulative limit per payload.
     """
 
-    @staticmethod
-    def _md_to_slack(text: str) -> str:
-        """Convert standard Markdown formatting to Slack mrkdwn."""
-        # **bold** → *bold*
-        text = re.sub(r"\*\*(.*?)\*\*", r"*\1*", text)
-        # [Link](URL) → <URL|Link>
-        text = re.sub(r"\[(.*?)\]\((.*?)\)", r"<\2|\1>", text)
-        return text
+    BLOCK_CHAR_LIMIT = 12_000
 
     @staticmethod
     def text_to_blocks(text: str) -> List[Dict[str, Any]]:
-        blocks = []
+        """Wrap raw markdown in Slack markdown blocks.
+
+        Returns a list of markdown blocks. If the text exceeds the block
+        character limit, it is split into multiple blocks.
+        """
         if not text:
-            return blocks
-
-        # Pre-clean markdown before block parsing
-        text = BlockBuilder._md_to_slack(text)
-
-        lines = text.split("\n")
-
-        # Buffers for state machine
-        section_buffer: List[str] = []
-        table_buffer: List[str] = []
-        list_buffer: List[str] = []
-
-        # State flags
-        in_code_block = False
-        in_table = False
-        in_list = False
-        list_type = None  # 'bullet' or 'ordered'
-
-        for line in lines:
-            stripped = line.strip()
-
-            # --- 1. HANDLE CODE BLOCKS (Priority High) ---
-            if "```" in line:
-                in_code_block = not in_code_block
-                section_buffer.append(line)
-                continue
-
-            if in_code_block:
-                section_buffer.append(line)
-                continue
-
-            # --- 2. HANDLE TABLES ---
-            # Detect table row: starts/ends with pipe |
-            is_table_row = stripped.startswith("|") and stripped.endswith("|")
-
-            if is_table_row:
-                if not in_table:
-                    # Switch state: Flush text -> Start Table
-                    BlockBuilder._flush_section(blocks, section_buffer)
-                    section_buffer = []
-                    in_table = True
-                table_buffer.append(stripped)
-                continue
-            elif in_table:
-                # Table ended
-                in_table = False
-                blocks.append(BlockBuilder._create_table_block(table_buffer))
-                table_buffer = []
-
-            # --- 3. HANDLE LISTS ---
-            # Detect Bullet (- item, * item) or Numbered (1. item)
-            is_bullet = stripped.startswith(("- ", "* "))
-            is_number = re.match(r"^\d+\.\s", stripped)
-
-            current_list_type = (
-                "bullet" if is_bullet else ("ordered" if is_number else None)
-            )
-
-            if current_list_type:
-                if not in_list:
-                    # Switch state: Flush text -> Start List
-                    BlockBuilder._flush_section(blocks, section_buffer)
-                    section_buffer = []
-                    in_list = True
-                    list_type = current_list_type
-
-                # If list type changes (bullet -> number), flush current list and start new
-                if list_type != current_list_type:
-                    blocks.append(
-                        BlockBuilder._create_list_block(list_buffer, list_type)
-                    )
-                    list_buffer = []
-                    list_type = current_list_type
-
-                list_buffer.append(stripped)
-                continue
-            elif in_list:
-                # List ended
-                in_list = False
-                blocks.append(BlockBuilder._create_list_block(list_buffer, list_type))
-                list_buffer = []
-
-            # --- 4. HANDLE HEADERS (### Text) ---
-            header_match = re.match(r"^(#{1,6})\s+(.+)", line)
-            if header_match:
-                BlockBuilder._flush_section(blocks, section_buffer)
-                section_buffer = []
-
-                heading_text = header_match.group(2).replace("*", "")
-                blocks.append(
-                    {
-                        "type": "header",
-                        "text": {
-                            "type": "plain_text",
-                            "text": heading_text[:150],  # Slack limit
-                            "emoji": True,
-                        },
-                    }
-                )
-                continue
-
-            # --- 5. HANDLE IMAGES (![Alt](Url)) ---
-            img_match = re.match(r"^!\[(.*?)\]\((.*?)\)", line)
-            if img_match:
-                BlockBuilder._flush_section(blocks, section_buffer)
-                section_buffer = []
-
-                alt_text = img_match.group(1) or "Image"
-                img_url = img_match.group(2)
-                blocks.append(
-                    {"type": "image", "image_url": img_url, "alt_text": alt_text}
-                )
-                continue
-
-            # --- 6. HANDLE BLOCKQUOTES (> Text) ---
-            if line.startswith("> "):
-                BlockBuilder._flush_section(blocks, section_buffer)
-                section_buffer = []
-
-                # Context block looks like a grey footer/quote
-                blocks.append(
-                    {
-                        "type": "context",
-                        "elements": [{"type": "mrkdwn", "text": line.lstrip("> ")}],
-                    }
-                )
-                continue
-
-            # --- 7. HANDLE DIVIDERS (---) ---
-            if set(stripped) == {"-"} and len(stripped) >= 3:
-                BlockBuilder._flush_section(blocks, section_buffer)
-                section_buffer = []
-                blocks.append({"type": "divider"})
-                continue
-
-            # --- 8. DEFAULT TEXT ---
-            section_buffer.append(line)
-
-        # --- FLUSH REMAINING BUFFERS ---
-        if in_table and table_buffer:
-            blocks.append(BlockBuilder._create_table_block(table_buffer))
-        elif in_list and list_buffer:
-            blocks.append(BlockBuilder._create_list_block(list_buffer, list_type))
-        else:
-            BlockBuilder._flush_section(blocks, section_buffer)
-
-        return blocks
+            return []
+        if len(text) <= BlockBuilder.BLOCK_CHAR_LIMIT:
+            return [{"type": "markdown", "text": text}]
+        chunks = BlockBuilder._split_text(text, BlockBuilder.BLOCK_CHAR_LIMIT)
+        return [{"type": "markdown", "text": chunk} for chunk in chunks]
 
     @staticmethod
-    def _flush_section(blocks: List[Dict], buffer: List[str]):
-        """Converts buffered text lines into a standard Section block."""
-        if not buffer:
-            return
+    def split_for_slack(
+        text: str, limit: int = 12_000
+    ) -> List[List[Dict[str, Any]]]:
+        """Split a response into multiple message payloads if needed.
 
-        text = "\n".join(buffer).strip()
+        Each payload is a List[Dict] of blocks whose cumulative text stays
+        within *limit* characters. Splitting prefers paragraph breaks, then
+        newlines, then hard-cuts.
+        """
         if not text:
-            return
-
-        blocks.append(
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": text[:3000]},  # Slack char limit
-            }
-        )
+            return []
+        if len(text) <= limit:
+            return [[{"type": "markdown", "text": text}]]
+        chunks = BlockBuilder._split_text(text, limit)
+        return [[{"type": "markdown", "text": chunk}] for chunk in chunks]
 
     @staticmethod
-    def _create_table_block(rows: List[str]) -> Dict:
-        """Parses markdown table into Slack Rich Text Table."""
-        parsed_rows = []
-        for row in rows:
-            # Clean outer pipes and split
-            content = row.strip().strip("|")
-            cells = [c.strip() for c in content.split("|")]
+    async def post_response(
+        client,
+        channel_id: str,
+        text: str,
+        thread_ts: str | None = None,
+        update_ts: str | None = None,
+    ) -> None:
+        """Post a markdown response to Slack, chunking across messages if needed.
 
-            # Skip separator rows like |---|---|
-            if all(set(c).issubset({"-", ":"}) for c in cells if c):
-                continue
-            parsed_rows.append(cells)
+        Args:
+            client: Slack AsyncWebClient.
+            channel_id: Channel to post in.
+            text: Raw markdown response from the LLM.
+            thread_ts: Thread timestamp to reply in.
+            update_ts: If set, the first payload updates this message
+                       (replaces the "thinking" indicator).
+        """
+        fallback = BlockBuilder._plain_text_fallback(text)
+        payloads = BlockBuilder.split_for_slack(text)
 
-        if not parsed_rows:
-            return {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": "Empty Table"},
-            }
+        if not payloads:
+            payloads = [[{"type": "markdown", "text": "(empty response)"}]]
 
-        rich_text_rows = []
-        for row_cells in parsed_rows:
-            columns = []
-            for cell_text in row_cells:
-                columns.append(
-                    {
-                        "type": "rich_text_section",
-                        "elements": [{"type": "text", "text": cell_text}],
-                    }
+        for i, blocks in enumerate(payloads):
+            if i == 0 and update_ts:
+                await client.chat_update(
+                    channel=channel_id,
+                    ts=update_ts,
+                    text=fallback,
+                    blocks=blocks,
                 )
-            rich_text_rows.append({"type": "rich_text_table_row", "columns": columns})
+            else:
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text=fallback,
+                    blocks=blocks,
+                    thread_ts=thread_ts,
+                )
 
-        return {
-            "type": "rich_text",
-            "elements": [{"type": "rich_text_table", "rows": rich_text_rows}],
-        }
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _create_list_block(items: List[str], style: str) -> Dict:
-        """Parses markdown list items into Slack Rich Text List."""
-        elements = []
+    def _plain_text_fallback(text: str, max_len: int = 200) -> str:
+        """Strip markdown formatting for the plain-text notification fallback."""
+        if not text:
+            return ""
+        plain = text
+        # Remove markdown images
+        plain = re.sub(r"!\[.*?\]\(.*?\)", "", plain)
+        # Convert links to just the label
+        plain = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", plain)
+        # Strip bold/italic markers
+        plain = re.sub(r"\*{1,2}(.*?)\*{1,2}", r"\1", plain)
+        # Strip heading markers
+        plain = re.sub(r"^#{1,6}\s+", "", plain, flags=re.MULTILINE)
+        # Collapse whitespace
+        plain = re.sub(r"\n{2,}", "\n", plain).strip()
+        if len(plain) > max_len:
+            plain = plain[: max_len - 1] + "\u2026"
+        return plain
 
-        for item in items:
-            # Remove bullet symbols (- , 1. ) to get raw text
-            clean_text = re.sub(r"^(\d+\.|-|\*)\s+", "", item)
+    @staticmethod
+    def _split_text(text: str, limit: int) -> List[str]:
+        """Split text into chunks of at most *limit* characters.
 
-            elements.append(
-                {
-                    "type": "rich_text_section",
-                    "elements": [{"type": "text", "text": clean_text}],
-                }
-            )
+        Splitting priority:
+        1. Paragraph breaks (\\n\\n)
+        2. Single newlines (\\n)
+        3. Hard cut at *limit*
+        """
+        if len(text) <= limit:
+            return [text]
 
-        return {
-            "type": "rich_text",
-            "elements": [
-                {
-                    "type": "rich_text_list",
-                    "style": style,  # 'bullet' or 'ordered'
-                    "elements": elements,
-                }
-            ],
-        }
+        chunks: List[str] = []
+        remaining = text
+
+        while remaining:
+            if len(remaining) <= limit:
+                chunks.append(remaining)
+                break
+
+            # Try paragraph break
+            split_pos = remaining.rfind("\n\n", 0, limit)
+            if split_pos > 0:
+                chunks.append(remaining[:split_pos])
+                remaining = remaining[split_pos + 2:]
+                continue
+
+            # Try single newline
+            split_pos = remaining.rfind("\n", 0, limit)
+            if split_pos > 0:
+                chunks.append(remaining[:split_pos])
+                remaining = remaining[split_pos + 1:]
+                continue
+
+            # Hard cut
+            chunks.append(remaining[:limit])
+            remaining = remaining[limit:]
+
+        return chunks
