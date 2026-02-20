@@ -37,13 +37,13 @@ export default function PullRequestsPage() {
     >
       {/* Header */}
       <div className="flex items-center gap-3">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <GitPullRequest size={20} className="text-accent" />
           Pull Requests
         </h2>
         <button
           onClick={refetch}
-          className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
           title="Refresh"
         >
           <RefreshCw size={16} />
@@ -82,7 +82,7 @@ export default function PullRequestsPage() {
               variants={listItemVariants}
               layout
               onClick={() => navigate(`/pulls/${pr.owner}/${pr.repo}/${pr.number}`)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors text-left"
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors text-left"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1">
@@ -90,7 +90,7 @@ export default function PullRequestsPage() {
                     size={16}
                     className={`shrink-0 ${pr.draft ? "text-gray-500" : "text-green-400"}`}
                   />
-                  <span className="text-sm text-gray-200 truncate">
+                  <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
                     {pr.title}
                   </span>
                   <span className="text-xs text-gray-500 shrink-0">

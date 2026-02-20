@@ -51,13 +51,13 @@ export default function SkillsPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <Lightbulb size={20} className="text-accent" />
               Skills
             </h2>
             <button
               onClick={refetch}
-              className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
               title="Refresh"
             >
               <RefreshCw size={16} />
@@ -83,7 +83,7 @@ export default function SkillsPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search skills by name or description..."
-                className="w-full pl-10 pr-3 py-2 bg-surface-lighter border border-border rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full pl-10 pr-3 py-2 bg-white dark:bg-surface-lighter border border-light-border dark:border-border rounded text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
             <button
@@ -91,7 +91,7 @@ export default function SkillsPage() {
               className={`px-4 py-2 rounded border transition-colors flex items-center gap-2 ${
                 showFilters || hasActiveFilters
                   ? "bg-accent/10 border-accent text-accent"
-                  : "bg-surface-lighter border-border text-gray-400 hover:text-gray-200"
+                  : "bg-gray-100 dark:bg-surface-lighter border-light-border dark:border-border text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
               }`}
             >
               <Filter size={16} />
@@ -105,17 +105,17 @@ export default function SkillsPage() {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="bg-surface-lighter border border-border rounded p-4 space-y-3"
+              className="bg-gray-50 dark:bg-surface-lighter border border-light-border dark:border-border rounded p-4 space-y-3"
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Category
                   </label>
                   <select
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="w-full px-3 py-2 bg-surface border border-border rounded text-white focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full px-3 py-2 bg-white dark:bg-surface border border-light-border dark:border-border rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
                   >
                     <option value="">All categories</option>
                     {CATEGORIES.map((cat) => (
@@ -127,7 +127,7 @@ export default function SkillsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Tag
                   </label>
                   <input
@@ -135,7 +135,7 @@ export default function SkillsPage() {
                     value={tagFilter}
                     onChange={(e) => setTagFilter(e.target.value)}
                     placeholder="Filter by tag..."
-                    className="w-full px-3 py-2 bg-surface border border-border rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
+                    className="w-full px-3 py-2 bg-white dark:bg-surface border border-light-border dark:border-border rounded text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
               </div>

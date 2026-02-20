@@ -42,11 +42,11 @@ function PhaseRow({ phase, projectId, repoOwner, repoName, onClick, onRetry }: {
   return (
     <button
       onClick={onClick}
-      className="w-full px-4 py-3 hover:bg-surface-lighter/50 transition-colors text-left flex items-center gap-3"
+      className="w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors text-left flex items-center gap-3"
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="font-medium text-white">{phase.name}</span>
+          <span className="font-medium text-gray-900 dark:text-white">{phase.name}</span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${PHASE_STATUS_COLORS[phase.status] || PHASE_STATUS_COLORS.planned}`}>
             {phase.status.replace("_", " ")}
           </span>
@@ -81,7 +81,7 @@ function PhaseRow({ phase, projectId, repoOwner, repoName, onClick, onRetry }: {
                   {onRetry && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onRetry(); }}
-                      className="inline-flex items-center gap-1 text-xs text-red-400 hover:text-white px-1.5 py-0.5 rounded bg-red-500/10 hover:bg-red-500/30 transition-colors"
+                      className="inline-flex items-center gap-1 text-xs text-red-400 hover:text-red-600 dark:hover:text-white px-1.5 py-0.5 rounded bg-red-500/10 hover:bg-red-500/30 transition-colors"
                       title="Retry failed tasks"
                     >
                       <RotateCcw size={10} />
@@ -301,7 +301,7 @@ export default function ProjectDetailPage() {
   if (error || !project) {
     return (
       <div className="p-4 md:p-6 max-w-5xl mx-auto">
-        <button onClick={() => navigate("/projects")} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200 mb-4">
+        <button onClick={() => navigate("/projects")} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 mb-4">
           <ArrowLeft size={16} /> Back to Projects
         </button>
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
@@ -335,7 +335,7 @@ export default function ProjectDetailPage() {
       {/* Back nav */}
       <button
         onClick={() => navigate("/projects")}
-        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200"
+        className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
       >
         <ArrowLeft size={16} /> Back to Projects
       </button>
@@ -344,13 +344,13 @@ export default function ProjectDetailPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-white">{project.name}</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{project.name}</h2>
             <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[project.status] || STATUS_COLORS.planning}`}>
               {project.status}
             </span>
             <button
               onClick={refetch}
-              className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
             >
               <RefreshCw size={16} />
             </button>
@@ -447,7 +447,7 @@ export default function ProjectDetailPage() {
                 <button
                   onClick={handleStartExecution}
                   disabled={starting}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-lighter border border-border text-gray-300 text-sm font-medium hover:bg-surface hover:text-white transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-surface-lighter border border-light-border dark:border-border text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-100 dark:hover:bg-surface hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
                   title="Manually execute one phase at a time"
                 >
                   <Play size={16} />
@@ -474,13 +474,13 @@ export default function ProjectDetailPage() {
       {/* Phases */}
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-light-border dark:border-border flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-300">
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Phases ({sortedPhases.length})
           </h3>
           {project.design_document && (
             <button
               onClick={() => setShowReapply(true)}
-              className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 px-2 py-1 rounded hover:bg-surface-lighter transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors"
               title="Clear phases and re-apply the plan with optional modifications"
             >
               <RotateCcw size={12} />
@@ -516,7 +516,7 @@ export default function ProjectDetailPage() {
       {/* Skills */}
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-light-border dark:border-border flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
             <Lightbulb size={16} className="text-accent" />
             Skills ({projectSkills.length})
           </h3>
@@ -541,12 +541,12 @@ export default function ProjectDetailPage() {
             {projectSkills.map((skill) => (
               <div
                 key={skill.skill_id}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface-lighter border border-border rounded-lg text-sm"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded-lg text-sm"
               >
                 <Lightbulb size={14} className="text-accent" />
-                <span className="text-white">{skill.skill_name}</span>
+                <span className="text-gray-900 dark:text-white">{skill.skill_name}</span>
                 {skill.skill_category && (
-                  <span className="text-xs px-1.5 py-0.5 bg-surface rounded text-gray-400">
+                  <span className="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-surface rounded text-gray-600 dark:text-gray-400">
                     {skill.skill_category}
                   </span>
                 )}
@@ -571,12 +571,12 @@ export default function ProjectDetailPage() {
       {/* Design Document */}
       {project.design_document && (
         <details className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
-          <summary className="px-4 py-3 cursor-pointer hover:bg-surface-lighter/50 transition-colors flex items-center gap-2 text-sm font-medium text-gray-300">
+          <summary className="px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
             <FileText size={16} />
             Design Document
           </summary>
           <div className="px-4 py-3 border-t border-light-border dark:border-border">
-            <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
+            <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
               {project.design_document}
             </pre>
           </div>
@@ -596,14 +596,14 @@ export default function ProjectDetailPage() {
       {showReapply && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 max-w-lg w-full space-y-4">
-            <h3 className="text-lg font-semibold text-white">Re-apply Plan</h3>
-            <p className="text-sm text-gray-400">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Re-apply Plan</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
               This will clear all existing phases and tasks, then re-parse the plan.
               Optionally provide instructions to modify how the plan is structured.
             </p>
 
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">
+              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
                 Custom instructions (optional)
               </label>
               <textarea
@@ -612,7 +612,7 @@ export default function ProjectDetailPage() {
                 placeholder='e.g., "Condense into 3 phases", "Split phase 2 into smaller tasks", "Group by file type instead of feature"'
                 rows={3}
                 disabled={reapplying}
-                className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent resize-none disabled:opacity-50"
+                className="w-full bg-white dark:bg-surface border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-accent resize-none disabled:opacity-50"
               />
             </div>
 
@@ -622,7 +622,7 @@ export default function ProjectDetailPage() {
                   <RefreshCw size={14} className="animate-spin" />
                   {reapplyProgress}
                 </div>
-                <div className="h-1.5 bg-surface rounded-full overflow-hidden">
+                <div className="h-1.5 bg-gray-200 dark:bg-surface rounded-full overflow-hidden">
                   <div
                     className="h-full bg-accent rounded-full transition-all duration-1000"
                     style={{
@@ -639,7 +639,7 @@ export default function ProjectDetailPage() {
               <button
                 onClick={() => { setShowReapply(false); setReapplyPrompt(""); setReapplyProgress(""); }}
                 disabled={reapplying}
-                className="px-4 py-2 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-border transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>

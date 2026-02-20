@@ -114,7 +114,7 @@ export default function SkillDetailPage() {
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <FileCode size={24} className="text-accent flex-shrink-0" />
               <div className="min-w-0">
-                <h1 className="text-2xl font-bold text-white truncate">
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">
                   {skill.name}
                 </h1>
                 {skill.description && (
@@ -126,7 +126,7 @@ export default function SkillDetailPage() {
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 onClick={handleEdit}
-                className="p-2 rounded hover:bg-surface-lighter text-gray-400 hover:text-white transition-colors"
+                className="p-2 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
                 title="Edit"
               >
                 <Edit size={18} />
@@ -149,7 +149,7 @@ export default function SkillDetailPage() {
               </span>
             )}
             {skill.language && (
-              <span className="text-sm px-3 py-1 bg-surface-lighter rounded text-gray-400">
+              <span className="text-sm px-3 py-1 bg-gray-100 dark:bg-surface-lighter rounded text-gray-600 dark:text-gray-400">
                 {skill.language}
               </span>
             )}
@@ -166,11 +166,11 @@ export default function SkillDetailPage() {
 
           {/* Tags */}
           {skill.tags && skill.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border">
+            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-light-border dark:border-border">
               {skill.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="text-sm px-3 py-1 bg-surface-lighter rounded text-gray-400 flex items-center gap-1"
+                  className="text-sm px-3 py-1 bg-gray-100 dark:bg-surface-lighter rounded text-gray-600 dark:text-gray-400 flex items-center gap-1"
                 >
                   <TagIcon size={12} />
                   {tag}
@@ -182,12 +182,12 @@ export default function SkillDetailPage() {
 
         {/* Content */}
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6">
-          <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <FileCode size={18} className="text-accent" />
             Content
           </h2>
-          <div className="bg-surface-lighter border border-border rounded p-4 overflow-x-auto">
-            <pre className="text-sm text-gray-300 font-mono whitespace-pre-wrap break-words">
+          <div className="bg-gray-50 dark:bg-surface-lighter border border-light-border dark:border-border rounded p-4 overflow-x-auto">
+            <pre className="text-sm text-gray-700 dark:text-gray-300 font-mono whitespace-pre-wrap break-words">
               {skill.content}
             </pre>
           </div>
@@ -218,9 +218,9 @@ export default function SkillDetailPage() {
       {/* Delete Confirmation */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-surface border border-border rounded-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-white mb-2">Delete Skill</h3>
-            <p className="text-gray-400 mb-4">
+          <div className="bg-white dark:bg-surface border border-light-border dark:border-border rounded-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Delete Skill</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
               Are you sure you want to delete <strong>{skill.name}</strong>? This
               action cannot be undone.
             </p>
@@ -238,7 +238,7 @@ export default function SkillDetailPage() {
                   setDeleteError("");
                 }}
                 disabled={deleting}
-                className="px-4 py-2 bg-surface-lighter hover:bg-surface-light text-gray-300 rounded disabled:opacity-50"
+                className="px-4 py-2 bg-gray-100 dark:bg-surface-lighter hover:bg-gray-200 dark:hover:bg-surface-light text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
               >
                 Cancel
               </button>

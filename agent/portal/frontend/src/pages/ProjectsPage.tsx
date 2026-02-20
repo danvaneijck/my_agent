@@ -29,7 +29,7 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
       className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-border-light transition-colors w-full"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <h3 className="font-medium text-white truncate">{project.name}</h3>
+        <h3 className="font-medium text-gray-900 dark:text-white truncate">{project.name}</h3>
         <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${STATUS_COLORS[project.status] || STATUS_COLORS.planning}`}>
           {project.status}
         </span>
@@ -91,13 +91,13 @@ export default function ProjectsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <FolderKanban size={20} className="text-accent" />
             Projects
           </h2>
           <button
             onClick={refetch}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
           >
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           </button>
@@ -107,7 +107,7 @@ export default function ProjectsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-accent"
+            className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent"
           >
             <option value="">All statuses</option>
             <option value="planning">Planning</option>
