@@ -276,6 +276,7 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({
           plan_content: project.design_document,
           custom_prompt: reapplyPrompt || undefined,
+          force: true,
         }),
       });
       setReapplyProgress("Done!");
@@ -417,11 +418,17 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* Planning Task Panel */}
-      {project.planning_task_id && project.phases.length === 0 && (
+      {/* Planning Task Panel — show when phases are absent OR when apply is in-flight/failed */}
+      {project.planning_task_id && (
+        project.phases.length === 0 ||
+        project.plan_apply_status === "applying" ||
+        project.plan_apply_status === "failed"
+      ) && (
         <PlanningTaskPanel
           planningTaskId={project.planning_task_id}
           projectId={project.project_id}
+          planApplyStatus={project.plan_apply_status ?? "idle"}
+          planApplyError={project.plan_apply_error ?? null}
           onPlanApplied={refetch}
         />
       )}
@@ -495,8 +502,9 @@ export default function ProjectDetailPage() {
           {project.design_document && (
             <button
               onClick={() => setShowReapply(true)}
-              className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors"
-              title="Clear phases and re-apply the plan with optional modifications"
+              disabled={project.plan_apply_status === "applying"}
+              className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={project.plan_apply_status === "applying" ? "Plan is being applied..." : "Clear phases and re-apply the plan with optional modifications"}
             >
               <RotateCcw size={12} />
               Re-apply Plan

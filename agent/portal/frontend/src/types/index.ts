@@ -327,6 +327,8 @@ export interface ProjectDetail {
   auto_merge: boolean;
   planning_task_id: string | null;
   status: string;
+  plan_apply_status: "idle" | "applying" | "applied" | "failed";
+  plan_apply_error: string | null;
   created_at: string;
   updated_at: string;
   phases: ProjectPhase[];

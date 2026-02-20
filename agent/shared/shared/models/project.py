@@ -39,6 +39,10 @@ class Project(Base):
     # Lifecycle: planning → active → paused → completed → archived
     status: Mapped[str] = mapped_column(String, default="planning")
 
+    # Plan application state: idle → applying → applied | failed
+    plan_apply_status: Mapped[str] = mapped_column(String, default="idle")
+    plan_apply_error: Mapped[str | None] = mapped_column(Text, default=None)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

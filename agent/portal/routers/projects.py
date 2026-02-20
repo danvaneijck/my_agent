@@ -9,15 +9,15 @@ from datetime import datetime, timezone
 
 import anthropic
 import structlog
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from portal.auth import PortalUser, require_auth
 from portal.services.module_client import call_tool
 from shared.config import get_settings
 from sqlalchemy import func, select
-
 from sqlalchemy import delete as sa_delete
+from sqlalchemy import update as sa_update
 
 from shared.database import get_session_factory
 from shared.models.project import Project
@@ -158,6 +158,7 @@ class KickoffRequest(BaseModel):
 class ApplyPlanRequest(BaseModel):
     plan_content: str | None = None  # If None, fetch from planning task
     custom_prompt: str | None = None  # Optional instructions for the parser (e.g., "condense into 3 phases")
+    force: bool = False  # Allow re-applying even when already applied
 
 
 class ExecutePhaseRequest(BaseModel):
@@ -284,6 +285,16 @@ async def clear_phases(
         await session.execute(
             sa_delete(ProjectPhase).where(ProjectPhase.project_id == pid)
         )
+        # Reset plan apply state so the plan can be applied again
+        await session.execute(
+            sa_update(Project)
+            .where(Project.id == pid, Project.user_id == uid)
+            .values(
+                plan_apply_status="idle",
+                plan_apply_error=None,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
         await session.commit()
 
     logger.info("phases_cleared", project_id=project_id)
@@ -402,9 +413,12 @@ async def apply_plan(
 ) -> dict:
     """Parse a plan and create project phases and tasks from it."""
     uid = str(user.user_id)
+    pid = uuid.UUID(project_id)
+    user_uuid = user.user_id
     settings = get_settings()
+    factory = get_session_factory()
 
-    # 1. Get the project
+    # 1. Get the project and check idempotency
     project_result = await call_tool(
         module="project_planner",
         tool_name="project_planner.get_project",
@@ -414,44 +428,70 @@ async def apply_plan(
     )
     project_data = project_result.get("result", {})
 
-    # 2. Get plan content
-    plan_content = body.plan_content
-    if not plan_content:
-        # Fetch from planning task
-        planning_task_id = project_data.get("planning_task_id")
-        if not planning_task_id:
-            raise ValueError("No planning_task_id found and no plan_content provided")
-
-        task_result = await call_tool(
-            module="claude_code",
-            tool_name="claude_code.task_status",
-            arguments={"task_id": planning_task_id},
-            user_id=uid,
-            timeout=15.0,
+    current_apply_status = project_data.get("plan_apply_status", "idle")
+    if current_apply_status == "applying":
+        raise HTTPException(
+            status_code=409,
+            detail="Plan application is already in progress. Please wait.",
         )
-        task_data = task_result.get("result", {})
-        task_result_data = task_data.get("result") or {}
-
-        # Extract plan content from task result
-        plan_content = (
-            task_result_data.get("plan_content") or
-            task_result_data.get("raw_text") or
-            ""
-        )
-        logger.info(
-            "apply_plan_source",
-            has_plan_content=bool(task_result_data.get("plan_content")),
-            has_raw_text=bool(task_result_data.get("raw_text")),
-            plan_length=len(plan_content),
+    if current_apply_status == "applied" and not body.force:
+        raise HTTPException(
+            status_code=409,
+            detail="Plan has already been applied. Use force=true to re-apply.",
         )
 
-    if not plan_content.strip():
-        raise ValueError("No plan content found to apply")
+    # 2. Persist "applying" state immediately so navigation away doesn't lose it
+    async with factory() as session:
+        await session.execute(
+            sa_update(Project)
+            .where(Project.id == pid, Project.user_id == user_uuid)
+            .values(
+                plan_apply_status="applying",
+                plan_apply_error=None,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
 
-    # 3. Parse plan using Anthropic API
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    try:
+        # 3. Get plan content
+        plan_content = body.plan_content
+        if not plan_content:
+            # Fetch from planning task
+            planning_task_id = project_data.get("planning_task_id")
+            if not planning_task_id:
+                raise ValueError("No planning_task_id found and no plan_content provided")
 
-    parse_system_prompt = """You are a project plan parser. Given a markdown project plan, extract it into structured phases and tasks.
+            task_result = await call_tool(
+                module="claude_code",
+                tool_name="claude_code.task_status",
+                arguments={"task_id": planning_task_id},
+                user_id=uid,
+                timeout=15.0,
+            )
+            task_data = task_result.get("result", {})
+            task_result_data = task_data.get("result") or {}
+
+            # Extract plan content from task result
+            plan_content = (
+                task_result_data.get("plan_content") or
+                task_result_data.get("raw_text") or
+                ""
+            )
+            logger.info(
+                "apply_plan_source",
+                has_plan_content=bool(task_result_data.get("plan_content")),
+                has_raw_text=bool(task_result_data.get("raw_text")),
+                plan_length=len(plan_content),
+            )
+
+        if not plan_content.strip():
+            raise ValueError("No plan content found to apply")
+
+        # 4. Parse plan using Anthropic API
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+        parse_system_prompt = """You are a project plan parser. Given a markdown project plan, extract it into structured phases and tasks.
 
 Return ONLY valid JSON with no other text, no markdown formatting, no code blocks. Return JSON in this exact format:
 {
@@ -478,120 +518,151 @@ Rules:
 - Preserve the order from the original plan
 - If the plan has no clear phase structure, create logical groupings"""
 
-    # Build the user message with optional custom instructions
-    user_message = plan_content
-    if body.custom_prompt:
-        user_message = f"ADDITIONAL INSTRUCTIONS: {body.custom_prompt}\n\n---\n\n{plan_content}"
+        # Build the user message with optional custom instructions
+        user_message = plan_content
+        if body.custom_prompt:
+            user_message = f"ADDITIONAL INSTRUCTIONS: {body.custom_prompt}\n\n---\n\n{plan_content}"
 
-    try:
-        response = await client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=16384,
-            system=parse_system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        )
+        try:
+            response = await client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=16384,
+                system=parse_system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+            )
 
-        # Log token usage
-        _input = response.usage.input_tokens
-        _output = response.usage.output_tokens
-        await _log_portal_tokens(
-            user_id=user.user_id,
-            model="claude-sonnet-4-20250514",
-            input_tokens=_input,
-            output_tokens=_output,
-        )
+            # Log token usage
+            _input = response.usage.input_tokens
+            _output = response.usage.output_tokens
+            await _log_portal_tokens(
+                user_id=user_uuid,
+                model="claude-sonnet-4-20250514",
+                input_tokens=_input,
+                output_tokens=_output,
+            )
 
-        # Check if response was truncated
-        if response.stop_reason == "max_tokens":
-            logger.error("plan_parse_truncated", plan_length=len(plan_content), stop_reason=response.stop_reason)
-            raise ValueError("LLM response was truncated (max_tokens reached). Plan may be too large.")
+            # Check if response was truncated
+            if response.stop_reason == "max_tokens":
+                logger.error("plan_parse_truncated", plan_length=len(plan_content), stop_reason=response.stop_reason)
+                raise ValueError("LLM response was truncated (max_tokens reached). Plan may be too large.")
 
-        # Extract JSON from response
-        response_text = response.content[0].text
-        # Try to extract JSON from markdown code blocks if present
-        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response_text, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group(1))
-        else:
-            # Strip any leading/trailing whitespace or text before the JSON
-            stripped = response_text.strip()
-            # Find the first { to handle any preamble text
-            brace_idx = stripped.find("{")
-            if brace_idx > 0:
-                stripped = stripped[brace_idx:]
-            parsed = json.loads(stripped)
+            # Extract JSON from response
+            response_text = response.content[0].text
+            # Try to extract JSON from markdown code blocks if present
+            json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response_text, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group(1))
+            else:
+                # Strip any leading/trailing whitespace or text before the JSON
+                stripped = response_text.strip()
+                # Find the first { to handle any preamble text
+                brace_idx = stripped.find("{")
+                if brace_idx > 0:
+                    stripped = stripped[brace_idx:]
+                parsed = json.loads(stripped)
 
-    except ValueError:
-        raise
-    except Exception as e:
-        preview = response_text[:500] if "response_text" in locals() else "no response"
-        logger.error("plan_parse_failed", error=str(e), plan_length=len(plan_content),
-                     response_preview=preview)
-        raise ValueError(f"Failed to parse plan: {str(e)}")
+        except ValueError:
+            raise
+        except Exception as e:
+            preview = response_text[:500] if "response_text" in locals() else "no response"
+            logger.error("plan_parse_failed", error=str(e), plan_length=len(plan_content),
+                         response_preview=preview)
+            raise ValueError(f"Failed to parse plan: {str(e)}")
 
-    # 4. Store the plan as design_document for display in the portal.
-    #    The actual plan file (PLAN.md) lives in the repo and is read
-    #    directly by claude_code during phase execution.
-    await call_tool(
-        module="project_planner",
-        tool_name="project_planner.update_project",
-        arguments={
-            "project_id": project_id,
-            "design_document": plan_content,
-            "status": "active",
-        },
-        user_id=uid,
-        timeout=15.0,
-    )
-
-    # 5. Create phases and tasks
-    phases = parsed.get("phases", [])
-    phases_created = 0
-    tasks_created = 0
-
-    for phase_data in phases:
-        phase_result = await call_tool(
+        # 5. Store the plan as design_document for display in the portal.
+        #    The actual plan file (PLAN.md) lives in the repo and is read
+        #    directly by claude_code during phase execution.
+        await call_tool(
             module="project_planner",
-            tool_name="project_planner.add_phase",
+            tool_name="project_planner.update_project",
             arguments={
                 "project_id": project_id,
-                "name": phase_data.get("name", "Unnamed Phase"),
-                "description": phase_data.get("description"),
+                "design_document": plan_content,
+                "status": "active",
             },
             user_id=uid,
             timeout=15.0,
         )
-        phase_id = phase_result.get("result", {}).get("phase_id")
-        phases_created += 1
 
-        # Add tasks for this phase
-        tasks = phase_data.get("tasks", [])
-        if tasks and phase_id:
-            await call_tool(
+        # 6. Create phases and tasks
+        phases = parsed.get("phases", [])
+        phases_created = 0
+        tasks_created = 0
+
+        for phase_data in phases:
+            phase_result = await call_tool(
                 module="project_planner",
-                tool_name="project_planner.bulk_add_tasks",
+                tool_name="project_planner.add_phase",
                 arguments={
-                    "phase_id": phase_id,
-                    "tasks": tasks,
+                    "project_id": project_id,
+                    "name": phase_data.get("name", "Unnamed Phase"),
+                    "description": phase_data.get("description"),
                 },
                 user_id=uid,
-                timeout=30.0,
+                timeout=15.0,
             )
-            tasks_created += len(tasks)
+            phase_id = phase_result.get("result", {}).get("phase_id")
+            phases_created += 1
 
-    logger.info(
-        "plan_applied",
-        project_id=project_id,
-        phases_created=phases_created,
-        tasks_created=tasks_created,
-    )
+            # Add tasks for this phase
+            tasks = phase_data.get("tasks", [])
+            if tasks and phase_id:
+                await call_tool(
+                    module="project_planner",
+                    tool_name="project_planner.bulk_add_tasks",
+                    arguments={
+                        "phase_id": phase_id,
+                        "tasks": tasks,
+                    },
+                    user_id=uid,
+                    timeout=30.0,
+                )
+                tasks_created += len(tasks)
 
-    return {
-        "project_id": project_id,
-        "phases_created": phases_created,
-        "tasks_created": tasks_created,
-        "message": f"Created {phases_created} phases with {tasks_created} tasks",
-    }
+        # 7. Mark apply as complete
+        async with factory() as session:
+            await session.execute(
+                sa_update(Project)
+                .where(Project.id == pid, Project.user_id == user_uuid)
+                .values(
+                    plan_apply_status="applied",
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+            await session.commit()
+
+        logger.info(
+            "plan_applied",
+            project_id=project_id,
+            phases_created=phases_created,
+            tasks_created=tasks_created,
+        )
+
+        return {
+            "project_id": project_id,
+            "phases_created": phases_created,
+            "tasks_created": tasks_created,
+            "message": f"Created {phases_created} phases with {tasks_created} tasks",
+        }
+
+    except HTTPException:
+        # Don't overwrite status for HTTP errors (shouldn't reach here, but be safe)
+        raise
+    except Exception as e:
+        # Persist the failure so the UI can show an error and allow retry
+        async with factory() as session:
+            await session.execute(
+                sa_update(Project)
+                .where(Project.id == pid, Project.user_id == user_uuid)
+                .values(
+                    plan_apply_status="failed",
+                    plan_apply_error=str(e),
+                    updated_at=datetime.now(timezone.utc),
+                )
+            )
+            await session.commit()
+        logger.error("plan_apply_failed", project_id=project_id, error=str(e))
+        raise
 
 
 @router.get("/{project_id}/status")
