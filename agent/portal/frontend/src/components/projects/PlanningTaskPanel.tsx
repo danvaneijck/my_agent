@@ -107,8 +107,8 @@ export default function PlanningTaskPanel({
 
   if (loading) {
     return (
-      <div className="bg-surface-light border border-border rounded-xl p-4">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
           <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           Loading planning task...
         </div>
@@ -132,11 +132,11 @@ export default function PlanningTaskPanel({
   // Running or queued
   if (task.status === "running" || task.status === "queued") {
     return (
-      <div className="bg-surface-light border border-border rounded-xl p-4 space-y-3">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-            <span className="text-sm font-medium text-gray-200">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
               {task.status === "queued" ? "Planning task queued..." : "Claude is creating your project plan..."}
             </span>
           </div>
@@ -165,9 +165,9 @@ export default function PlanningTaskPanel({
   // Awaiting input (plan ready for review)
   if (task.status === "awaiting_input") {
     return (
-      <div className="bg-surface-light border border-border rounded-xl p-4 space-y-4">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
             <CheckCircle size={16} className="text-green-400" />
             Plan Ready for Review
           </h3>
@@ -182,7 +182,7 @@ export default function PlanningTaskPanel({
         </div>
 
         {planContent && (
-          <div className="bg-surface border border-border rounded-lg p-4 prose prose-invert prose-sm max-w-none max-h-96 overflow-auto">
+          <div className="bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg p-4 prose dark:prose-invert prose-sm max-w-none max-h-96 overflow-auto">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {planContent}
             </ReactMarkdown>
@@ -190,7 +190,7 @@ export default function PlanningTaskPanel({
         )}
 
         {!planContent && (
-          <div className="bg-surface border border-border rounded-lg p-4 text-sm text-gray-400">
+          <div className="bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg p-4 text-sm text-gray-500 dark:text-gray-400">
             Plan completed — check the task logs for details.
           </div>
         )}
@@ -209,7 +209,7 @@ export default function PlanningTaskPanel({
             </button>
             <button
               onClick={() => setFeedbackMode(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-lighter text-gray-300 text-sm hover:bg-border transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-200 dark:hover:bg-border transition-colors"
             >
               <MessageSquare size={16} />
               Give Feedback
@@ -223,13 +223,13 @@ export default function PlanningTaskPanel({
               placeholder="Describe what changes you'd like to the plan..."
               rows={3}
               autoFocus
-              className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
+              className="w-full px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
             />
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setFeedbackMode(false)}
-                className="px-3 py-1.5 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors"
+                className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-border transition-colors"
               >
                 Cancel
               </button>
@@ -250,9 +250,9 @@ export default function PlanningTaskPanel({
   // Completed (plan mode finished with output)
   if (task.status === "completed") {
     return (
-      <div className="bg-surface-light border border-border rounded-xl p-4 space-y-4">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
             <CheckCircle size={16} className="text-green-400" />
             Planning Complete
           </h3>
@@ -267,7 +267,7 @@ export default function PlanningTaskPanel({
         </div>
 
         {planContent && (
-          <div className="bg-surface border border-border rounded-lg p-4 prose prose-invert prose-sm max-w-none max-h-96 overflow-auto">
+          <div className="bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg p-4 prose dark:prose-invert prose-sm max-w-none max-h-96 overflow-auto">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {planContent}
             </ReactMarkdown>

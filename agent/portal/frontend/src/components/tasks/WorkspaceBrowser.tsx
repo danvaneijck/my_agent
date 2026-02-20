@@ -62,10 +62,10 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Breadcrumb navigation with terminal toggle */}
-      <div className="flex items-center gap-1 px-3 py-2 bg-surface border-b border-border text-xs text-gray-400 overflow-x-auto shrink-0">
+      <div className="flex items-center gap-1 px-3 py-2 bg-gray-100 dark:bg-surface border-b border-light-border dark:border-border text-xs text-gray-500 dark:text-gray-400 overflow-x-auto shrink-0">
         <button
           onClick={() => { setCurrentPath(""); setSelectedFile(null); }}
-          className="hover:text-white transition-colors"
+          className="hover:text-gray-900 dark:hover:text-white transition-colors"
         >
           root
         </button>
@@ -77,7 +77,7 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
                 setCurrentPath(breadcrumbs.slice(0, i + 1).join("/"));
                 setSelectedFile(null);
               }}
-              className="hover:text-white transition-colors"
+              className="hover:text-gray-900 dark:hover:text-white transition-colors"
             >
               {part}
             </button>
@@ -92,7 +92,7 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
           className={`inline-flex items-center gap-1.5 px-2 py-1 rounded transition-colors ${
             showTerminal
               ? "bg-accent text-white"
-              : "bg-surface-lighter text-gray-400 hover:text-white"
+              : "bg-gray-200 dark:bg-surface-lighter text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           }`}
           title={showTerminal ? "Close terminal" : "Open terminal"}
         >
@@ -104,11 +104,11 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
       <div className={`flex flex-1 min-h-0 ${showTerminal ? "flex-col" : ""}`}>
         <div className={`flex ${showTerminal ? "flex-1" : "flex-1"} min-h-0`}>
           {/* File listing */}
-          <div className="w-64 shrink-0 border-r border-border overflow-auto">
+          <div className="w-64 shrink-0 border-r border-light-border dark:border-border overflow-auto bg-white dark:bg-surface">
           {currentPath && (
             <button
               onClick={navigateUp}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:bg-surface-lighter transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors"
             >
               <ArrowLeft size={14} /> ..
             </button>
@@ -124,8 +124,8 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
               <button
                 key={entry.name}
                 onClick={() => handleEntryClick(entry)}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-lighter transition-colors text-left ${
-                  selectedFile?.path?.endsWith(entry.name) ? "bg-surface-lighter" : ""
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors text-left ${
+                  selectedFile?.path?.endsWith(entry.name) ? "bg-gray-100 dark:bg-surface-lighter" : ""
                 }`}
               >
                 {entry.type === "directory" ? (
@@ -133,9 +133,9 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
                 ) : (
                   <File size={14} className="text-gray-500 shrink-0" />
                 )}
-                <span className="text-gray-200 truncate flex-1">{entry.name}</span>
+                <span className="text-gray-700 dark:text-gray-200 truncate flex-1">{entry.name}</span>
                 {entry.type === "file" && (
-                  <span className="text-gray-600 text-xs shrink-0">{formatSize(entry.size)}</span>
+                  <span className="text-gray-500 dark:text-gray-600 text-xs shrink-0">{formatSize(entry.size)}</span>
                 )}
               </button>
             ))
@@ -143,14 +143,14 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
         </div>
 
         {/* File content viewer */}
-        <div className="flex-1 overflow-auto bg-[#0d0e14]">
+        <div className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0d0e14]">
           {fileLoading ? (
             <div className="flex justify-center py-8">
               <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             </div>
           ) : selectedFile ? (
             <div className="flex flex-col h-full">
-              <div className="flex items-center justify-between px-4 py-2 bg-surface/50 border-b border-border text-xs text-gray-500 shrink-0">
+              <div className="flex items-center justify-between px-4 py-2 bg-gray-200 dark:bg-black/30 border-b border-light-border dark:border-white/10 text-xs text-gray-600 dark:text-gray-400 shrink-0">
                 <span>{selectedFile.path}</span>
                 <span>
                   {formatSize(selectedFile.size)}
@@ -162,13 +162,13 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
                   {selectedFile.message || "Binary file"}
                 </div>
               ) : (
-                <pre className="flex-1 p-4 text-sm text-gray-300 whitespace-pre overflow-auto font-mono leading-relaxed">
+                <pre className="flex-1 p-4 text-sm text-gray-700 dark:text-gray-300 whitespace-pre overflow-auto font-mono leading-relaxed">
                   {selectedFile.content}
                 </pre>
               )}
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-600 text-sm">
+            <div className="flex items-center justify-center h-full text-gray-500 text-sm">
               Select a file to view its contents
             </div>
           )}

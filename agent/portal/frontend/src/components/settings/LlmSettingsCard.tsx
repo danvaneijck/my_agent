@@ -165,7 +165,7 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
   if (error) {
     return (
       <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
-        <p className="text-sm text-yellow-300">{error}</p>
+        <p className="text-sm text-yellow-700 dark:text-yellow-300">{error}</p>
       </div>
     );
   }
@@ -190,7 +190,7 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
         <div>
           <p
             className={`text-sm font-medium ${
-              hasAnyKey ? "text-green-300" : "text-yellow-300"
+              hasAnyKey ? "text-green-700 dark:text-green-300" : "text-yellow-700 dark:text-yellow-300"
             }`}
           >
             {hasAnyKey
@@ -199,7 +199,7 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
           </p>
           <p
             className={`text-xs mt-1 ${
-              hasAnyKey ? "text-green-400/70" : "text-yellow-400/70"
+              hasAnyKey ? "text-green-600 dark:text-green-400/70" : "text-yellow-600 dark:text-yellow-400/70"
             }`}
           >
             {hasAnyKey
@@ -217,7 +217,7 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="ml-auto p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-surface-lighter transition-colors disabled:opacity-50 shrink-0"
+            className="ml-auto p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors disabled:opacity-50 shrink-0"
             title="Remove all personal LLM settings"
           >
             <Trash2 size={15} />
@@ -226,14 +226,14 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
       </div>
 
       {/* API Keys section */}
-      <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <button
           type="button"
           onClick={() => setShowKeys((v) => !v)}
-          className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-surface-lighter/40 transition-colors"
+          className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-surface-lighter/40 transition-colors"
         >
           <Key size={16} className="text-accent shrink-0" />
-          <span className="text-white font-medium flex-1">API Keys</span>
+          <span className="text-gray-900 dark:text-white font-medium flex-1">API Keys</span>
           <div className="flex items-center gap-2">
             {status?.has_anthropic && (
               <span className="text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">
@@ -259,8 +259,8 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
         </button>
 
         {showKeys && (
-          <div className="px-5 pb-5 space-y-4 border-t border-border">
-            <p className="text-xs text-gray-500 pt-4">
+          <div className="px-5 pb-5 space-y-4 border-t border-light-border dark:border-border">
+            <p className="text-xs text-gray-500 dark:text-gray-500 pt-4">
               Enter keys for the providers you want to use. Leave blank to keep
               existing values. Keys are Fernet-encrypted before storage and
               never displayed.
@@ -290,7 +290,7 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
               },
             ].map(({ key, label, value, set, configured }) => (
               <div key={key}>
-                <label className="block text-sm text-gray-400 mb-1">
+                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
                   {label}
                   {configured && (
                     <span className="text-green-400/60 ml-1">(configured)</span>
@@ -305,7 +305,7 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
                       ? "Leave blank to keep current"
                       : PROVIDER_HINTS[key] ?? `Enter ${label.toLowerCase()}...`
                   }
-                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-accent"
+                  className="w-full bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-accent"
                 />
               </div>
             ))}
@@ -314,18 +314,18 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
       </div>
 
       {/* Model preferences section */}
-      <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <button
           type="button"
           onClick={() => setShowModels((v) => !v)}
-          className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-surface-lighter/40 transition-colors"
+          className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-surface-lighter/40 transition-colors"
         >
           <span className="text-accent text-base leading-none shrink-0">⚙</span>
-          <span className="text-white font-medium flex-1">Model Preferences</span>
+          <span className="text-gray-900 dark:text-white font-medium flex-1">Model Preferences</span>
           {(status?.default_model ||
             status?.summarization_model ||
             status?.embedding_model) && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
               {[
                 status?.default_model,
                 status?.summarization_model,
@@ -344,8 +344,8 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
         </button>
 
         {showModels && (
-          <div className="px-5 pb-5 space-y-4 border-t border-border">
-            <p className="text-xs text-gray-500 pt-4">
+          <div className="px-5 pb-5 space-y-4 border-t border-light-border dark:border-border">
+            <p className="text-xs text-gray-500 dark:text-gray-500 pt-4">
               Override the default models used for your conversations. Requires a
               matching API key to be configured above. Leave blank to use system
               defaults.
@@ -372,7 +372,7 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
               },
             ].map(({ key, label, value, set }) => (
               <div key={key}>
-                <label className="block text-sm text-gray-400 mb-1">
+                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
                   {label}
                 </label>
                 <input
@@ -380,7 +380,7 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
                   value={value}
                   onChange={(e) => set(e.target.value)}
                   placeholder={MODEL_HINTS[key] ?? `Enter model name...`}
-                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-accent"
+                  className="w-full bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-accent"
                 />
               </div>
             ))}

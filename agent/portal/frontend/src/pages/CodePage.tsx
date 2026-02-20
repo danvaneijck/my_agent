@@ -229,10 +229,10 @@ export default function CodePage() {
       variants={pageVariants}
     >
       {/* Task/workspace list panel */}
-      <div className="w-72 shrink-0 border-r border-border flex flex-col bg-surface-light">
+      <div className="w-72 shrink-0 border-r border-light-border dark:border-border flex flex-col bg-white dark:bg-surface-light">
         <div className="p-3 space-y-2 shrink-0 border-b border-light-border dark:border-border">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <Code2 size={16} className="text-accent" />
               Code Workspaces
             </h2>
@@ -241,7 +241,7 @@ export default function CodePage() {
                 setLoading(true);
                 fetchTasks();
               }}
-              className="p-1.5 rounded hover:bg-surface-lighter text-gray-400"
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-400"
               title="Refresh"
             >
               <RefreshCw size={14} />
@@ -256,7 +256,7 @@ export default function CodePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search tasks..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-md bg-surface border border-border text-white text-xs placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
+              className="w-full pl-8 pr-3 py-1.5 rounded-md bg-gray-50 dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
               aria-label="Search tasks"
             />
           </div>
@@ -325,7 +325,7 @@ export default function CodePage() {
       {selectedTask ? (
         <div className="flex-1 flex flex-col min-w-0">
           {/* Task info bar */}
-          <div className="flex items-center justify-between px-4 py-2 bg-surface border-b border-light-border dark:border-border shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-surface border-b border-light-border dark:border-border shrink-0">
             <div className="flex items-center gap-3 min-w-0">
               <span className="text-xs shrink-0">
                 <CopyableId id={selectedTask.id} />
@@ -333,7 +333,7 @@ export default function CodePage() {
               {selectedTask.repo_url && (
                 <RepoLabel repoUrl={selectedTask.repo_url} branch={selectedTask.branch} className="shrink-0" />
               )}
-              <span className="text-xs text-gray-300 truncate">
+              <span className="text-xs text-gray-600 dark:text-gray-300 truncate">
                 {selectedTask.prompt}
               </span>
             </div>
@@ -369,13 +369,13 @@ export default function CodePage() {
           </div>
 
           {/* Breadcrumb navigation */}
-          <div className="flex items-center gap-1 px-3 py-2 bg-surface border-b border-light-border dark:border-border text-xs text-gray-400 overflow-x-auto shrink-0">
+          <div className="flex items-center gap-1 px-3 py-2 bg-gray-100 dark:bg-surface border-b border-light-border dark:border-border text-xs text-gray-500 dark:text-gray-400 overflow-x-auto shrink-0">
             <button
               onClick={() => {
                 setCurrentPath("");
                 setSelectedFile(null);
               }}
-              className="hover:text-white transition-colors"
+              className="hover:text-gray-900 dark:hover:text-white transition-colors"
             >
               root
             </button>
@@ -387,7 +387,7 @@ export default function CodePage() {
                     setCurrentPath(breadcrumbs.slice(0, i + 1).join("/"));
                     setSelectedFile(null);
                   }}
-                  className="hover:text-white transition-colors"
+                  className="hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
                   {part}
                 </button>
@@ -399,11 +399,11 @@ export default function CodePage() {
             {/* File browser section */}
             <div className={`flex ${terminalOpen ? "flex-row" : "flex-1"} min-h-0 ${terminalOpen ? "flex-1" : ""}`}>
               {/* File listing */}
-              <div className="w-64 shrink-0 border-r border-border overflow-auto">
+              <div className="w-64 shrink-0 border-r border-light-border dark:border-border overflow-auto bg-white dark:bg-surface">
               {currentPath && (
                 <button
                   onClick={navigateUp}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:bg-surface-lighter transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors"
                 >
                   <ArrowLeft size={14} /> ..
                 </button>
@@ -421,9 +421,9 @@ export default function CodePage() {
                   <button
                     key={entry.name}
                     onClick={() => handleEntryClick(entry)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-lighter transition-colors text-left ${
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors text-left ${
                       selectedFile?.path?.endsWith(entry.name)
-                        ? "bg-surface-lighter"
+                        ? "bg-gray-100 dark:bg-surface-lighter"
                         : ""
                     }`}
                   >
@@ -432,11 +432,11 @@ export default function CodePage() {
                     ) : (
                       <File size={14} className="text-gray-500 shrink-0" />
                     )}
-                    <span className="text-gray-200 truncate flex-1">
+                    <span className="text-gray-700 dark:text-gray-200 truncate flex-1">
                       {entry.name}
                     </span>
                     {entry.type === "file" && (
-                      <span className="text-gray-600 text-xs shrink-0">
+                      <span className="text-gray-500 dark:text-gray-600 text-xs shrink-0">
                         {formatSize(entry.size)}
                       </span>
                     )}
@@ -446,35 +446,35 @@ export default function CodePage() {
             </div>
 
             {/* File content viewer */}
-            <div className="flex-1 overflow-auto bg-[#0d0e14]">
+            <div className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0d0e14]">
               {fileLoading ? (
                 <div className="flex justify-center py-8">
                   <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : selectedFile ? (
                 <div className="flex flex-col h-full">
-                  <div className="flex items-center justify-between px-4 py-2 bg-surface/50 border-b border-light-border dark:border-border text-xs text-gray-500 shrink-0">
+                  <div className="flex items-center justify-between px-4 py-2 bg-gray-200 dark:bg-black/30 border-b border-light-border dark:border-white/10 text-xs text-gray-600 dark:text-gray-400 shrink-0">
                     <span>{selectedFile.path}</span>
                     <div className="flex items-center gap-3">
                       {!selectedFile.binary &&
                         isPreviewable(selectedFile.path) && (
-                          <div className="flex rounded-md border border-border overflow-hidden">
+                          <div className="flex rounded-md border border-light-border dark:border-border overflow-hidden">
                             <button
                               onClick={() => setViewMode("raw")}
                               className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
                                 viewMode === "raw"
                                   ? "bg-accent/20 text-accent-hover"
-                                  : "text-gray-500 hover:text-gray-300"
+                                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                               }`}
                             >
                               Raw
                             </button>
                             <button
                               onClick={() => setViewMode("preview")}
-                              className={`px-2 py-0.5 text-[10px] font-medium border-l border-border transition-colors ${
+                              className={`px-2 py-0.5 text-[10px] font-medium border-l border-light-border dark:border-border transition-colors ${
                                 viewMode === "preview"
                                   ? "bg-accent/20 text-accent-hover"
-                                  : "text-gray-500 hover:text-gray-300"
+                                  : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                               }`}
                             >
                               Preview
@@ -501,7 +501,7 @@ export default function CodePage() {
                         title="HTML preview"
                       />
                     ) : (
-                      <div className="flex-1 p-6 overflow-auto prose prose-invert prose-sm max-w-none prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent-hover">
+                      <div className="flex-1 p-6 overflow-auto prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover bg-white dark:bg-[#0d0e14] text-gray-900 dark:text-gray-100">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           rehypePlugins={[rehypeHighlight]}
@@ -511,13 +511,13 @@ export default function CodePage() {
                       </div>
                     )
                   ) : (
-                    <pre className="flex-1 p-4 text-sm text-gray-300 whitespace-pre overflow-auto font-mono leading-relaxed">
+                    <pre className="flex-1 p-4 text-sm text-gray-700 dark:text-gray-300 whitespace-pre overflow-auto font-mono leading-relaxed">
                       {selectedFile.content}
                     </pre>
                   )}
                 </div>
               ) : (
-                <div className="flex items-center justify-center h-full text-gray-600 text-sm">
+                <div className="flex items-center justify-center h-full text-gray-500 text-sm">
                   Select a file to view its contents
                 </div>
               )}

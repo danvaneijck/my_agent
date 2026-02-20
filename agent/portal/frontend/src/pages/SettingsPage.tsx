@@ -163,14 +163,14 @@ export default function SettingsPage() {
     >
 
       {/* Tabs */}
-      <div className="mt-4 flex gap-1 bg-surface-light rounded-lg p-1 border border-border">
+      <div className="mt-4 flex gap-1 bg-gray-100 dark:bg-surface-light rounded-lg p-1 border border-light-border dark:border-border">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${tab === t.key
               ? "bg-accent/15 text-accent-hover"
-              : "text-gray-400 hover:text-gray-200"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
           >
             {t.label}
@@ -197,14 +197,14 @@ export default function SettingsPage() {
           )}
           <div className="flex-1">
             <p className={`text-sm font-medium ${
-              oauthMessage.type === "success" ? "text-green-300" : "text-red-300"
+              oauthMessage.type === "success" ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"
             }`}>
               {oauthMessage.message}
             </p>
           </div>
           <button
             onClick={() => setOauthMessage(null)}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             <XCircle size={16} />
           </button>
@@ -293,28 +293,28 @@ export default function SettingsPage() {
           {/* Profile tab */}
           {tab === "profile" && profile && (
             <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4">
-              <h2 className="text-lg font-semibold text-white">Profile</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Profile</h2>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-gray-400">Username</span>
-                  <p className="text-white mt-1">{profile.username}</p>
+                  <span className="text-gray-500 dark:text-gray-400">Username</span>
+                  <p className="text-gray-900 dark:text-white mt-1">{profile.username}</p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Permission Level</span>
-                  <p className="text-white mt-1 capitalize">
+                  <span className="text-gray-500 dark:text-gray-400">Permission Level</span>
+                  <p className="text-gray-900 dark:text-white mt-1 capitalize">
                     {profile.permission_level}
                   </p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Token Usage</span>
+                  <span className="text-gray-500 dark:text-gray-400">Token Usage</span>
                   {profile.token_budget_monthly === null ? (
-                    <p className="text-white mt-1">Unlimited</p>
+                    <p className="text-gray-900 dark:text-white mt-1">Unlimited</p>
                   ) : (
                     <div className="mt-1">
-                      <p className="text-white">
+                      <p className="text-gray-900 dark:text-white">
                         {profile.tokens_used_this_month.toLocaleString()} / {profile.token_budget_monthly.toLocaleString()}
                       </p>
-                      <div className="w-full bg-surface rounded-full h-1.5 mt-1.5">
+                      <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-1.5 mt-1.5">
                         <div
                           className={`h-1.5 rounded-full transition-all ${profile.tokens_used_this_month / profile.token_budget_monthly > 0.9
                             ? "bg-red-500"
@@ -331,8 +331,8 @@ export default function SettingsPage() {
                   )}
                 </div>
                 <div>
-                  <span className="text-gray-400">Member Since</span>
-                  <p className="text-white mt-1">
+                  <span className="text-gray-500 dark:text-gray-400">Member Since</span>
+                  <p className="text-gray-900 dark:text-white mt-1">
                     {profile.created_at
                       ? new Date(profile.created_at).toLocaleDateString()
                       : "N/A"}
@@ -343,7 +343,7 @@ export default function SettingsPage() {
               {/* Connected platforms summary */}
               {accounts.length > 0 && (
                 <div className="pt-4 border-t border-light-border dark:border-border">
-                  <span className="text-sm text-gray-400">Connected Platforms</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Connected Platforms</span>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {accounts.map((account) => (
                       <span
@@ -392,16 +392,16 @@ export default function SettingsPage() {
                 <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 flex items-start gap-3">
                   <ShieldOff size={18} className="text-yellow-400 mt-0.5 shrink-0" />
                   <div>
-                    <p className="text-sm text-yellow-300 font-medium">
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300 font-medium">
                       Credential storage unavailable
                     </p>
-                    <p className="text-sm text-yellow-400/70 mt-1">
+                    <p className="text-sm text-yellow-600 dark:text-yellow-400/70 mt-1">
                       {credentialsError}
                     </p>
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   Configure credentials for each service. Values are encrypted at
                   rest and never displayed after saving.
                 </p>
