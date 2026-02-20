@@ -67,7 +67,7 @@ export default function TaskLogViewer({ taskId, initialStatus }: TaskLogViewerPr
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-surface border-b border-border text-xs">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-100 dark:bg-surface border-b border-light-border dark:border-border text-xs">
         <div className="flex items-center gap-3 text-gray-500">
           <span>{lines.length} lines</span>
           {wsPath && (
@@ -79,7 +79,7 @@ export default function TaskLogViewer({ taskId, initialStatus }: TaskLogViewerPr
         <div className="flex items-center gap-1">
           <button
             onClick={() => setAutoScroll(!autoScroll)}
-            className={`p-1.5 rounded hover:bg-surface-lighter ${
+            className={`p-1.5 rounded hover:bg-gray-200 dark:hover:bg-surface-lighter ${
               autoScroll ? "text-accent" : "text-gray-500"
             }`}
             title={autoScroll ? "Pause auto-scroll" : "Resume auto-scroll"}
@@ -88,7 +88,7 @@ export default function TaskLogViewer({ taskId, initialStatus }: TaskLogViewerPr
           </button>
           <button
             onClick={handleCopy}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-500"
+            className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-surface-lighter text-gray-500"
             title="Copy all logs"
           >
             {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
@@ -99,15 +99,15 @@ export default function TaskLogViewer({ taskId, initialStatus }: TaskLogViewerPr
       {/* Log content */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto bg-[#0d0e14] p-3 log-viewer"
+        className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0d0e14] p-3 log-viewer"
       >
         {lines.length === 0 ? (
-          <div className="text-gray-600 italic">
+          <div className="text-gray-500 italic">
             {status === "queued" ? "Waiting for task to start..." : "No log output yet..."}
           </div>
         ) : (
           lines.map((line, i) => (
-            <div key={i} className="text-gray-300 whitespace-pre-wrap break-all hover:bg-white/5">
+            <div key={i} className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all hover:bg-black/5 dark:hover:bg-white/5">
               {line}
             </div>
           ))

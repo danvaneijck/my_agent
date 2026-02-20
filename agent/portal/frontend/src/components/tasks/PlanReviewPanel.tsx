@@ -65,7 +65,7 @@ export default function PlanReviewPanel({ task, onContinued }: PlanReviewPanelPr
   return (
     <div className="space-y-4">
       {planContent && (
-        <div className="bg-surface border border-border rounded-lg p-4 prose prose-invert prose-sm max-w-none max-h-96 overflow-auto">
+        <div className="bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg p-4 prose dark:prose-invert prose-sm max-w-none max-h-96 overflow-auto">
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
             {planContent}
           </ReactMarkdown>
@@ -73,7 +73,7 @@ export default function PlanReviewPanel({ task, onContinued }: PlanReviewPanelPr
       )}
 
       {!planContent && (
-        <div className="bg-surface border border-border rounded-lg p-4 text-sm text-gray-400">
+        <div className="bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg p-4 text-sm text-gray-500 dark:text-gray-400">
           Plan completed — check the logs or workspace files for details.
         </div>
       )}
@@ -92,7 +92,7 @@ export default function PlanReviewPanel({ task, onContinued }: PlanReviewPanelPr
           </button>
           <button
             onClick={() => setFeedbackMode(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-lighter text-gray-300 text-sm hover:bg-border transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-200 dark:hover:bg-border transition-colors"
           >
             <MessageSquare size={16} />
             Give Feedback
@@ -106,13 +106,13 @@ export default function PlanReviewPanel({ task, onContinued }: PlanReviewPanelPr
             placeholder="Describe what changes you'd like to the plan..."
             rows={3}
             autoFocus
-            className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
+            className="w-full px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
           />
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setFeedbackMode(false)}
-              className="px-3 py-1.5 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors"
+              className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-border transition-colors"
             >
               Cancel
             </button>

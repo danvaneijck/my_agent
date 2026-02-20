@@ -41,8 +41,8 @@ export default function ConnectedAccounts({ accounts }: ConnectedAccountsProps) 
   const linkedPlatforms = new Set(accounts.map((a) => a.platform));
 
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-6 space-y-4">
-      <h2 className="text-lg font-semibold text-white">Connected Accounts</h2>
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-4">
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Connected Accounts</h2>
 
       {/* Linked accounts */}
       {accounts.length > 0 ? (
@@ -77,8 +77,8 @@ export default function ConnectedAccounts({ accounts }: ConnectedAccountsProps) 
 
       {/* Link new providers */}
       {linkable.filter((p) => !linkedPlatforms.has(p)).length > 0 && (
-        <div className="pt-2 border-t border-border">
-          <p className="text-sm text-gray-400 mb-3">Link additional accounts</p>
+        <div className="pt-2 border-t border-light-border dark:border-border">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Link additional accounts</p>
           <div className="flex gap-2">
             {linkable
               .filter((p) => !linkedPlatforms.has(p))
@@ -86,7 +86,7 @@ export default function ConnectedAccounts({ accounts }: ConnectedAccountsProps) 
                 <button
                   key={provider}
                   onClick={() => handleLink(provider)}
-                  className="px-4 py-2 rounded-lg bg-surface border border-border text-sm text-gray-300 hover:text-white hover:border-accent/50 transition-colors"
+                  className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-surface border border-light-border dark:border-border text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:border-accent/50 transition-colors"
                 >
                   Link {PLATFORM_LABELS[provider] || provider}
                 </button>

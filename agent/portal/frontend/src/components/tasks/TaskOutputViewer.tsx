@@ -94,7 +94,7 @@ function Collapsible({
     <div>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300"
+        className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         {label}
@@ -118,7 +118,7 @@ function CodeBlock({
 
   return (
     <div>
-      <pre className="text-xs text-gray-400 bg-black/30 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all max-h-96 overflow-y-auto">
+      <pre className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-black/30 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all max-h-96 overflow-y-auto">
         {display}
       </pre>
       {truncated && !expanded && (
@@ -191,7 +191,7 @@ function AssistantCard({
           return (
             <div key={i} className="flex gap-2 py-1">
               <Bot size={14} className="text-accent mt-0.5 shrink-0" />
-              <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent-hover">
+              <div className="prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                   {block.text as string}
                 </ReactMarkdown>
@@ -213,8 +213,8 @@ function AssistantCard({
             block.input as Record<string, unknown>,
           );
 
-          let borderClass = "border-border";
-          let bgClass = "bg-surface/50";
+          let borderClass = "border-light-border dark:border-border";
+          let bgClass = "bg-gray-50 dark:bg-surface/50";
           let iconColor = "text-blue-400";
 
           if (isRunning) {
@@ -339,7 +339,7 @@ function ResultCard({ event }: { event: StreamEvent }) {
       </div>
       {result ? (
         <Collapsible label="Result" defaultOpen>
-          <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent-hover mt-1">
+          <div className="prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover mt-1">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {String(result)}
             </ReactMarkdown>
@@ -480,7 +480,7 @@ export default function TaskOutputViewer({ taskId, initialStatus }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 bg-surface border-b border-border text-xs">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-100 dark:bg-surface border-b border-light-border dark:border-border text-xs">
         <div className="flex items-center gap-3 text-gray-500">
           <span>{events.length} events</span>
           {wsPath && (
@@ -491,7 +491,7 @@ export default function TaskOutputViewer({ taskId, initialStatus }: Props) {
         </div>
         <button
           onClick={() => setAutoScroll(!autoScroll)}
-          className={`p-1.5 rounded hover:bg-surface-lighter ${
+          className={`p-1.5 rounded hover:bg-gray-200 dark:hover:bg-surface-lighter ${
             autoScroll ? "text-accent" : "text-gray-500"
           }`}
           title={autoScroll ? "Pause auto-scroll" : "Resume auto-scroll"}

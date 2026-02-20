@@ -64,29 +64,29 @@ function WorkflowBubble({ message }: { message: ChatMessage }) {
       <div className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-yellow-500/20 text-yellow-400">
         <Workflow size={16} />
       </div>
-      <div className="max-w-[80%] rounded-xl px-4 py-3 text-sm bg-yellow-500/5 border border-yellow-500/20 text-gray-300">
-        <div className="flex items-center gap-2 text-yellow-400 text-xs font-medium mb-1">
+      <div className="max-w-[80%] rounded-xl px-4 py-3 text-sm bg-yellow-500/5 border border-yellow-500/20 text-gray-700 dark:text-gray-300">
+        <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400 text-xs font-medium mb-1">
           <span>Workflow continuation</span>
           {jobId && (
-            <span className="text-gray-600 font-mono">
+            <span className="text-gray-500 dark:text-gray-600 font-mono">
               {jobId.slice(0, 8)}
             </span>
           )}
         </div>
         {contextMsg && (
-          <p className="text-gray-300 text-sm whitespace-pre-wrap">{contextMsg}</p>
+          <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{contextMsg}</p>
         )}
         {resultData && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="mt-2 flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            className="mt-2 flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
           >
             {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             Result data
           </button>
         )}
         {expanded && resultData && (
-          <pre className="mt-1 text-xs text-gray-500 bg-surface rounded p-2 overflow-auto max-h-40 border border-border">
+          <pre className="mt-1 text-xs text-gray-600 dark:text-gray-500 bg-gray-100 dark:bg-surface rounded p-2 overflow-auto max-h-40 border border-light-border dark:border-border">
             {(() => {
               try {
                 return JSON.stringify(JSON.parse(resultData), null, 2);
@@ -97,7 +97,7 @@ function WorkflowBubble({ message }: { message: ChatMessage }) {
           </pre>
         )}
         {message.created_at && (
-          <div className="mt-1 text-xs text-gray-600">
+          <div className="mt-1 text-xs text-gray-500 dark:text-gray-600">
             {new Date(message.created_at).toLocaleTimeString(undefined, {
               hour: "2-digit",
               minute: "2-digit",
@@ -132,14 +132,14 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
       <div
         className={`max-w-[80%] rounded-xl px-4 py-3 text-sm ${
           isUser
-            ? "bg-accent/15 text-gray-200"
-            : "bg-surface-lighter text-gray-200"
+            ? "bg-accent/15 text-gray-800 dark:text-gray-200"
+            : "bg-gray-100 dark:bg-surface-lighter text-gray-800 dark:text-gray-200"
         }`}
       >
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
-          <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent-hover">
+          <div className="prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {message.content}
             </ReactMarkdown>
@@ -171,7 +171,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
 
         {/* Timestamp */}
         {message.created_at && (
-          <div className="mt-1 text-xs text-gray-600">
+          <div className="mt-1 text-xs text-gray-500 dark:text-gray-600">
             {new Date(message.created_at).toLocaleTimeString(undefined, {
               hour: "2-digit",
               minute: "2-digit",

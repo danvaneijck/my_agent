@@ -216,10 +216,10 @@ function ClaudeOAuthFlow({
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-accent/30 bg-accent/5 p-3">
-        <p className="text-sm text-gray-300 mb-2">
+        <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
           A new tab opened for Anthropic login. After you authorize:
         </p>
-        <ol className="text-sm text-gray-400 space-y-1 ml-4 list-decimal">
+        <ol className="text-sm text-gray-600 dark:text-gray-400 space-y-1 ml-4 list-decimal">
           <li>Copy the code shown on the Anthropic page</li>
           <li>Paste it below</li>
         </ol>
@@ -234,7 +234,7 @@ function ClaudeOAuthFlow({
           value={authCode}
           onChange={(e) => setAuthCode(e.target.value)}
           placeholder="Paste the code from Anthropic here..."
-          className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 font-mono focus:outline-none focus:border-accent"
+          className="w-full bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 font-mono focus:outline-none focus:border-accent"
           autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter") exchangeCode();
@@ -255,14 +255,14 @@ function ClaudeOAuthFlow({
         </button>
         <button
           onClick={onCancel}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition-colors"
         >
           <X size={14} />
           Cancel
         </button>
         <button
           onClick={startOAuth}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm transition-colors ml-auto"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition-colors ml-auto"
           title="Reopen Anthropic login"
         >
           <ExternalLink size={14} />
@@ -413,7 +413,7 @@ function GitOAuthFlow({
       {error && <p className="text-sm text-red-400">{error}</p>}
       <button
         onClick={onCancel}
-        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm transition-colors w-full justify-center"
+        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition-colors w-full justify-center"
       >
         <X size={14} />
         Cancel
@@ -517,7 +517,7 @@ function GitTokenStatusBar({
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors disabled:opacity-50 ml-auto"
+            className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50 ml-auto"
             title="Refresh token"
           >
             <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
@@ -600,13 +600,13 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
   };
 
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-5">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <h3 className="text-white font-medium">{service.label}</h3>
+          <h3 className="text-gray-900 dark:text-white font-medium">{service.label}</h3>
           {service.configured ? (
-            <span className="flex items-center gap-1 text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">
               <Shield size={12} />
               Configured
             </span>
@@ -621,7 +621,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
           {!editing && (
             <button
               onClick={() => setEditing(true)}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-surface-lighter transition-colors"
+              className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors"
               title="Edit"
             >
               <Edit3 size={16} />
@@ -631,7 +631,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-red-400 hover:bg-surface-lighter transition-colors disabled:opacity-50"
+              className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors disabled:opacity-50"
               title="Delete"
             >
               <Trash2 size={16} />
@@ -694,20 +694,20 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
 
           {/* Divider between OAuth and manual paste */}
           {(isClaude || isGitHub) && (
-            <div className="flex items-center gap-3 text-xs text-gray-600">
-              <div className="flex-1 border-t border-border" />
+            <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-600">
+              <div className="flex-1 border-t border-light-border dark:border-border" />
               <span>or paste credentials manually</span>
-              <div className="flex-1 border-t border-border" />
+              <div className="flex-1 border-t border-light-border dark:border-border" />
             </div>
           )}
 
           {/* Setup guide */}
           {guide && (
-            <div className="rounded-lg border border-border overflow-hidden">
+            <div className="rounded-lg border border-light-border dark:border-border overflow-hidden">
               <button
                 type="button"
                 onClick={() => setShowGuide(!showGuide)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
               >
                 <HelpCircle size={14} className="shrink-0" />
                 <span>{guide.title}</span>
@@ -726,9 +726,9 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
                           {i + 1}.
                         </span>
                         <div className="min-w-0">
-                          <p className="text-gray-300">{step.instruction}</p>
+                          <p className="text-gray-700 dark:text-gray-300">{step.instruction}</p>
                           {step.code && (
-                            <pre className="mt-1.5 px-3 py-2 bg-surface rounded-md text-xs text-gray-400 font-mono overflow-x-auto whitespace-pre-wrap break-all">
+                            <pre className="mt-1.5 px-3 py-2 bg-gray-100 dark:bg-surface rounded-md text-xs text-gray-600 dark:text-gray-400 font-mono overflow-x-auto whitespace-pre-wrap break-all">
                               {step.code}
                             </pre>
                           )}
@@ -737,7 +737,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
                     ))}
                   </ol>
                   {guide.note && (
-                    <p className="text-xs text-gray-500 border-t border-border pt-2">
+                    <p className="text-xs text-gray-500 border-t border-light-border dark:border-border pt-2">
                       {guide.note}
                     </p>
                   )}
@@ -748,7 +748,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
 
           {service.key_definitions.map((keyDef) => (
             <div key={keyDef.key}>
-              <label className="block text-sm text-gray-400 mb-1">
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
                 {keyDef.label}
                 {service.configured_keys.includes(keyDef.key) && (
                   <span className="text-green-400/60 ml-1">(saved)</span>
@@ -762,7 +762,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
                   }
                   placeholder={`Enter ${keyDef.label.toLowerCase()}...`}
                   rows={4}
-                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 font-mono focus:outline-none focus:border-accent"
+                  className="w-full bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 font-mono focus:outline-none focus:border-accent"
                 />
               ) : (
                 <input
@@ -776,7 +776,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
                       ? "Leave blank to keep current"
                       : `Enter ${keyDef.label.toLowerCase()}...`
                   }
-                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-accent"
+                  className="w-full bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-accent"
                 />
               )}
             </div>
@@ -795,7 +795,7 @@ export default function CredentialCard({ service, onUpdate }: CredentialCardProp
             </button>
             <button
               onClick={cancelEditing}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white text-sm transition-colors"
             >
               <X size={14} />
               Cancel
