@@ -100,12 +100,13 @@ class GitHubOAuthProvider(GitOAuthProvider):
         Scopes requested:
         - repo: Full control of private repositories
         - user:email: Access to user email addresses
+        - workflow: Update GitHub Actions workflow files
         """
         params = urlencode(
             {
                 "client_id": self.client_id,
                 "redirect_uri": redirect_uri,
-                "scope": "repo user:email",
+                "scope": "repo user:email workflow",
                 "state": state,
                 "allow_signup": "false",  # Don't allow new signups during OAuth
             }
@@ -149,7 +150,7 @@ class GitHubOAuthProvider(GitOAuthProvider):
             access_token = data["access_token"]
             refresh_token = data.get("refresh_token")
             expires_in = data.get("expires_in")  # Only if fine-grained with expiration
-            scope = data.get("scope", "repo user:email")
+            scope = data.get("scope", "repo user:email workflow")
 
             # Calculate expires_at if expires_in is present
             expires_at = None
