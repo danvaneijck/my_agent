@@ -147,11 +147,15 @@ class GitHubProvider(GitProvider):
     async def list_branches(self, owner: str, repo: str, per_page: int = 30) -> dict:
         data = await self._get(f"/repos/{owner}/{repo}/branches", per_page=per_page)
 
+        # Limit concurrent enrichment requests to avoid GitHub secondary rate limits
+        sem = asyncio.Semaphore(5)
+
         async def _enrich(b: dict) -> dict:
             sha = b["commit"]["sha"]
             date = None
             try:
-                commit = await self._get(f"/repos/{owner}/{repo}/git/commits/{sha}")
+                async with sem:
+                    commit = await self._get(f"/repos/{owner}/{repo}/git/commits/{sha}")
                 date = commit.get("committer", {}).get("date")
             except Exception:
                 pass

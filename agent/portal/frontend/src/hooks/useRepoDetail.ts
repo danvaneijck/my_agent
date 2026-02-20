@@ -26,16 +26,16 @@ export function useRepoDetail(owner: string, repo: string, provider: string = "g
       const [branchRes, issueRes, prRes, runsRes] = await Promise.all([
         api<{ count: number; branches: GitBranch[] }>(
           `/api/repos/${owner}/${repo}/branches?per_page=100&provider=${provider}`
-        ),
+        ).catch(() => ({ count: 0, branches: [] as GitBranch[] })),
         api<{ count: number; issues: GitIssue[] }>(
           `/api/repos/${owner}/${repo}/issues?state=open&per_page=50&provider=${provider}`
-        ).catch(() => ({ count: 0, issues: [] })),
+        ).catch(() => ({ count: 0, issues: [] as GitIssue[] })),
         api<{ count: number; pull_requests: GitPullRequest[] }>(
           `/api/repos/${owner}/${repo}/pulls?state=open&per_page=50&provider=${provider}`
-        ),
+        ).catch(() => ({ count: 0, pull_requests: [] as GitPullRequest[] })),
         api<{ total_count: number; workflow_runs: GitWorkflowRun[] }>(
           `/api/repos/${owner}/${repo}/actions?per_page=20&provider=${provider}`
-        ).catch(() => ({ total_count: 0, workflow_runs: [] })),
+        ).catch(() => ({ total_count: 0, workflow_runs: [] as GitWorkflowRun[] })),
       ]);
       setData({
         branches: branchRes.branches || [],

@@ -272,6 +272,7 @@ async def list_branches(
         "git_platform.list_branches",
         {"owner": owner, "repo": repo, "per_page": per_page, "provider": provider},
         str(user.user_id),
+        timeout=30.0,
     )
     if err:
         return err

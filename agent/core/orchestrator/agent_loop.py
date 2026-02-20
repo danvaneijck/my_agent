@@ -117,16 +117,16 @@ class AgentLoop:
             tool_names=[t.name for t in tools],
         )
 
+        # 6. Determine model (None lets the router pick its effective default)
+        model = persona.default_model if persona and persona.default_model else None
+        max_tokens = persona.max_tokens_per_request if persona else 4000
+
         # 5b. Measure actual tool definition token overhead
         if openai_tools:
             tools_json = json.dumps(openai_tools)
             tool_overhead = int(count_tokens(tools_json, model or self.settings.default_model) * 1.2)
         else:
             tool_overhead = 0
-
-        # 6. Determine model (None lets the router pick its effective default)
-        model = persona.default_model if persona and persona.default_model else None
-        max_tokens = persona.max_tokens_per_request if persona else 4000
 
         # 7. Register attachments as FileRecords and enrich content
         message_content = incoming.content
