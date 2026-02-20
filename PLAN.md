@@ -2,316 +2,238 @@
 
 ## Problem Statement
 
-When a user configures GitHub credentials via the OAuth flow (portal settings), `auto_push` in Claude tasks fails to push to the remote repository, even though the credentials appear to be configured correctly.
+When a user configures GitHub credentials via the OAuth flow (portal settings → GitHub OAuth), `auto_push=True` in Claude tasks fails to push to the remote repository, even though manually asking Claude to push in a `continue_task` call works fine.
+
+## Confirmed Working / Not the Problem
+
+Before listing bugs, establishing what definitely works helps narrow down the failure:
+
+- **Manual push inside task container works**: When a user does `continue_task` and instructs Claude to push, Claude runs `git push` from inside its Docker container where `GITHUB_TOKEN` is set as an environment variable and the credential helper is configured. This works.
+- **OAuth token is stored correctly**: The GitHub OAuth callback stores `github_token` in the credential store, `_prepare_user_credentials` reads it and sets `user_mounts["_github_token"]`, and `_build_docker_cmd` passes it as `GITHUB_TOKEN` env var to the task container.
+- **Credential helper syntax is correct**: The entrypoint configures `git config --global credential.helper "!f() { echo username=x-access-token; echo password=$GITHUB_TOKEN; }; f"` before cloning — this is the correct pattern.
+- **Repo URLs are always HTTPS**: Both `portal/routers/projects.py:314` and `project_planner/tools.py:926` always construct `https://github.com/owner/repo` — so SSH key absence is not the problem.
 
 ---
 
 ## Root Cause Analysis
 
-After examining the codebase thoroughly, **multiple bugs and design gaps** have been identified that collectively cause this failure. They are ordered by most-likely to least-likely impact.
+### Primary Bug: `auto_push` git instructions are appended to the prompt, Claude tries to push, push fails, container exits non-zero → task marked `"failed"` → `_auto_push_branch` fallback is never called
+
+**The failure flow:**
+
+1. `run_task` is called with `auto_push=True` and `repo_url`
+2. `_execute_task` appends to the prompt (lines 1483-1489):
+   ```
+   IMPORTANT — Git workflow:
+   - Commit your changes with descriptive commit messages as you work.
+   - When you are done, push your branch: git push -u origin HEAD
+   - Do NOT leave uncommitted changes.
+   ```
+3. Claude follows these instructions and runs `git push -u origin HEAD` from inside the container
+4. **The push fails** (authentication error — see Bug 2 below)
+5. Claude sees the push failure, reports it, and the container exits non-zero
+6. `_run_single_container` sets `task.status = "failed"` (line 1803)
+7. Back in `_execute_task` (line 1562): the auto push check is `task.status in ("completed", "awaiting_input")` — since status is `"failed"`, **`_auto_push_branch` is never called**
+8. The user sees the task as failed with a git push error
+
+**Why manual `continue_task` push works**: When the user manually continues the task and instructs Claude to push, the task is a new run which might succeed for a different reason, OR Claude is being instructed without the failing auto-push path. The key difference is that in a successful manual push, Claude doesn't fail at the push step.
 
 ---
 
-### Bug 1 (CRITICAL): `_run_git_in_workspace` uses `task.id` for workspace path, not the actual workspace directory name
+### Bug 2 (HIGH): Git credential helper is configured AFTER the repo is cloned — but the real issue is the `GITHUB_TOKEN` variable expansion in the credential helper shell function
+
+**File:** `agent/modules/claude_code/tools.py:2082-2085`
+
+The entrypoint sets up the credential helper as:
+```sh
+git config --global credential.helper "!f() { echo username=x-access-token; echo password=$GITHUB_TOKEN; }; f"
+```
+
+This writes the literal string `$GITHUB_TOKEN` into the git config. When git later calls the helper, it executes the function in a **new shell**, and `$GITHUB_TOKEN` must still be in the environment of that new shell for expansion to work.
+
+The git credential helper is invoked as a subprocess by git. The credential helper receives the environment of the git process, which inherits from the shell session. Since `GITHUB_TOKEN` is set as a Docker environment variable, it IS available to subprocesses — **this should work**.
+
+However, there is a subtle issue: `su -p claude -c /tmp/git_run.sh` uses `-p` to preserve the environment. But `exec su` replaces the shell process. Depending on the `su` implementation in the Docker image (which may be from `util-linux` or `busybox`), `-p` behavior can vary. Some `su` implementations reset environment variables like `HOME` and filter others. **If `GITHUB_TOKEN` is not preserved through `su -p`**, the credential helper expands `$GITHUB_TOKEN` to empty string, and git push authenticates with an empty password → 401 from GitHub.
+
+**This is the likely root cause for OAuth specifically**: when using SSH key auth, git uses the SSH key directly (not the credential helper), so the `su` environment preservation issue doesn't matter. When using OAuth token via `GITHUB_TOKEN`, the entire authentication chain depends on `$GITHUB_TOKEN` surviving the `su -p` invocation.
+
+To verify: check if `su -p` in the Docker worker image preserves arbitrary environment variables, or only a subset.
+
+---
+
+### Bug 3 (HIGH): `_run_git_in_workspace` uses `task.id` for workspace path instead of `os.path.basename(task.workspace)`
 
 **File:** `agent/modules/claude_code/tools.py:2431-2432`
 
 ```python
-# WRONG — uses task.id, not the actual workspace dir name
+# WRONG
 host_workspace = os.path.join(TASK_VOLUME, task.id)
 container_workspace = os.path.join(TASK_BASE_DIR, task.id)
 ```
 
-Compare with the correct implementation in `_build_docker_cmd` at lines 1943-1944:
-
+Compare with the correct implementation in `_build_docker_cmd` (lines 1943-1944):
 ```python
-# CORRECT — uses basename of workspace path
+# CORRECT
 workspace_dir_name = os.path.basename(task.workspace)
 host_workspace = os.path.join(TASK_VOLUME, workspace_dir_name)
 container_workspace = task.workspace
 ```
 
-**Why this causes failure:**
+For `continue_task`, the new task has a different `task.id` but shares the parent's workspace directory (named after the parent's `task.id`). So `_run_git_in_workspace` mounts the wrong (nonexistent) directory. This affects the `_auto_push_branch` fallback, `git_status`, `git_push`, and `git_diff` tools when called on a continuation task.
 
-`continue_task` creates a new task with a new `task.id` but reuses the **parent task's workspace directory** (named after the parent's `task.id`). When `_auto_push_branch` is called for a continuation task, it computes `host_workspace = TASK_VOLUME / new_task.id`, but that directory does not exist — only `TASK_VOLUME / parent_task.id` does. The Docker container either fails to start or starts in an empty workspace with no `.git` directory, causing the push to fail silently or with a confusing error.
-
-This also affects the `git_push`, `git_status`, `git_diff`, and `git_log` tool methods which all call `_run_git_in_workspace`.
-
-**The `-w task.workspace` flag (line 2439)** makes this even worse: the container working directory is set to `task.workspace` (the correct path inside the container) but the volume is mounted at the wrong path (`container_workspace = TASK_BASE_DIR/task.id` instead of the actual parent's workspace), so there is no `.git` to work with.
+**Why this doesn't explain the user's observation**: The user says manually asking Claude to push in a `continue_task` works — that's Claude pushing from inside the task container (which uses `_build_docker_cmd` with the correct path). The bug here would only affect `_auto_push_branch` called after a continuation task, or the standalone `git_push` tool called externally.
 
 ---
 
-### Bug 2 (HIGH): `_auto_push_branch` is NOT called when `task.status` is `"failed"` — but credentials are cleaned up before push in the `finally` block
+### Bug 4 (MEDIUM): `_auto_push_branch` is skipped when `task.status == "failed"`, even if the failure was only in the git push step
 
-**File:** `agent/modules/claude_code/tools.py:1561-1588`
+**File:** `agent/modules/claude_code/tools.py:1562`
 
 ```python
-# Auto-push on final successful exit
 if task.auto_push and task.repo_url and task.status in ("completed", "awaiting_input"):
     await self._auto_push_branch(task, user_mounts)
-
-except Exception as e:
-    ...
-    task.status = "failed"
-    task.error = str(e)
-finally:
-    task.completed_at = ...
-    task.save()
-    ...
-    # Clean up decrypted credentials from disk
-    if user_id:
-        creds_dir = os.path.join(USER_CREDS_DIR, user_id)
-        shutil.rmtree(creds_dir)   # <-- Runs AFTER auto_push attempt
 ```
 
-The control flow here is correct — cleanup happens in `finally` after `_auto_push_branch` runs. **However**, this means the user mounts (paths to credential files on disk) passed to `_auto_push_branch` are still valid directories during the push. This is fine in the nominal path.
-
-The issue is that `task.status` is set from `_run_single_container`'s return value via:
-
-```python
-exit_reason = await self._run_single_container(task, ...)
-```
-
-But looking at `_run_single_container`, it sets `task.status` to `"completed"` or `"failed"` (not directly visible here — need to confirm), and if it's `"failed"`, the auto push is skipped entirely. This means code that fails inside the container but still has commits to push will never get auto-pushed.
+If the Claude agent finishes all coding work but fails at the `git push` step, the container exits non-zero, `task.status = "failed"`, and the auto push fallback is never attempted — even though the workspace has committed changes ready to push. Adding `"failed"` to the status check (with a guard to only push if there are commits to push) would allow the fallback to recover from this scenario.
 
 ---
 
-### Bug 3 (HIGH): GitHub OAuth tokens stored as `github_token` are not refreshed before use in auto push
+### Bug 5 (LOW): `_auto_push_branch` silently swallows `git fetch` errors due to `set -e` + `2>/dev/null`
 
-**File:** `agent/modules/claude_code/tools.py:1919-1921` and `agent/portal/routers/settings.py:609-617`
-
-When a user authenticates via the GitHub OAuth flow, the portal stores:
-- `github_token` — the OAuth access token
-- `github_refresh_token` — only for fine-grained tokens with expiration enabled
-- `github_token_expires_at` — only if the token has expiration
-
-In `_prepare_user_credentials` (line 1919), the GitHub token is extracted:
-```python
-gh_token = github_creds.get("github_token", "")
-if gh_token:
-    mounts["_github_token"] = gh_token
-```
-
-**There is no proactive refresh of the GitHub OAuth token** before it is passed to Docker — unlike Claude credentials which have `_maybe_refresh_credentials`. For fine-grained GitHub tokens (which do expire, typically after a user-configured period), if the token has expired, the push will fail with a 401 from GitHub.
-
-Standard GitHub OAuth tokens (classic) don't expire, so this only affects users who configured fine-grained tokens. The `git_platform` module's `_refresh_bitbucket_token` shows the pattern that should exist for GitHub — check expiry and refresh proactively.
-
----
-
-### Bug 4 (MEDIUM): The OAuth `GITHUB_TOKEN` credential helper in the git container does not handle token expiry or retry
-
-**File:** `agent/modules/claude_code/tools.py:2421-2423`
-
-The HTTPS credential helper is configured inline as a shell function:
-```sh
-git config --global credential.helper "!f() { echo username=x-access-token; echo password=$GITHUB_TOKEN; }; f"
-```
-
-If `GITHUB_TOKEN` is an expired fine-grained token, `git push` will get a 401/403 from GitHub. The error surfaced in the task log will be a vague authentication failure. There is no retry or refresh path in this helper — it just fails.
-
----
-
-### Bug 5 (MEDIUM): `_auto_push_branch` uses `task.workspace` as the container's working directory, but workspace path correctness depends on Bug 1 being fixed
-
-**File:** `agent/modules/claude_code/tools.py:2439`
-
-```python
-"-w", task.workspace,
-```
-
-`task.workspace` stores the absolute container-internal path (e.g. `/tmp/claude_tasks/<task_id>`). For continuation tasks, the workspace is the **parent's** path (correct), but the volume mount at line 2438 will be wrong until Bug 1 is fixed. After Bug 1 is fixed, both the volume mount and `-w` will be consistent.
-
----
-
-### Bug 6 (LOW): The `_auto_push_branch` check for `UP_TO_DATE` uses `git rev-parse @{u}` which fails for new branches with no upstream
-
-**File:** `agent/modules/claude_code/tools.py:2274`
+**File:** `agent/modules/claude_code/tools.py:2272`
 
 ```sh
-REMOTE=$(git rev-parse @{u} 2>/dev/null || echo 'none');
+git fetch origin 2>/dev/null;
 ```
 
-If the branch has never been pushed (which is the normal case for auto_push), `@{u}` has no upstream tracking branch. The fallback `|| echo 'none'` means `REMOTE='none'` and `LOCAL != REMOTE`, so the check correctly proceeds to push. This is not a bug per se, but the `git fetch origin` at the start of the check (line 2272) can fail silently for HTTPS repos when credentials are not yet configured in that container. The `2>/dev/null` swallows the error and continues.
+The inner shell script runs with `set -e`. If `git fetch origin` fails (e.g., network error, auth failure), stderr is discarded and the script exits immediately — before printing `UP_TO_DATE` or `NEEDS_PUSH`. `check_out` will be empty, which doesn't match `UP_TO_DATE`, so the code proceeds to commit+push. This means a fetch failure causes a spurious commit+push attempt, but the push itself will also fail. The error is captured in `push_result["error"]`. Not a show-stopper but adds noise.
 
 ---
 
-## Summary of Root Causes
+## Summary Table
 
-| # | Severity | Issue |
-|---|----------|-------|
-| 1 | CRITICAL | `_run_git_in_workspace` uses `task.id` for workspace path instead of `os.path.basename(task.workspace)`, causing git operations to mount wrong/nonexistent directory for continuation tasks |
-| 2 | HIGH | Auto push skipped when task status is `"failed"`, even if the Claude agent committed work before failing |
-| 3 | HIGH | No proactive GitHub OAuth token refresh before push — expired fine-grained tokens cause silent auth failures |
-| 4 | MEDIUM | No retry or token refresh in the git credential helper for expired HTTPS tokens |
-| 5 | MEDIUM | Workspace path bug (Bug 1) cascades into wrong `-w` working directory for git container |
-| 6 | LOW | `git fetch origin` in status check can fail silently, producing misleading check output |
+| # | Severity | Location | Issue |
+|---|----------|----------|-------|
+| 1 | CRITICAL | `_execute_task` + container entrypoint | Claude is instructed to push, push fails (likely `GITHUB_TOKEN` not surviving `su -p`), container exits non-zero, task marked failed, `_auto_push_branch` never runs |
+| 2 | HIGH | `_entrypoint_script` line 2082-2085 | `GITHUB_TOKEN` may not survive `su -p claude` in the worker image's `su` implementation |
+| 3 | HIGH | `_run_git_in_workspace` line 2431-2432 | Wrong workspace path for continuation tasks |
+| 4 | MEDIUM | `_execute_task` line 1562 | `_auto_push_branch` skipped when task is `"failed"` |
+| 5 | LOW | `_auto_push_branch` line 2272 | `git fetch` failure with `set -e` silently exits check script |
 
 ---
 
 ## Files to Modify
 
-### Primary fix target
-- **`agent/modules/claude_code/tools.py`** — All bugs are in this file
-
-### Specific locations
-1. `_run_git_in_workspace` (line 2431-2432): Fix workspace path derivation
-2. `_execute_task` (line 1562): Consider adding `"failed"` to statuses that trigger auto push, or at least log why push was skipped
-3. `_prepare_user_credentials` (line 1918-1921): Add GitHub token expiry check and refresh before returning mounts
-4. `_run_git_in_workspace` entrypoint script (line 2421): Consider adding better error output for auth failures
+- **`agent/modules/claude_code/tools.py`** — All fixes are in this file
 
 ---
 
 ## Implementation Steps
 
-### Step 1: Fix Bug 1 — Workspace path in `_run_git_in_workspace`
+### Step 1: Fix the `su` environment preservation issue (Bug 2)
 
-Replace lines 2431-2432:
+**Option A — Use `env` to explicitly pass `GITHUB_TOKEN` to the inner script:**
+
+Instead of relying on `su -p` to preserve `GITHUB_TOKEN`, explicitly pass it:
+
+```sh
+# Replace:
+exec su -p claude -c /tmp/git_run.sh
+
+# With (in _run_git_in_workspace entrypoint):
+exec su claude -c "GITHUB_TOKEN=$GITHUB_TOKEN /tmp/git_run.sh"
+```
+
+Or more robustly, write the token into the script file directly (avoiding shell injection by using a file):
+
+```sh
+# In _run_git_in_workspace entrypoint, before writing git_run.sh:
+# Write GITHUB_TOKEN into a file readable only by claude
+echo "$GITHUB_TOKEN" > /tmp/.github_token
+chmod 600 /tmp/.github_token
+chown claude:claude /tmp/.github_token
+
+# In git_run.sh:
+GITHUB_TOKEN=$(cat /tmp/.github_token 2>/dev/null || true)
+```
+
+**Option B — Set up the credential store via a helper file instead of env var:**
+
+Write the token to `.git-credentials` in the home directory (netrc format) instead of using a shell function helper. This avoids env var issues entirely:
+
+```sh
+if [ -n "$GITHUB_TOKEN" ]; then
+    echo "https://x-access-token:${GITHUB_TOKEN}@github.com" > "$CLAUDE_HOME/.git-credentials"
+    chmod 600 "$CLAUDE_HOME/.git-credentials"
+    git config --global credential.helper store
+fi
+```
+
+**Option B is safer** because it doesn't depend on env var propagation through `su`, and the credential file is already in the home directory which `su` switches to.
+
+The same fix applies to `_entrypoint_script` (the main task container) for consistency, though in the main container the issue may not manifest because `su -p` behavior might differ, or because `set -e` is not used.
+
+### Step 2: Fix `_auto_push_branch` to also run when task is "failed" (Bug 4)
+
 ```python
-# OLD (wrong)
+# In _execute_task, replace:
+if task.auto_push and task.repo_url and task.status in ("completed", "awaiting_input"):
+    await self._auto_push_branch(task, user_mounts)
+
+# With:
+if task.auto_push and task.repo_url and task.status in ("completed", "awaiting_input", "failed"):
+    await self._auto_push_branch(task, user_mounts)
+```
+
+`_auto_push_branch` already has a `try/except` wrapper, and it checks `UP_TO_DATE` before doing anything. If the task failed before any commits, there's nothing to push and the fallback exits cleanly. If the task failed only at the push step, the fallback will attempt to push.
+
+### Step 3: Fix workspace path in `_run_git_in_workspace` (Bug 3)
+
+```python
+# In _run_git_in_workspace, replace lines 2431-2432:
 host_workspace = os.path.join(TASK_VOLUME, task.id)
 container_workspace = os.path.join(TASK_BASE_DIR, task.id)
 
-# NEW (correct — same pattern as _build_docker_cmd)
+# With:
 workspace_dir_name = os.path.basename(task.workspace)
 host_workspace = os.path.join(TASK_VOLUME, workspace_dir_name)
 container_workspace = task.workspace
 ```
 
-Also update the volume mount argument at line 2438:
-```python
-# OLD
-"-v", f"{host_workspace}:{container_workspace}",
+Also update the volume mount (line 2438) — no change in syntax needed, just the values become correct via the above variable changes.
 
-# NEW
-"-v", f"{host_workspace}:{container_workspace}",
-# (same syntax, but now with correct values)
-```
+### Step 4: Fix `git fetch` with `set -e` (Bug 5)
 
-### Step 2: Add GitHub OAuth token proactive refresh
-
-Add a new helper function analogous to `_maybe_refresh_credentials`:
+In the `_auto_push_branch` check command, either:
+- Remove `set -e` from the inner check script (by not using `eval "$GIT_CMD"` with `set -e`)
+- Or handle the fetch separately:
 
 ```python
-async def _maybe_refresh_github_token(user_id: str, github_creds: dict) -> dict:
-    """Proactively refresh GitHub OAuth token if it has an expiry and is close to expiring.
-
-    Returns updated github_creds dict. On failure, returns original.
-    Only applies to fine-grained tokens that have expiry set.
-    """
-    expires_at_iso = github_creds.get("github_token_expires_at")
-    refresh_token = github_creds.get("github_refresh_token")
-
-    if not expires_at_iso or not refresh_token:
-        # Classic tokens don't expire; nothing to do
-        return github_creds
-
-    from datetime import datetime, timezone
-    try:
-        expires_at = datetime.fromisoformat(expires_at_iso)
-        now = datetime.now(timezone.utc)
-        remaining = (expires_at - now).total_seconds()
-
-        if remaining > 1800:  # more than 30 minutes left
-            return github_creds
-
-        logger.info("proactive_github_token_refresh", user_id=user_id, remaining_seconds=remaining)
-
-        # Use the GitHubOAuthProvider to refresh
-        from portal.git_oauth import GitHubOAuthProvider
-        from shared.config import get_settings
-        settings = get_settings()
-        provider = GitHubOAuthProvider(
-            client_id=settings.github_oauth_client_id,
-            client_secret=settings.github_oauth_client_secret,
-        )
-        new_tokens = await provider.refresh_access_token(refresh_token)
-        if not new_tokens:
-            return github_creds
-
-        updated = dict(github_creds)
-        updated["github_token"] = new_tokens.access_token
-        if new_tokens.refresh_token:
-            updated["github_refresh_token"] = new_tokens.refresh_token
-        if new_tokens.expires_at:
-            expires_dt = datetime.fromtimestamp(new_tokens.expires_at / 1000, tz=timezone.utc)
-            updated["github_token_expires_at"] = expires_dt.isoformat()
-
-        # Persist refreshed token to DB
-        from shared.credential_store import CredentialStore
-        from shared.database import get_session_factory
-        if settings.credential_encryption_key:
-            store = CredentialStore(settings.credential_encryption_key)
-            factory = get_session_factory()
-            async with factory() as session:
-                await store.set_many(session, user_id, "github", {
-                    k: v for k, v in updated.items()
-                    if k in ("github_token", "github_refresh_token", "github_token_expires_at")
-                })
-
-        logger.info("proactive_github_token_refresh_success", user_id=user_id)
-        return updated
-    except Exception as e:
-        logger.warning("proactive_github_token_refresh_error", user_id=user_id, error=str(e))
-        return github_creds
-```
-
-Call this in `_prepare_user_credentials` before extracting the token:
-```python
-# In _prepare_user_credentials, after getting github_creds:
-github_creds_dict = dict(github_creds)
-if user_id:
-    github_creds_dict = await _maybe_refresh_github_token(user_id, github_creds_dict)
-
-gh_token = github_creds_dict.get("github_token", "")
-```
-
-### Step 3: Improve auth failure diagnostics in git container
-
-In `_run_git_in_workspace` entrypoint, add explicit credential verification before running the git command:
-
-```sh
-# After credential helper setup, log whether a token is set
-if [ -n "$GITHUB_TOKEN" ]; then
-    echo "[git-container] GITHUB_TOKEN is set (length: ${#GITHUB_TOKEN})"
-else
-    echo "[git-container] WARNING: No GITHUB_TOKEN set. Push may fail for HTTPS repos."
-fi
-```
-
-This is diagnostic only and doesn't affect execution, but makes failure logs actionable.
-
-### Step 4: Log auto push skip reason when task status prevents push
-
-In `_execute_task`, after the auto push condition:
-```python
-if task.auto_push and task.repo_url and task.status in ("completed", "awaiting_input"):
-    await self._auto_push_branch(task, user_mounts)
-elif task.auto_push and task.repo_url:
-    logger.info(
-        "auto_push_skipped_bad_status",
-        task_id=task.id,
-        status=task.status,
-    )
+check_cmd = (
+    "git fetch origin 2>/dev/null || true; "  # Add || true to prevent set -e exit
+    "LOCAL=$(git rev-parse HEAD); "
+    "REMOTE=$(git rev-parse @{u} 2>/dev/null || echo 'none'); "
+    "DIRTY=$(git status --porcelain | head -1); "
+    "if [ -z \"$DIRTY\" ] && [ \"$LOCAL\" = \"$REMOTE\" ]; then "
+    "echo 'UP_TO_DATE'; else echo 'NEEDS_PUSH'; fi"
+)
 ```
 
 ---
 
-## Testing Plan
+## Verification / Testing Plan
 
-1. **Regression test for Bug 1**: Create a task with `auto_push=True` and a repo. Then call `continue_task` on it. Verify `_auto_push_branch` mounts the correct workspace directory by checking container logs.
+1. **Reproduce the failure**: Create a task with `auto_push=True`, a GitHub HTTPS repo URL, and OAuth-only credentials (no SSH key). Observe the task log for `git push` errors inside the container.
 
-2. **OAuth token flow test**: Configure a fine-grained GitHub token with expiry in the credential store. Set `github_token_expires_at` to a time within 30 minutes. Verify `_maybe_refresh_github_token` is called and the refresh succeeds.
+2. **Test `su` env var preservation**: Inside the worker Docker image, run:
+   ```sh
+   docker run --rm -e GITHUB_TOKEN=test_value <worker_image> sh -c \
+     'echo "GITHUB_TOKEN=$GITHUB_TOKEN" && su -p claude -c "echo inner: GITHUB_TOKEN=\$GITHUB_TOKEN"'
+   ```
+   If the inner print shows empty `GITHUB_TOKEN`, the env var is lost through `su -p`.
 
-3. **End-to-end test**: Create a task with `repo_url` and `auto_push=True`, using OAuth-configured credentials (not SSH). Verify the branch is pushed to GitHub after the container exits.
+3. **Apply Step 1 fix**: After switching to `.git-credentials` store approach, repeat the task creation. Verify the task log shows successful `git push` from inside the container, and `_auto_push_branch` reports `already pushed by agent`.
 
-4. **Classic token test**: Verify classic GitHub OAuth tokens (no expiry) still work without triggering a refresh attempt.
+4. **Test Step 2 fix**: Create a task that fails at the push step (e.g., by temporarily using a bad token). Verify `_auto_push_branch` is now attempted and either succeeds (if a correct token is available from user_mounts) or fails with a clear error in `task.result["auto_push"]`.
 
----
-
-## What is NOT the Root Cause
-
-- The credential helper syntax in the entrypoint is correct (`echo username=x-access-token; echo password=$GITHUB_TOKEN`)
-- The OAuth flow itself stores the token under the correct key (`github_token`)
-- The `_prepare_user_credentials` function correctly reads and passes the token
-- The `_entrypoint_script` correctly configures the credential helper for the main container (this is for Claude's git operations during the task, which may work fine)
-- The `finally` cleanup block ordering is correct — credentials are cleaned up after auto push completes
+5. **Test continuation task auto push**: Create a task, then call `continue_task` with `auto_push=True`. Verify `_run_git_in_workspace` now mounts the correct workspace directory (the parent's workspace path, not the continuation task's ID).
