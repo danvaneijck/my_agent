@@ -11,6 +11,7 @@ import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shared.auth import get_service_auth_headers
 from shared.config import get_settings
 from shared.models.project import Project
 from shared.models.project_phase import ProjectPhase
@@ -1054,7 +1055,7 @@ class ProjectPlannerTools:
 
             if target_phase.order_index == 0 and project.planning_task_id:
                 # Check planning task status via HTTP call to claude_code
-                async with httpx.AsyncClient(timeout=15.0) as client:
+                async with httpx.AsyncClient(timeout=15.0, headers=get_service_auth_headers()) as client:
                     resp = await client.post(
                         f"{settings.module_services['claude_code']}/execute",
                         json={
@@ -1071,7 +1072,7 @@ class ProjectPlannerTools:
             # Launch claude_code task
             if use_continue_task:
                 # Continue from planning task
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                async with httpx.AsyncClient(timeout=30.0, headers=get_service_auth_headers()) as client:
                     resp = await client.post(
                         f"{settings.module_services['claude_code']}/execute",
                         json={
@@ -1106,7 +1107,7 @@ class ProjectPlannerTools:
                     task_args["branch"] = phase_branch
                     task_args["source_branch"] = source_branch
 
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                async with httpx.AsyncClient(timeout=30.0, headers=get_service_auth_headers()) as client:
                     resp = await client.post(
                         f"{settings.module_services['claude_code']}/execute",
                         json={
@@ -1201,7 +1202,7 @@ class ProjectPlannerTools:
                 }
 
             # Check claude_code task status
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with httpx.AsyncClient(timeout=15.0, headers=get_service_auth_headers()) as client:
                 resp = await client.post(
                     f"{settings.module_services['claude_code']}/execute",
                     json={
@@ -1261,7 +1262,7 @@ class ProjectPlannerTools:
                 for task in tasks:
                     pr_body += f"- {task.title}\n"
 
-                async with httpx.AsyncClient(timeout=30.0) as client:
+                async with httpx.AsyncClient(timeout=30.0, headers=get_service_auth_headers()) as client:
                     resp = await client.post(
                         f"{settings.module_services['git_platform']}/execute",
                         json={
@@ -1387,7 +1388,7 @@ class ProjectPlannerTools:
             f"Continue until all phases are complete. Workflow ID: {workflow_id}"
         )
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, headers=get_service_auth_headers()) as client:
             resp = await client.post(
                 f"{settings.module_services['scheduler']}/execute",
                 json={
