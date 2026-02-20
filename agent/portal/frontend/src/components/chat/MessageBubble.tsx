@@ -139,7 +139,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
-          <div className="prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover">
+          <div className="prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-light-border dark:prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {message.content}
             </ReactMarkdown>

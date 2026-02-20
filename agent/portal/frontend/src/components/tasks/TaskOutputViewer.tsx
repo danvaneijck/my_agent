@@ -191,7 +191,7 @@ function AssistantCard({
           return (
             <div key={i} className="flex gap-2 py-1">
               <Bot size={14} className="text-accent mt-0.5 shrink-0" />
-              <div className="prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover">
+              <div className="prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-light-border dark:prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                   {block.text as string}
                 </ReactMarkdown>
@@ -339,7 +339,7 @@ function ResultCard({ event }: { event: StreamEvent }) {
       </div>
       {result ? (
         <Collapsible label="Result" defaultOpen>
-          <div className="prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover mt-1">
+          <div className="prose dark:prose-invert prose-sm max-w-none prose-pre:bg-gray-200 dark:prose-pre:bg-[#0d0e14] prose-pre:border prose-pre:border-light-border dark:prose-pre:border-border prose-code:text-accent dark:prose-code:text-accent-hover mt-1">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {String(result)}
             </ReactMarkdown>

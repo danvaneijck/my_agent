@@ -201,13 +201,13 @@ export default function NewTaskModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-surface-light border border-border rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-          <h3 className="text-base font-semibold text-white">New Task</h3>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-light-border dark:border-border shrink-0">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">New Task</h3>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
           >
             <X size={18} />
           </button>
@@ -216,22 +216,22 @@ export default function NewTaskModal({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
           <div>
-            <label className="block text-sm text-gray-400 mb-1.5">Task description</label>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1.5">Task description</label>
             <textarea
               ref={promptRef}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe what you want Claude Code to do..."
               rows={4}
-              className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
+              className="w-full px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
             />
           </div>
 
           {/* Repository selection dropdown (when not pre-filled) */}
           {!defaultRepoUrl && (
             <div className="space-y-3">
-              <label className="block text-sm text-gray-400 mb-1.5">
-                Repository <span className="text-gray-600">(optional)</span>
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1.5">
+                Repository <span className="text-gray-400 dark:text-gray-600">(optional)</span>
               </label>
 
               {/* Search input */}
@@ -241,13 +241,13 @@ export default function NewTaskModal({
                   value={repoSearch}
                   onChange={(e) => setRepoSearch(e.target.value)}
                   placeholder="Search repositories..."
-                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent"
                 />
               </div>
 
               {/* Repo list dropdown */}
               {repoSearch && (
-                <div className="max-h-52 overflow-y-auto border border-border rounded-lg divide-y divide-border bg-surface">
+                <div className="max-h-52 overflow-y-auto border border-light-border dark:border-border rounded-lg divide-y divide-light-border dark:divide-border bg-white dark:bg-surface">
                   {reposLoading ? (
                     <div className="px-3 py-4 text-sm text-gray-500 text-center">Loading repos...</div>
                   ) : filteredRepos.length === 0 ? (
@@ -267,10 +267,10 @@ export default function NewTaskModal({
                           setBranch(repo.default_branch);
                           setCreatingNewBranch(false);
                         }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-surface-lighter transition-colors"
+                        className="w-full text-left px-3 py-2.5 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-white font-mono">{repo.full_name}</span>
+                          <span className="text-sm text-gray-900 dark:text-white font-mono">{repo.full_name}</span>
                           {repo.private && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
                               private
@@ -299,7 +299,7 @@ export default function NewTaskModal({
                       setBranch("");
                       setCreatingNewBranch(false);
                     }}
-                    className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                   >
                     <X size={14} />
                   </button>
@@ -310,16 +310,16 @@ export default function NewTaskModal({
 
           {/* Repository info (if pre-filled) */}
           {defaultRepoUrl && (
-            <div className="bg-surface/50 border border-border rounded-lg px-3 py-2">
+            <div className="bg-gray-50 dark:bg-surface/50 border border-light-border dark:border-border rounded-lg px-3 py-2">
               <span className="text-xs text-gray-500 block mb-0.5">Repository</span>
-              <span className="text-sm text-gray-300 font-mono">{selectedRepo?.full_name || repoUrl}</span>
+              <span className="text-sm text-gray-700 dark:text-gray-300 font-mono">{selectedRepo?.full_name || repoUrl}</span>
             </div>
           )}
 
           {/* Branch selection dropdown (shown when repo is selected or pre-filled) */}
           {(selectedRepo || defaultRepoUrl) && (
             <div className="space-y-3">
-              <label className="block text-sm text-gray-400 mb-1.5">
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1.5">
                 <GitBranch size={14} className="inline mr-1 -mt-0.5" />
                 Branch
               </label>
@@ -337,7 +337,7 @@ export default function NewTaskModal({
                 className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
                   creatingNewBranch
                     ? "bg-accent/10 border-accent/30 text-accent"
-                    : "bg-surface border-border text-gray-300 hover:bg-surface-lighter"
+                    : "bg-white dark:bg-surface border-light-border dark:border-border text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-surface-lighter"
                 }`}
               >
                 <Plus size={14} className="inline mr-2 -mt-0.5" />
@@ -351,7 +351,7 @@ export default function NewTaskModal({
                     value={newBranch}
                     onChange={(e) => setNewBranch(e.target.value)}
                     placeholder="feature/my-new-feature"
-                    className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent font-mono"
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent font-mono"
                   />
                   {newBranch.trim() && (
                     <p className="text-xs text-gray-500 mt-1">
@@ -372,13 +372,13 @@ export default function NewTaskModal({
                       value={branchSearch}
                       onChange={(e) => setBranchSearch(e.target.value)}
                       placeholder="Search branches..."
-                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent"
                     />
                   </div>
 
                   {/* Branch list dropdown */}
                   {branchSearch && (
-                    <div className="max-h-52 overflow-y-auto border border-border rounded-lg divide-y divide-border bg-surface">
+                    <div className="max-h-52 overflow-y-auto border border-light-border dark:border-border rounded-lg divide-y divide-light-border dark:divide-border bg-white dark:bg-surface">
                       {branchesLoading ? (
                         <div className="px-3 py-4 text-sm text-gray-500 text-center">Loading branches...</div>
                       ) : filteredBranches.length === 0 ? (
@@ -395,10 +395,10 @@ export default function NewTaskModal({
                               setBranch(branchItem.name);
                               setBranchSearch("");
                             }}
-                            className="w-full text-left px-3 py-2.5 hover:bg-surface-lighter transition-colors"
+                            className="w-full text-left px-3 py-2.5 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors"
                           >
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-white font-mono">{branchItem.name}</span>
+                              <span className="text-sm text-gray-900 dark:text-white font-mono">{branchItem.name}</span>
                               {branchItem.protected && (
                                 <Shield size={12} className="text-yellow-400" />
                               )}
@@ -424,7 +424,7 @@ export default function NewTaskModal({
                           setSelectedBranch(null);
                           setBranch("");
                         }}
-                        className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                       >
                         <X size={14} />
                       </button>
@@ -433,9 +433,9 @@ export default function NewTaskModal({
 
                   {/* Show default branch if nothing selected */}
                   {!selectedBranch && branch && (
-                    <div className="bg-surface/50 border border-border rounded-lg px-3 py-2">
+                    <div className="bg-gray-50 dark:bg-surface/50 border border-light-border dark:border-border rounded-lg px-3 py-2">
                       <span className="text-xs text-gray-500 block mb-0.5">Default branch</span>
-                      <span className="text-sm text-gray-300 font-mono">{branch}</span>
+                      <span className="text-sm text-gray-700 dark:text-gray-300 font-mono">{branch}</span>
                     </div>
                   )}
                 </>
@@ -445,14 +445,14 @@ export default function NewTaskModal({
 
           {/* Mode */}
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-400">Mode:</label>
+            <label className="text-sm text-gray-600 dark:text-gray-400">Mode:</label>
             <button
               type="button"
               onClick={() => setMode(mode === "execute" ? "plan" : "execute")}
               className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
                 mode === "plan"
                   ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                  : "bg-surface-lighter text-gray-300 border border-border"
+                  : "bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 border border-light-border dark:border-border"
               }`}
             >
               {mode === "plan" ? "Plan First" : "Execute Directly"}
@@ -467,14 +467,14 @@ export default function NewTaskModal({
           {/* Auto-push (only shown when a repo + branch is configured) */}
           {(repoUrl.trim() || defaultRepoUrl) && effectiveBranch && (
             <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-400">Auto-push:</label>
+              <label className="text-sm text-gray-600 dark:text-gray-400">Auto-push:</label>
               <button
                 type="button"
                 onClick={() => setAutoPush(!autoPush)}
                 className={`px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5 ${
                   autoPush
                     ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                    : "bg-surface-lighter text-gray-300 border border-border"
+                    : "bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 border border-light-border dark:border-border"
                 }`}
               >
                 <Upload size={14} />
@@ -492,11 +492,11 @@ export default function NewTaskModal({
         </form>
 
         {/* Footer - Actions */}
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border shrink-0">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-light-border dark:border-border shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors"
+            className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-border transition-colors"
           >
             Cancel
           </button>

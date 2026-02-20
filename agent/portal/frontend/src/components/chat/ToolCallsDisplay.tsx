@@ -14,16 +14,16 @@ export default function ToolCallsDisplay({ metadata }: ToolCallsDisplayProps) {
   }
 
   return (
-    <div className="mt-3 pt-3 border-t border-border/50">
+    <div className="mt-3 pt-3 border-t border-light-border dark:border-border/50">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-300 transition-colors w-full"
+        className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors w-full"
       >
         <Wrench size={14} className="text-accent" />
         <span>
           Used {metadata.total_count} tool{metadata.total_count !== 1 ? "s" : ""}
           {metadata.unique_tools !== metadata.total_count && (
-            <span className="text-gray-600"> ({metadata.unique_tools} unique)</span>
+            <span className="text-gray-500 dark:text-gray-600"> ({metadata.unique_tools} unique)</span>
           )}
         </span>
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -34,10 +34,10 @@ export default function ToolCallsDisplay({ metadata }: ToolCallsDisplayProps) {
           {metadata.tools_sequence.map((tool, idx) => (
             <div
               key={tool.tool_use_id}
-              className="flex items-center gap-2 text-xs text-gray-400 pl-6"
+              className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 pl-6"
             >
-              <span className="text-gray-600 font-mono">{idx + 1}.</span>
-              <span className="font-mono text-gray-300">{tool.name}</span>
+              <span className="text-gray-400 dark:text-gray-600 font-mono">{idx + 1}.</span>
+              <span className="font-mono text-gray-700 dark:text-gray-300">{tool.name}</span>
               {tool.success ? (
                 <CheckCircle2 size={12} className="text-green-400" />
               ) : (
