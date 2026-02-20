@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown,
   ChevronRight,
@@ -16,6 +17,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { getToken } from "@/api/client";
+import { streamEntryVariants } from "@/utils/animations";
 import type { WsTaskMessage } from "@/types";
 
 interface Props {
@@ -508,14 +510,23 @@ export default function TaskOutputViewer({ taskId, initialStatus }: Props) {
               : "No output yet..."}
           </div>
         ) : (
-          events.map((event) => (
-            <EventCard
-              key={event.id}
-              event={event}
-              toolResults={toolResults}
-              taskRunning={taskRunning}
-            />
-          ))
+          <AnimatePresence initial={false}>
+            {events.map((event) => (
+              <motion.div
+                key={event.id}
+                variants={streamEntryVariants}
+                initial="initial"
+                animate="animate"
+                layout="position"
+              >
+                <EventCard
+                  event={event}
+                  toolResults={toolResults}
+                  taskRunning={taskRunning}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         )}
       </div>
     </div>

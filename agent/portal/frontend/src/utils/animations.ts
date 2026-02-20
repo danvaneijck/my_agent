@@ -281,6 +281,24 @@ export const spinnerVariants: Variants = {
 };
 
 /**
+ * Stream entry variants — used for new log/event entries fading in during task streaming
+ */
+export const streamEntryVariants: Variants = {
+  initial: {
+    opacity: 0,
+    y: 8,
+  },
+  animate: {
+    opacity: 1,
+    y: 0,
+    transition: getTransition({
+      duration: 0.25,
+      ease: easings.easeOut,
+    }),
+  },
+};
+
+/**
  * Progress bar variants
  */
 export const progressVariants = {
