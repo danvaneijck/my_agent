@@ -37,22 +37,18 @@ _session_factory = None
 # Fallback: global client built from env vars
 _fallback_client: BenchmarkerClient | None = None
 
-# Cache per-user clients to preserve authentication state
-_user_client_cache: dict[str, BenchmarkerClient] = {}
-
 
 async def _get_client_for_user(user_id: str | None) -> BenchmarkerClient | None:
     """Resolve a BenchmarkerClient instance for the given user.
+
+    Always fetches credentials from the DB so that updates made via the portal
+    are picked up immediately without restarting the module.
 
     Priority:
     1. User's stored Benchmarker credentials from credential store
     2. Global BENCHMARKER_API_URL/BENCHMARKER_API_KEY env vars (fallback)
     """
     if user_id and _credential_store and _session_factory:
-        # Return cached instance if available
-        if user_id in _user_client_cache:
-            return _user_client_cache[user_id]
-
         try:
             uid = uuid.UUID(user_id)
             async with _session_factory() as session:
@@ -60,9 +56,7 @@ async def _get_client_for_user(user_id: str | None) -> BenchmarkerClient | None:
             api_url = creds.get("api_url")
             api_key = creds.get("api_key")
             if api_url and api_key:
-                client = BenchmarkerClient(api_url=api_url, api_key=api_key)
-                _user_client_cache[user_id] = client
-                return client
+                return BenchmarkerClient(api_url=api_url, api_key=api_key)
         except Exception as e:
             logger.warning("user_credential_lookup_failed", user_id=user_id, error=str(e))
 
