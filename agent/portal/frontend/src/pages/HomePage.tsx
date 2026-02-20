@@ -188,7 +188,7 @@ function StatRow({ items }: { items: { label: string; value: number; color?: str
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4">
       {items.map((item) => (
         <div key={item.label} className="text-center">
-          <p className={`text-xl font-bold ${item.color || "text-white"}`}>
+          <p className={`text-xl font-bold ${item.color || "text-gray-900 dark:text-white"}`}>
             {item.value}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">{item.label}</p>
@@ -300,7 +300,7 @@ function ProjectsCard({
                   </div>
                   {project.total_tasks > 0 && (
                     <div className="flex items-center gap-2 mt-1">
-                      <div className="flex-1 h-1 bg-surface rounded-full overflow-hidden max-w-[120px]">
+                      <div className="flex-1 h-1 bg-gray-200 dark:bg-surface rounded-full overflow-hidden max-w-[120px]">
                         <div
                           className="h-full bg-accent rounded-full"
                           style={{ width: `${pct}%` }}
@@ -768,7 +768,7 @@ function UsageCard({
           {/* Budget bar */}
           <div>
             <div className="flex items-baseline justify-between mb-1.5">
-              <span className="text-lg font-bold text-white">
+              <span className="text-lg font-bold text-gray-900 dark:text-white">
                 {formatNumber(usage.tokens_used_this_month)}
               </span>
               <span className="text-xs text-gray-400">
@@ -778,7 +778,7 @@ function UsageCard({
               </span>
             </div>
             {hasBudget && (
-              <div className="w-full bg-surface rounded-full h-2">
+              <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-2">
                 <div
                   className={`h-2 rounded-full transition-all ${budgetColor(usagePct)}`}
                   style={{ width: `${usagePct}%` }}
@@ -895,7 +895,7 @@ function ClaudeCodeUsageCard({
                   {Math.round(data.five_hour.utilization_percent)}%
                 </span>
               </div>
-              <div className="w-full bg-surface rounded-full h-2.5">
+              <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-2.5">
                 <div
                   className={`h-2.5 rounded-full transition-all ${utilizationColor(data.five_hour.utilization_percent)}`}
                   style={{ width: `${Math.min(100, data.five_hour.utilization_percent)}%` }}
@@ -914,7 +914,7 @@ function ClaudeCodeUsageCard({
                   {Math.round(data.seven_day.utilization_percent)}%
                 </span>
               </div>
-              <div className="w-full bg-surface rounded-full h-2.5">
+              <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-2.5">
                 <div
                   className={`h-2.5 rounded-full transition-all ${utilizationColor(data.seven_day.utilization_percent)}`}
                   style={{ width: `${Math.min(100, data.seven_day.utilization_percent)}%` }}
@@ -1004,7 +1004,7 @@ function ProjectTasksCard({
       />
       {stats.total > 0 && (
         <div className="px-4 pb-3">
-          <div className="flex h-2 rounded-full overflow-hidden bg-surface">
+          <div className="flex h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-surface">
             {stats.done > 0 && (
               <div
                 className="bg-green-500"
@@ -1283,7 +1283,7 @@ export default function HomePage() {
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <Home size={20} className="text-accent" />
           Dashboard
         </h2>
@@ -1293,7 +1293,7 @@ export default function HomePage() {
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               autoRefresh
                 ? "bg-accent/15 text-accent-hover"
-                : "text-gray-400 hover:text-gray-800 dark:text-gray-200 hover:bg-surface-lighter"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-surface-lighter"
             }`}
             title={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh (30s)"}
             aria-label="Toggle auto-refresh"
@@ -1302,7 +1302,7 @@ export default function HomePage() {
           </button>
           <button
             onClick={dashboard.refetch}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-800 dark:text-gray-200 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
             title="Refresh dashboard"
             aria-label="Refresh dashboard"
           >

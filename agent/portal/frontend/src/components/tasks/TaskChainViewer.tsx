@@ -23,7 +23,7 @@ export default function TaskChainViewer({ taskId, currentTaskId }: TaskChainView
   if (chain.length <= 1) return null;
 
   return (
-    <div className="bg-surface border border-border rounded-lg p-3">
+    <div className="bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg p-3">
       <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
         Task Chain
       </h4>
@@ -35,7 +35,7 @@ export default function TaskChainViewer({ taskId, currentTaskId }: TaskChainView
             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors ${
               t.id === currentTaskId
                 ? "bg-accent/10 text-accent"
-                : "text-gray-400 hover:bg-surface-lighter"
+                : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-surface-lighter"
             }`}
           >
             <StatusBadge status={t.status} />

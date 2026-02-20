@@ -169,7 +169,7 @@ export default function ShowcasePage() {
               <p className="text-xs text-gray-500 dark:text-gray-500">
                 Caption (xs) - Metadata and timestamps
               </p>
-              <code className="font-mono text-sm bg-surface-lighter dark:bg-surface-lighter px-2 py-1 rounded">
+              <code className="font-mono text-sm bg-gray-100 dark:bg-surface-lighter px-2 py-1 rounded text-gray-800 dark:text-gray-200">
                 Code (mono) - JetBrains Mono
               </code>
             </div>

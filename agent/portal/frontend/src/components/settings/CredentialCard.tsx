@@ -350,7 +350,7 @@ function ClaudeTokenStatusBar({
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors disabled:opacity-50 ml-auto"
+          className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50 ml-auto"
           title="Refresh token"
         >
           <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />

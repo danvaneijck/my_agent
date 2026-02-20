@@ -38,17 +38,17 @@ function TaskCard({
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={() => navigate(`/projects/${projectId}/tasks/${task.task_id}`)}
-      className="bg-gray-100 dark:bg-surface border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-border-light transition-colors"
+      className="bg-gray-100 dark:bg-surface border border-light-border dark:border-border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-gray-300 dark:hover:border-border-light transition-colors"
     >
-      <p className="text-sm font-medium text-white mb-1">{task.title}</p>
+      <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">{task.title}</p>
 
       {task.description && (
-        <p className="text-xs text-gray-400 line-clamp-2 mb-2">{task.description}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">{task.description}</p>
       )}
 
       <div className="flex flex-wrap gap-1.5">
         {task.branch_name && (
-          <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-surface-lighter rounded px-1.5 py-0.5">
+          <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-200 dark:bg-surface-lighter rounded px-1.5 py-0.5">
             <GitBranch size={10} />
             <span className="truncate max-w-[120px]">{task.branch_name.split("/").pop()}</span>
           </span>
@@ -71,7 +71,7 @@ function TaskCard({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 text-xs text-gray-400 bg-surface-lighter rounded px-1.5 py-0.5 hover:bg-border"
+            className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 bg-gray-200 dark:bg-surface-lighter rounded px-1.5 py-0.5 hover:bg-gray-300 dark:hover:bg-border"
           >
             <ExternalLink size={10} />
             #{task.issue_number}
@@ -158,7 +158,7 @@ export default function PhaseDetailPage() {
       {/* Back nav */}
       <button
         onClick={() => navigate(`/projects/${projectId}`)}
-        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200"
+        className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
       >
         <ArrowLeft size={16} /> Back to Project
       </button>
@@ -167,7 +167,7 @@ export default function PhaseDetailPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-white">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               {phase?.name || "Phase"}
             </h2>
             {phase?.pr_number && project?.repo_owner && project?.repo_name && (
@@ -183,13 +183,13 @@ export default function PhaseDetailPage() {
             )}
             <button
               onClick={refetch}
-              className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
             >
               <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
             </button>
           </div>
           {phase?.description && (
-            <p className="text-sm text-gray-400 mt-1">{phase.description}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{phase.description}</p>
           )}
           <p className="text-xs text-gray-500 mt-1">
             {tasks.length} tasks total — drag cards between columns to update status
@@ -209,10 +209,10 @@ export default function PhaseDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-3 animate-pulse">
-              <div className="h-4 bg-surface-lighter/60 rounded w-1/2 mb-3" />
+              <div className="h-4 bg-gray-200 dark:bg-surface-lighter/60 rounded w-1/2 mb-3" />
               <div className="space-y-2">
-                <div className="h-20 bg-surface-lighter/60 rounded" />
-                <div className="h-20 bg-surface-lighter/60 rounded" />
+                <div className="h-20 bg-gray-200 dark:bg-surface-lighter/60 rounded" />
+                <div className="h-20 bg-gray-200 dark:bg-surface-lighter/60 rounded" />
               </div>
             </div>
           ))}
@@ -229,12 +229,12 @@ export default function PhaseDetailPage() {
               }}
               onDragLeave={() => setDragOver(null)}
               onDrop={(e) => handleDrop(e, col.key)}
-              className={`bg-surface-light border-t-2 ${col.color} border border-border rounded-xl overflow-hidden transition-colors ${
+              className={`bg-white dark:bg-surface-light border-t-2 ${col.color} border border-light-border dark:border-border rounded-xl overflow-hidden transition-colors ${
                 dragOver === col.key ? "ring-2 ring-accent/50 bg-accent/5" : ""
               }`}
             >
               <div className="px-3 py-2 border-b border-light-border dark:border-border flex items-center justify-between">
-                <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {col.label}
                 </h3>
                 <span className="text-xs text-gray-500">{col.tasks.length}</span>
@@ -250,7 +250,7 @@ export default function PhaseDetailPage() {
                   />
                 ))}
                 {col.tasks.length === 0 && (
-                  <div className="text-center py-4 text-xs text-gray-600">
+                  <div className="text-center py-4 text-xs text-gray-500">
                     No tasks
                   </div>
                 )}

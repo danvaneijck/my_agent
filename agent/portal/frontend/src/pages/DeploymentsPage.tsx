@@ -152,12 +152,12 @@ function LogViewer({ deployId, serviceName }: { deployId: string; serviceName?: 
         <button
           onClick={fetchLogs}
           disabled={loading}
-          className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
         >
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
-      <pre className="text-xs text-gray-300 whitespace-pre-wrap max-h-64 overflow-y-auto font-mono">
+      <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap max-h-64 overflow-y-auto font-mono">
         {loading && !logs ? "Loading..." : logs}
       </pre>
     </div>
@@ -198,11 +198,11 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
             {services.map((svc) => (
               <motion.tr
                 key={svc.name}
-                className="hover:bg-surface-lighter/50"
+                className="hover:bg-gray-50 dark:hover:bg-surface-lighter/50"
                 variants={listItemVariants}
                 layout
               >
-                <td className="px-3 py-2 font-mono text-gray-200">{svc.name}</td>
+                <td className="px-3 py-2 font-mono text-gray-800 dark:text-gray-200">{svc.name}</td>
                 <td className="px-3 py-2">
                   <StatusBadge status={svc.status} />
                 </td>
@@ -235,7 +235,7 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
                         selectedService === svc.name ? null : svc.name
                       )
                     }
-                    className="p-1 rounded hover:bg-surface-lighter text-gray-500 hover:text-gray-300"
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                   >
                     <FileText size={14} />
                   </button>
@@ -324,13 +324,13 @@ function EnvVarEditor({
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-border">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Settings size={16} className="text-accent" />
             Environment Variables
           </h3>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           >
             <X size={16} />
           </button>
@@ -351,7 +351,7 @@ function EnvVarEditor({
                     value={key}
                     onChange={(e) => updateEntry(i, 0, e.target.value)}
                     placeholder="KEY"
-                    className="flex-[2] bg-surface border border-border rounded px-2 py-1.5 text-xs text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-accent"
+                    className="flex-[2] bg-white dark:bg-surface border border-light-border dark:border-border rounded px-2 py-1.5 text-xs text-gray-900 dark:text-gray-200 font-mono placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-accent"
                   />
                   <span className="text-gray-600">=</span>
                   <input
@@ -359,7 +359,7 @@ function EnvVarEditor({
                     value={value}
                     onChange={(e) => updateEntry(i, 1, e.target.value)}
                     placeholder="value"
-                    className="flex-[3] bg-surface border border-border rounded px-2 py-1.5 text-xs text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-accent"
+                    className="flex-[3] bg-white dark:bg-surface border border-light-border dark:border-border rounded px-2 py-1.5 text-xs text-gray-900 dark:text-gray-200 font-mono placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-accent"
                   />
                   <button
                     onClick={() => removeEntry(i)}
@@ -371,7 +371,7 @@ function EnvVarEditor({
               ))}
               <button
                 onClick={addEntry}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 mt-1"
+                className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 mt-1"
               >
                 <Plus size={12} />
                 Add variable
@@ -385,7 +385,7 @@ function EnvVarEditor({
           <button
             onClick={() => handleSave(false)}
             disabled={saving}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:bg-surface-lighter transition-colors"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors"
           >
             <span className="flex items-center gap-1">
               <Save size={12} />
@@ -433,11 +433,11 @@ function DeploymentRow({
 
   return (
     <>
-      <tr className="hover:bg-surface-lighter/50 transition-colors">
+      <tr className="hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors">
         <td className="px-4 py-3 font-mono text-xs text-gray-400">
           {deployment.deploy_id.slice(0, 8)}
         </td>
-        <td className="px-4 py-3 text-sm text-gray-200">
+        <td className="px-4 py-3 text-sm text-gray-800 dark:text-gray-200">
           {deployment.project_name}
         </td>
         <td className="px-4 py-3">
@@ -457,7 +457,7 @@ function DeploymentRow({
             {isCompose && (
               <button
                 onClick={() => onEditEnv(deployment.deploy_id)}
-                className="p-1 rounded hover:bg-surface-lighter text-gray-500 hover:text-gray-300 transition-colors"
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
                 title="Environment variables"
               >
                 <Settings size={16} />
@@ -465,14 +465,14 @@ function DeploymentRow({
             )}
             <button
               onClick={() => onRestart(deployment.deploy_id)}
-              className="p-1 rounded hover:bg-surface-lighter text-gray-500 hover:text-gray-300 transition-colors"
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
               title="Restart"
             >
               <RotateCcw size={16} />
             </button>
             <button
               onClick={() => onToggleExpand(deployment.deploy_id)}
-              className="p-1 rounded hover:bg-surface-lighter text-gray-500 hover:text-gray-300 transition-colors"
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
               title={isCompose ? "Services & Logs" : "View logs"}
             >
               {expanded ? (
@@ -532,7 +532,7 @@ function DeploymentCard({
     <div className="p-4 space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-200">
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
             {deployment.project_name}
           </span>
           <TypeBadge type={deployment.project_type} />
@@ -679,7 +679,7 @@ export default function DeploymentsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Rocket size={20} className="text-accent" />
             Deployments
           </h2>
@@ -688,7 +688,7 @@ export default function DeploymentsPage() {
               setLoading(true);
               fetchDeployments();
             }}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
             title="Refresh"
           >
             <RefreshCw size={16} />
@@ -715,7 +715,7 @@ export default function DeploymentsPage() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   filter === s
                     ? "bg-accent/15 text-accent-hover"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-surface-lighter"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-surface-lighter"
                 }`}
               >
                 {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}

@@ -121,17 +121,17 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-surface border border-border rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-surface border border-light-border dark:border-border rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-surface border-b border-border p-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+        <div className="sticky top-0 bg-white dark:bg-surface border-b border-light-border dark:border-border p-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Code size={20} className="text-accent" />
             {editSkill ? "Edit Skill" : "New Skill"}
           </h2>
           <button
             onClick={onClose}
             disabled={submitting}
-            className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 disabled:opacity-50"
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-50"
           >
             <X size={20} />
           </button>
@@ -141,7 +141,7 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Name <span className="text-red-400">*</span>
             </label>
             <input
@@ -151,13 +151,13 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
               onChange={(e) => setName(e.target.value)}
               placeholder="my_skill"
               disabled={submitting}
-              className="w-full px-3 py-2 bg-surface-lighter border border-border rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+              className="w-full px-3 py-2 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Description
             </label>
             <textarea
@@ -166,21 +166,21 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
               placeholder="What does this skill do?"
               rows={2}
               disabled={submitting}
-              className="w-full px-3 py-2 bg-surface-lighter border border-border rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 resize-none"
+              className="w-full px-3 py-2 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 resize-none"
             />
           </div>
 
           {/* Category and Language */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Category
               </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 disabled={submitting}
-                className="w-full px-3 py-2 bg-surface-lighter border border-border rounded text-white focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                className="w-full px-3 py-2 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
               >
                 {CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>
@@ -191,14 +191,14 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Language
               </label>
               <select
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
                 disabled={submitting}
-                className="w-full px-3 py-2 bg-surface-lighter border border-border rounded text-white focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                className="w-full px-3 py-2 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
               >
                 {LANGUAGES.map((lang) => (
                   <option key={lang} value={lang}>
@@ -211,7 +211,7 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
 
           {/* Content */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Content <span className="text-red-400">*</span>
             </label>
             <textarea
@@ -220,13 +220,13 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
               placeholder="Enter your code, configuration, or procedure here..."
               rows={12}
               disabled={submitting}
-              className="w-full px-3 py-2 bg-surface-lighter border border-border rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 font-mono text-sm resize-none"
+              className="w-full px-3 py-2 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 font-mono text-sm resize-none"
             />
           </div>
 
           {/* Tags */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Tags
             </label>
             <div className="flex gap-2 mb-2">
@@ -237,7 +237,7 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
                 onKeyDown={handleTagKeyDown}
                 placeholder="Add a tag..."
                 disabled={submitting}
-                className="flex-1 px-3 py-2 bg-surface-lighter border border-border rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                className="flex-1 px-3 py-2 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
               />
               <button
                 type="button"
@@ -253,7 +253,7 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
                 {tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-1 bg-surface-lighter border border-border rounded text-sm text-gray-300"
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded text-sm text-gray-700 dark:text-gray-300"
                   >
                     <TagIcon size={12} />
                     {tag}
@@ -261,7 +261,7 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
                       type="button"
                       onClick={() => handleRemoveTag(tag)}
                       disabled={submitting}
-                      className="ml-1 text-gray-400 hover:text-white disabled:opacity-50"
+                      className="ml-1 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50"
                     >
                       <X size={12} />
                     </button>
@@ -279,9 +279,9 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
               checked={isTemplate}
               onChange={(e) => setIsTemplate(e.target.checked)}
               disabled={submitting}
-              className="w-4 h-4 rounded bg-surface-lighter border-border text-accent focus:ring-2 focus:ring-accent disabled:opacity-50"
+              className="w-4 h-4 rounded bg-gray-100 dark:bg-surface-lighter border-gray-300 dark:border-border text-accent focus:ring-2 focus:ring-accent disabled:opacity-50"
             />
-            <label htmlFor="is-template" className="text-sm text-gray-300 cursor-pointer">
+            <label htmlFor="is-template" className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
               This is a template (supports Jinja2 variables like <code className="text-accent">{"{{ variable }}"}</code>)
             </label>
           </div>
@@ -299,7 +299,7 @@ export default function NewSkillModal({ open, onClose, onCreated, editSkill }: N
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-4 py-2 bg-surface-lighter hover:bg-surface-light text-gray-300 rounded disabled:opacity-50"
+              className="px-4 py-2 bg-gray-100 dark:bg-surface-lighter hover:bg-gray-200 dark:hover:bg-surface-light text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
             >
               Cancel
             </button>

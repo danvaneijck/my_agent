@@ -115,7 +115,7 @@ function CopyableId({ id }: { id: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="inline-flex items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-300 transition-colors group"
+      className="inline-flex items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors group"
       title={`Copy ${id}`}
     >
       <span className="truncate max-w-[120px]">{id}</span>
@@ -185,9 +185,9 @@ export default function TaskList({ tasks }: TaskListProps) {
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-gray-500 text-left">
+            <tr className="border-b border-light-border dark:border-border text-gray-500 text-left">
               <th
-                className="px-4 py-3 font-medium cursor-pointer select-none hover:text-gray-300"
+                className="px-4 py-3 font-medium cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-300"
                 onClick={() => toggleSort("status")}
               >
                 Status
@@ -197,14 +197,14 @@ export default function TaskList({ tasks }: TaskListProps) {
               <th className="px-4 py-3 font-medium">Repo</th>
               <th className="px-4 py-3 font-medium">Prompt</th>
               <th
-                className="px-4 py-3 font-medium cursor-pointer select-none hover:text-gray-300"
+                className="px-4 py-3 font-medium cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-300"
                 onClick={() => toggleSort("created_at")}
               >
                 Created
                 <SortIcon col="created_at" />
               </th>
               <th
-                className="px-4 py-3 font-medium cursor-pointer select-none hover:text-gray-300"
+                className="px-4 py-3 font-medium cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-300"
                 onClick={() => toggleSort("elapsed_seconds")}
               >
                 Duration
@@ -264,14 +264,14 @@ export default function TaskList({ tasks }: TaskListProps) {
               {/* Chain / standalone card */}
               <div
                 onClick={() => navigate(`/tasks/${chain.latest.id}`)}
-                className="bg-surface-light border border-border rounded-lg p-4 space-y-2 active:bg-surface-lighter"
+                className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg p-4 space-y-2 active:bg-gray-50 dark:active:bg-surface-lighter"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {isChain && (
                       <button
                         onClick={(e) => toggleExpand(chainId, e)}
-                        className="p-0.5 text-gray-500 hover:text-gray-300"
+                        className="p-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                       >
                         {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       </button>
@@ -288,7 +288,7 @@ export default function TaskList({ tasks }: TaskListProps) {
                     {chain.latest.id.slice(0, 8)}
                   </span>
                 </div>
-                <p className="text-sm text-gray-200 line-clamp-2">
+                <p className="text-sm text-gray-700 dark:text-gray-200 line-clamp-2">
                   {chain.root.mode === "plan" && (
                     <span className="text-purple-400 text-xs mr-1.5">[plan]</span>
                   )}
@@ -313,7 +313,7 @@ export default function TaskList({ tasks }: TaskListProps) {
                     <div
                       key={task.id}
                       onClick={() => navigate(`/tasks/${task.id}`)}
-                      className="bg-surface border border-border/50 rounded-lg p-3 space-y-1 active:bg-surface-lighter"
+                      className="bg-gray-50 dark:bg-surface border border-light-border dark:border-border/50 rounded-lg p-3 space-y-1 active:bg-gray-100 dark:active:bg-surface-lighter"
                     >
                       <div className="flex items-center justify-between">
                         <StatusBadge status={task.status} stale={isStale(task)} />
@@ -321,8 +321,8 @@ export default function TaskList({ tasks }: TaskListProps) {
                           {task.id.slice(0, 8)}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-400 line-clamp-1">{task.prompt}</p>
-                      <div className="flex items-center gap-3 text-xs text-gray-600">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">{task.prompt}</p>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
                         <span>{formatTime(task.created_at)}</span>
                         <span>{formatElapsed(task.elapsed_seconds)}</span>
                       </div>
@@ -357,14 +357,14 @@ function ChainRows({
       {/* Chain header row — clicks navigate to the latest task */}
       <tr
         onClick={() => onNavigate(chain.latest.id)}
-        className="border-b border-border/50 hover:bg-surface-lighter cursor-pointer transition-colors"
+        className="border-b border-light-border dark:border-border/50 hover:bg-gray-50 dark:hover:bg-surface-lighter cursor-pointer transition-colors"
       >
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
             {isChain && (
               <button
                 onClick={onToggle}
-                className="p-0.5 text-gray-500 hover:text-gray-300"
+                className="p-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               >
                 {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </button>
@@ -372,11 +372,11 @@ function ChainRows({
             <StatusBadge status={chain.latest.status} stale={isStale(chain.latest)} />
           </div>
         </td>
-        <td className="px-4 py-3 font-mono text-xs text-gray-400">
+        <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
           <div className="flex items-center gap-1.5">
             {chain.latest.id.slice(0, 8)}
             {isChain && (
-              <span className="inline-flex items-center gap-0.5 text-gray-600">
+              <span className="inline-flex items-center gap-0.5 text-gray-500">
                 <Layers size={10} />
                 {chain.tasks.length}
               </span>
@@ -390,7 +390,7 @@ function ChainRows({
             <CopyableId id={chain.root.workspace} />
           )}
         </td>
-        <td className="px-4 py-3 text-gray-200 max-w-md">
+        <td className="px-4 py-3 text-gray-700 dark:text-gray-200 max-w-md">
           <div className="flex items-center gap-2 min-w-0">
             {chain.root.mode === "plan" && (
               <span className="text-purple-400 text-xs shrink-0">[plan]</span>
@@ -398,10 +398,10 @@ function ChainRows({
             <span className="truncate">{chain.root.prompt}</span>
           </div>
         </td>
-        <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
           {formatTime(chain.root.created_at)}
         </td>
-        <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
           <span className="inline-flex items-center gap-1">
             <Clock size={14} />
             {formatElapsed(totalElapsed(chain))}
@@ -416,7 +416,7 @@ function ChainRows({
           <tr
             key={task.id}
             onClick={() => onNavigate(task.id)}
-            className="border-b border-border/30 hover:bg-surface-lighter cursor-pointer transition-colors bg-surface/30"
+            className="border-b border-light-border dark:border-border/30 hover:bg-gray-50 dark:hover:bg-surface-lighter cursor-pointer transition-colors bg-gray-50/50 dark:bg-surface/30"
           >
             <td className="pl-10 pr-4 py-2">
               <StatusBadge status={task.status} stale={isStale(task)} />
@@ -431,7 +431,7 @@ function ChainRows({
                 <CopyableId id={task.workspace} />
               )}
             </td>
-            <td className="px-4 py-2 text-gray-400 text-xs max-w-md truncate">
+            <td className="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs max-w-md truncate">
               {task.prompt}
             </td>
             <td className="px-4 py-2 text-gray-500 text-xs whitespace-nowrap">

@@ -133,13 +133,13 @@ export default function TerminalPanel({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
       transition={{ duration: 0.2 }}
-      className={`flex flex-col bg-surface border-t border-border ${
+      className={`flex flex-col bg-gray-50 dark:bg-surface border-t border-light-border dark:border-border ${
         isMaximized ? "fixed inset-0 z-50" : ""
       }`}
       style={!isMaximized ? { height: `${initialHeight}px` } : undefined}
     >
       {/* Header with tabs */}
-      <div className="flex items-center justify-between px-3 py-2 bg-surface-light border-b border-border shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-100 dark:bg-surface-light border-b border-light-border dark:border-border shrink-0">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <TerminalIcon size={14} className="text-accent shrink-0" />
 
@@ -150,8 +150,8 @@ export default function TerminalPanel({
                 key={tab.id}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors shrink-0 ${
                   activeTabId === tab.id
-                    ? "bg-surface text-white"
-                    : "text-gray-400 hover:text-white hover:bg-surface/50"
+                    ? "bg-gray-200 dark:bg-surface text-gray-900 dark:text-white"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-surface/50"
                 }`}
               >
                 <button
@@ -174,7 +174,7 @@ export default function TerminalPanel({
             {tabs.length < MAX_TERMINALS && (
               <button
                 onClick={handleAddTerminal}
-                className="p-1 rounded hover:bg-surface text-gray-400 hover:text-white transition-colors shrink-0"
+                className="p-1 rounded hover:bg-gray-200 dark:hover:bg-surface text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
                 title={`Add terminal (${tabs.length}/${MAX_TERMINALS})`}
               >
                 <Plus size={14} />
@@ -187,21 +187,21 @@ export default function TerminalPanel({
           <button
             onClick={handleUploadClick}
             disabled={uploading}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+            className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
             title={uploading ? "Uploading..." : "Upload file to workspace (max 50MB)"}
           >
             <Upload size={14} className={uploading ? "animate-pulse" : ""} />
           </button>
           <button
             onClick={handleToggleMaximize}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-white transition-colors"
+            className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
             title={isMaximized ? "Restore" : "Maximize"}
           >
             {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
           <button
             onClick={onClose}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-white transition-colors"
+            className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
             title="Close terminal"
           >
             <X size={14} />

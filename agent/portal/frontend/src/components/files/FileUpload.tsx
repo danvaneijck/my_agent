@@ -46,17 +46,17 @@ export default function FileUpload({ onUploaded }: FileUploadProps) {
       className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
         dragging
           ? "border-accent bg-accent/10"
-          : "border-border hover:border-border-light"
+          : "border-light-border dark:border-border hover:border-gray-400 dark:hover:border-gray-500"
       }`}
     >
       <Upload size={24} className="mx-auto mb-2 text-gray-500" />
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
         {uploading ? "Uploading..." : "Drag & drop files here or"}
       </p>
       {!uploading && (
         <button
           onClick={() => fileRef.current?.click()}
-          className="mt-2 px-4 py-1.5 rounded-lg bg-surface-lighter text-sm text-gray-300 hover:bg-border transition-colors"
+          className="mt-2 px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-surface-lighter text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-border transition-colors"
         >
           Browse Files
         </button>

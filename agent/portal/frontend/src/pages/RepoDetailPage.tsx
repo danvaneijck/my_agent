@@ -290,12 +290,12 @@ export default function RepoDetailPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate("/repos")}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
           >
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h2 className="text-lg font-semibold text-white">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               {owner}/{repo}
             </h2>
             {repoMeta?.description && (
@@ -304,7 +304,7 @@ export default function RepoDetailPage() {
           </div>
           <button
             onClick={refetch}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
             title="Refresh"
           >
             <RefreshCw size={16} />
@@ -319,7 +319,7 @@ export default function RepoDetailPage() {
               href={repoMeta.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-gray-300 hover:text-white bg-surface-lighter hover:bg-border transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-surface-lighter hover:bg-gray-200 dark:hover:bg-border transition-colors"
             >
               <ExternalLink size={14} />
               GitHub
@@ -358,7 +358,7 @@ export default function RepoDetailPage() {
             <span
               className={`text-xs px-1.5 py-0.5 rounded-full ${tab === key
                 ? "bg-accent/15 text-accent"
-                : "bg-surface-lighter text-gray-500"
+                : "bg-gray-100 dark:bg-surface-lighter text-gray-500"
                 }`}
             >
               {count}
@@ -385,10 +385,10 @@ export default function RepoDetailPage() {
                 ) : (
                   <>
                     {/* Sort header */}
-                    <div className="flex items-center justify-between px-4 py-2 border-b border-light-border dark:border-border bg-surface-lighter/30">
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-light-border dark:border-border bg-gray-50 dark:bg-surface-lighter/30">
                       <button
                         onClick={() => toggleSort("name")}
-                        className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-gray-200 uppercase tracking-wider transition-colors"
+                        className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 uppercase tracking-wider transition-colors"
                       >
                         Branch
                         <SortIcon field="name" />
@@ -411,12 +411,12 @@ export default function RepoDetailPage() {
                       {sortedBranches.map((branch) => (
                         <div
                           key={branch.name}
-                          className="flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors"
+                          className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <GitBranch size={16} className="text-gray-500 shrink-0" />
                             <div className="min-w-0">
-                              <span className="text-sm text-gray-200 font-mono">
+                              <span className="text-sm text-gray-800 dark:text-gray-200 font-mono">
                                 {branch.name}
                               </span>
                               <span className="text-xs text-gray-500 ml-2 font-mono">
@@ -483,7 +483,7 @@ export default function RepoDetailPage() {
                   pullRequests.map((pr) => (
                     <div
                       key={pr.number}
-                      className="flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors"
+                      className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -492,7 +492,7 @@ export default function RepoDetailPage() {
                             className={`shrink-0 ${pr.draft ? "text-gray-500" : "text-green-400"
                               }`}
                           />
-                          <span className="text-sm text-gray-200 truncate">
+                          <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
                             {pr.title}
                           </span>
                           <span className="text-xs text-gray-500 shrink-0">
@@ -543,12 +543,12 @@ export default function RepoDetailPage() {
                   issues.map((issue) => (
                     <div
                       key={issue.number}
-                      className="flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors"
+                      className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <CircleDot size={16} className="text-green-400 shrink-0" />
-                          <span className="text-sm text-gray-200 truncate">
+                          <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
                             {issue.title}
                           </span>
                           <span className="text-xs text-gray-500 shrink-0">
@@ -559,7 +559,7 @@ export default function RepoDetailPage() {
                           {issue.labels.map((label) => (
                             <span
                               key={label}
-                              className="px-1.5 py-0.5 rounded bg-surface-lighter text-gray-400"
+                              className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-surface-lighter text-gray-600 dark:text-gray-400"
                             >
                               {label}
                             </span>
@@ -602,12 +602,12 @@ export default function RepoDetailPage() {
                   workflowRuns.map((run) => (
                     <div
                       key={run.id}
-                      className="flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors"
+                      className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <WorkflowStatusDot run={run} />
-                          <span className="text-sm text-gray-200 truncate">
+                          <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
                             {run.display_title || run.name}
                           </span>
                           <WorkflowStatusBadge run={run} />
@@ -618,7 +618,7 @@ export default function RepoDetailPage() {
                             <span className="font-mono text-gray-500">{run.branch}</span>
                           )}
                           {run.event && (
-                            <span className="px-1.5 py-0.5 rounded bg-surface-lighter text-gray-400">
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-surface-lighter text-gray-600 dark:text-gray-400">
                               {run.event}
                             </span>
                           )}
@@ -671,10 +671,10 @@ export default function RepoDetailPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 max-w-md w-full space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">Open Pull Request</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Open Pull Request</h3>
               <button
                 onClick={() => setCreatePROpen(false)}
-                className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
               >
                 <X size={18} />
               </button>
@@ -682,13 +682,13 @@ export default function RepoDetailPage() {
 
             {/* Head branch */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 From branch (head)
               </label>
               <select
                 value={prHead}
                 onChange={(e) => setPrHead(e.target.value)}
-                className="w-full bg-surface-lighter border border-border rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-accent"
+                className="w-full bg-white dark:bg-surface-lighter border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:border-accent"
               >
                 {branches.map((b) => (
                   <option key={b.name} value={b.name}>
@@ -700,13 +700,13 @@ export default function RepoDetailPage() {
 
             {/* Base branch */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Into branch (base)
               </label>
               <select
                 value={prBase}
                 onChange={(e) => setPrBase(e.target.value)}
-                className="w-full bg-surface-lighter border border-border rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-accent"
+                className="w-full bg-white dark:bg-surface-lighter border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:border-accent"
               >
                 {branches
                   .filter((b) => b.name !== prHead)
@@ -720,7 +720,7 @@ export default function RepoDetailPage() {
 
             {/* Title */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Title
               </label>
               <input
@@ -728,13 +728,13 @@ export default function RepoDetailPage() {
                 value={prTitle}
                 onChange={(e) => setPrTitle(e.target.value)}
                 placeholder="Pull request title"
-                className="w-full bg-surface-lighter border border-border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent"
+                className="w-full bg-white dark:bg-surface-lighter border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent"
               />
             </div>
 
             {/* Body */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Description (optional)
               </label>
               <textarea
@@ -742,7 +742,7 @@ export default function RepoDetailPage() {
                 onChange={(e) => setPrBody(e.target.value)}
                 placeholder="Describe the changes..."
                 rows={3}
-                className="w-full bg-surface-lighter border border-border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
+                className="w-full bg-white dark:bg-surface-lighter border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
               />
             </div>
 
@@ -752,16 +752,16 @@ export default function RepoDetailPage() {
                 type="checkbox"
                 checked={prDraft}
                 onChange={(e) => setPrDraft(e.target.checked)}
-                className="w-4 h-4 rounded border-border bg-surface-lighter text-accent focus:ring-accent"
+                className="w-4 h-4 rounded border-light-border dark:border-border bg-white dark:bg-surface-lighter text-accent focus:ring-accent"
               />
-              <span className="text-sm text-gray-300">Create as draft</span>
+              <span className="text-sm text-gray-700 dark:text-gray-300">Create as draft</span>
             </label>
 
             {/* Actions */}
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setCreatePROpen(false)}
-                className="px-4 py-2 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors"
+                className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-border transition-colors"
               >
                 Cancel
               </button>

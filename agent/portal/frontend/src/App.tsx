@@ -232,9 +232,9 @@ function AuthCallback() {
   if (error) {
     return (
       <div className="h-full flex items-center justify-center p-4">
-        <div className="bg-surface-light border border-border rounded-xl p-8 w-full max-w-sm space-y-4 text-center">
-          <h2 className="text-lg font-bold text-red-400">Login Failed</h2>
-          <p className="text-sm text-gray-400">{error}</p>
+        <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-8 w-full max-w-sm space-y-4 text-center">
+          <h2 className="text-lg font-bold text-red-600 dark:text-red-400">Login Failed</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{error}</p>
           <a href="/" className="text-accent hover:underline text-sm">
             Try again
           </a>

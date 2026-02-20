@@ -31,20 +31,20 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-border p-3 bg-surface-light">
+    <form onSubmit={handleSubmit} className="border-t border-light-border dark:border-border p-3 bg-white dark:bg-surface-light">
       {/* Attached files */}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
           {files.map((file, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-lighter text-xs text-gray-300"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-100 dark:bg-surface-lighter text-xs text-gray-700 dark:text-gray-300"
             >
               {file.name}
               <button
                 type="button"
                 onClick={() => removeFile(i)}
-                className="text-gray-500 hover:text-gray-300"
+                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               >
                 <X size={12} />
               </button>
@@ -57,7 +57,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="p-2 rounded-lg hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors shrink-0"
+          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors shrink-0"
           title="Attach file"
         >
           <Paperclip size={18} />
@@ -81,7 +81,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           placeholder="Type a message..."
           rows={1}
           disabled={disabled}
-          className="flex-1 px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent resize-none max-h-32 disabled:opacity-50"
+          className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent resize-none max-h-32 disabled:opacity-50"
           style={{ minHeight: "2.5rem" }}
         />
         <button

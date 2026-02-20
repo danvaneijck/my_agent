@@ -96,7 +96,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-xs text-gray-400">{label}</p>
-      <p className="text-sm font-semibold text-white mt-0.5">{value}</p>
+      <p className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">{value}</p>
     </div>
   );
 }
@@ -118,13 +118,13 @@ function BudgetCard({ summary }: { summary: UsageSummary }) {
       
       
 >
- <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
+ <h3 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
  Monthly Budget
  </h3>
 
  <div>
  <div className="flex items-baseline justify-between mb-1.5">
- <span className="text-2xl font-bold text-white">
+ <span className="text-2xl font-bold text-gray-900 dark:text-white">
  {formatNumber(summary.tokens_used_this_month)}
           </span>
           <span className="text-sm text-gray-400">
@@ -134,7 +134,7 @@ function BudgetCard({ summary }: { summary: UsageSummary }) {
           </span>
         </div>
         {hasBudget && (
-          <div className="w-full bg-surface rounded-full h-2">
+          <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-2">
             <div
               className={`h-2 rounded-full transition-all ${budgetColor(usagePct)}`}
               style={{ width: `${usagePct}%` }}
@@ -169,20 +169,20 @@ function ModelBreakdown({ models }: { models: ModelUsage[] }) {
 
   return (
     <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6">
-      <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider mb-4">
         API Usage by Model (Last 30 Days)
       </h3>
       <div className="space-y-3">
         {models.map((m) => (
           <div key={m.model}>
             <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-gray-300 font-mono">{m.model}</span>
+              <span className="text-gray-700 dark:text-gray-300 font-mono">{m.model}</span>
               <span className="text-gray-400">
                 {formatNumber(m.total_tokens)} tokens &middot;{" "}
                 {formatCost(m.total_cost)} &middot; {m.requests} req
               </span>
             </div>
-            <div className="w-full bg-surface rounded-full h-1.5">
+            <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-1.5">
               <div
                 className="h-1.5 rounded-full bg-accent"
                 style={{
@@ -211,7 +211,7 @@ function DailyHistory({ daily }: { daily: DailyUsage[] }) {
   return (
     <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
       <div className="p-4 border-b border-light-border dark:border-border">
-        <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
           Daily History (Last 30 Days)
         </h3>
       </div>
@@ -231,9 +231,9 @@ function DailyHistory({ daily }: { daily: DailyUsage[] }) {
             {reversed.map((d) => (
               <tr
                 key={d.date}
-                className="hover:bg-surface-lighter/50 transition-colors"
+                className="hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors"
               >
-                <td className="px-4 py-2 text-gray-300">
+                <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
                   {formatDate(d.date)}
                 </td>
                 <td className="px-4 py-2 text-right text-gray-400 font-mono text-xs">
@@ -242,7 +242,7 @@ function DailyHistory({ daily }: { daily: DailyUsage[] }) {
                 <td className="px-4 py-2 text-right text-gray-400 font-mono text-xs">
                   {formatNumber(d.output_tokens)}
                 </td>
-                <td className="px-4 py-2 text-right text-gray-200 font-mono text-xs">
+                <td className="px-4 py-2 text-right text-gray-800 dark:text-gray-200 font-mono text-xs">
                   {formatNumber(d.input_tokens + d.output_tokens)}
                 </td>
                 <td className="px-4 py-2 text-right text-gray-400 font-mono text-xs">
@@ -264,7 +264,7 @@ function AnthropicUsageSection({ data }: { data: AnthropicUsageData }) {
   if (!data.available) {
     return (
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6">
-        <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-3">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider mb-3">
           Claude Code Usage
         </h3>
         <p className="text-sm text-gray-500">
@@ -280,7 +280,7 @@ function AnthropicUsageSection({ data }: { data: AnthropicUsageData }) {
 
   return (
     <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-6 space-y-5">
-      <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
         Claude Code Usage
       </h3>
 
@@ -334,10 +334,10 @@ function UsageBar({
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
-        <span className="text-sm text-gray-300">{label}</span>
-        <span className="text-lg font-bold text-white">{Math.round(pct)}%</span>
+        <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+        <span className="text-lg font-bold text-gray-900 dark:text-white">{Math.round(pct)}%</span>
       </div>
-      <div className="w-full bg-surface rounded-full h-3">
+      <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-3">
         <div
           className={`h-3 rounded-full transition-all ${utilizationColor(pct)}`}
           style={{ width: `${Math.min(100, pct)}%` }}
@@ -401,13 +401,13 @@ export default function UsagePage() {
       variants={pageVariants}
     >
       <div className="flex items-center gap-3">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <BarChart3 size={20} className="text-accent" />
           Usage
         </h2>
         <button
           onClick={() => fetchData()}
-          className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
           title="Refresh"
         >
           <RefreshCw size={16} />

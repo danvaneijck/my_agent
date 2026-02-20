@@ -39,7 +39,7 @@ export default function ContinueTaskForm({ taskId, onContinued, label = "Continu
     return (
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-lighter text-gray-300 text-sm hover:bg-border transition-colors"
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-200 dark:hover:bg-border transition-colors"
       >
         <IterationCw size={14} />
         {label}
@@ -55,14 +55,14 @@ export default function ContinueTaskForm({ taskId, onContinued, label = "Continu
         placeholder="Follow-up instructions for Claude Code..."
         rows={2}
         autoFocus
-        className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
+        className="w-full px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
       />
       {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="flex gap-2">
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="px-3 py-1.5 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors"
+          className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-border transition-colors"
         >
           Cancel
         </button>

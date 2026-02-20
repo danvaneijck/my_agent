@@ -35,7 +35,7 @@ export default function MultiStateProgressBar({
   // If no tasks, show empty state
   if (total === 0) {
     return (
-      <div className={`${height} bg-surface rounded-full overflow-hidden`}>
+      <div className={`${height} bg-gray-200 dark:bg-surface rounded-full overflow-hidden`}>
         <div className="h-full w-full" />
       </div>
     );
@@ -54,7 +54,7 @@ export default function MultiStateProgressBar({
 
   return (
     <div className="space-y-1">
-      <div className={`${height} bg-surface rounded-full overflow-hidden flex`}>
+      <div className={`${height} bg-gray-200 dark:bg-surface rounded-full overflow-hidden flex`}>
         {segments.map((segment, idx) => (
           <div
             key={segment.key}
@@ -70,7 +70,7 @@ export default function MultiStateProgressBar({
           {segments.map((segment) => (
             <div key={segment.key} className="flex items-center gap-1">
               <div className={`w-2 h-2 rounded-sm ${segment.color}`} />
-              <span className="text-gray-400">
+              <span className="text-gray-500 dark:text-gray-400">
                 {segment.count} {segment.label.toLowerCase()}
               </span>
             </div>

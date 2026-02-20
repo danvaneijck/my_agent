@@ -141,13 +141,13 @@ export default function PullRequestDetailPage() {
       <div className="flex items-start gap-3">
         <button
           onClick={() => navigate("/pulls")}
-          className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors mt-0.5"
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors mt-0.5"
         >
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-lg font-semibold text-white">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               {pr?.title || `PR #${prNumber}`}
             </h2>
             <span className="text-sm text-gray-500">#{prNumber}</span>
@@ -185,7 +185,7 @@ export default function PullRequestDetailPage() {
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={fetchPr}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
             title="Refresh"
           >
             <RefreshCw size={16} />
@@ -195,7 +195,7 @@ export default function PullRequestDetailPage() {
               href={pr.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-gray-300 hover:text-white bg-surface-lighter hover:bg-border transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-surface-lighter hover:bg-gray-200 dark:hover:bg-border transition-colors"
             >
               <ExternalLink size={14} />
               GitHub
@@ -254,7 +254,7 @@ export default function PullRequestDetailPage() {
           {/* Description */}
           {pr.body && (
             <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
-              <div className="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-pre:bg-black/30 prose-code:text-accent-hover">
+              <div className="prose dark:prose-invert prose-sm max-w-none prose-p:my-2 prose-pre:bg-black/30 dark:prose-pre:bg-black/30 prose-code:text-accent-hover">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {pr.body}
                 </ReactMarkdown>
@@ -267,10 +267,10 @@ export default function PullRequestDetailPage() {
             <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-light-border dark:border-border flex items-center gap-2">
                 <FileText size={16} className="text-gray-400" />
-                <span className="text-sm font-medium text-gray-200">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                   Changed files
                 </span>
-                <span className="text-xs px-1.5 py-0.5 rounded-full bg-surface-lighter text-gray-500">
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-surface-lighter text-gray-500">
                   {pr.files.length}
                 </span>
               </div>
@@ -278,7 +278,7 @@ export default function PullRequestDetailPage() {
                 {pr.files.map((file) => (
                   <div
                     key={file.filename}
-                    className="flex items-center justify-between px-4 py-2.5 hover:bg-surface-lighter/50 transition-colors"
+                    className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span
@@ -295,7 +295,7 @@ export default function PullRequestDetailPage() {
                             ? "D"
                             : "M"}
                       </span>
-                      <span className="text-sm text-gray-300 font-mono truncate">
+                      <span className="text-sm text-gray-700 dark:text-gray-300 font-mono truncate">
                         {file.filename}
                       </span>
                     </div>
@@ -318,10 +318,10 @@ export default function PullRequestDetailPage() {
             <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-light-border dark:border-border flex items-center gap-2">
                 <MessageSquare size={16} className="text-gray-400" />
-                <span className="text-sm font-medium text-gray-200">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                   Review comments
                 </span>
-                <span className="text-xs px-1.5 py-0.5 rounded-full bg-surface-lighter text-gray-500">
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-surface-lighter text-gray-500">
                   {pr.review_comments.length}
                 </span>
               </div>
@@ -329,7 +329,7 @@ export default function PullRequestDetailPage() {
                 {pr.review_comments.map((c, i) => (
                   <div key={i} className="px-4 py-3">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-sm font-medium text-gray-200">
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
                         {c.author}
                       </span>
                       {c.path && (
@@ -341,7 +341,7 @@ export default function PullRequestDetailPage() {
                         {formatDate(c.created_at)}
                       </span>
                     </div>
-                    <div className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-pre:bg-black/30 prose-code:text-accent-hover">
+                    <div className="prose dark:prose-invert prose-sm max-w-none prose-p:my-1 prose-pre:bg-black/30 dark:prose-pre:bg-black/30 prose-code:text-accent-hover">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {c.body}
                       </ReactMarkdown>
@@ -357,7 +357,7 @@ export default function PullRequestDetailPage() {
             <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <MessageSquare size={16} className="text-gray-400" />
-                <span className="text-sm font-medium text-gray-200">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                   Add a comment
                 </span>
               </div>
@@ -366,7 +366,7 @@ export default function PullRequestDetailPage() {
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Leave a comment... (Markdown supported)"
                 rows={3}
-                className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent resize-y"
+                className="w-full px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent resize-y"
               />
               <div className="flex justify-end">
                 <button
@@ -387,7 +387,7 @@ export default function PullRequestDetailPage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm">
                   <GitMerge size={16} className="text-gray-400" />
-                  <span className="text-gray-200 font-medium">Merge pull request</span>
+                  <span className="text-gray-800 dark:text-gray-200 font-medium">Merge pull request</span>
                   {pr.mergeable === false && (
                     <span className="text-xs text-red-400">
                       (has conflicts)
@@ -421,7 +421,7 @@ export default function PullRequestDetailPage() {
                       <ChevronDown size={14} />
                     </button>
                     {showMergeDropdown && (
-                      <div className="absolute right-0 top-full mt-1 w-56 bg-surface-light border border-border rounded-lg shadow-xl z-10 py-1">
+                      <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg shadow-xl z-10 py-1">
                         {(["squash", "merge", "rebase"] as MergeMethod[]).map(
                           (method) => (
                             <button
@@ -430,9 +430,9 @@ export default function PullRequestDetailPage() {
                                 setMergeMethod(method);
                                 setShowMergeDropdown(false);
                               }}
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-surface-lighter transition-colors flex items-center gap-2 ${mergeMethod === method
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors flex items-center gap-2 ${mergeMethod === method
                                   ? "text-accent"
-                                  : "text-gray-300"
+                                  : "text-gray-700 dark:text-gray-300"
                                 }`}
                             >
                               {mergeMethod === method && (

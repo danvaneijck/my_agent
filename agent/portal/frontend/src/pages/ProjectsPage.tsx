@@ -26,17 +26,17 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
   return (
     <button
       onClick={onClick}
-      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-border-light transition-colors w-full"
+      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-gray-300 dark:hover:border-border-light transition-colors w-full"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <h3 className="font-medium text-white truncate">{project.name}</h3>
+        <h3 className="font-medium text-gray-900 dark:text-white truncate">{project.name}</h3>
         <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${STATUS_COLORS[project.status] || STATUS_COLORS.planning}`}>
           {project.status}
         </span>
       </div>
 
       {project.description && (
-        <p className="text-sm text-gray-400 line-clamp-2 mb-3">{project.description}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-3">{project.description}</p>
       )}
 
       {project.repo_owner && project.repo_name && (
@@ -47,7 +47,7 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
 
       {total > 0 && (
         <div className="space-y-1.5">
-          <div className="flex justify-between text-xs text-gray-400">
+          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
             <span>{done}/{total} tasks</span>
             <span>{pct}% complete</span>
           </div>
@@ -91,13 +91,13 @@ export default function ProjectsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <FolderKanban size={20} className="text-accent" />
             Projects
           </h2>
           <button
             onClick={refetch}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
           >
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           </button>
@@ -107,7 +107,7 @@ export default function ProjectsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-accent"
+            className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent"
           >
             <option value="">All statuses</option>
             <option value="planning">Planning</option>
@@ -138,10 +138,10 @@ export default function ProjectsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 animate-pulse">
-              <div className="h-5 bg-surface-lighter/60 rounded w-2/3 mb-3" />
-              <div className="h-4 bg-surface-lighter/60 rounded w-full mb-2" />
-              <div className="h-4 bg-surface-lighter/60 rounded w-1/2 mb-3" />
-              <div className="h-1.5 bg-surface-lighter/60 rounded-full" />
+              <div className="h-5 bg-gray-200 dark:bg-surface-lighter/60 rounded w-2/3 mb-3" />
+              <div className="h-4 bg-gray-200 dark:bg-surface-lighter/60 rounded w-full mb-2" />
+              <div className="h-4 bg-gray-200 dark:bg-surface-lighter/60 rounded w-1/2 mb-3" />
+              <div className="h-1.5 bg-gray-200 dark:bg-surface-lighter/60 rounded-full" />
             </div>
           ))}
         </div>

@@ -59,10 +59,10 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-white">Claude Code Tasks</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Claude Code Tasks</h2>
           <button
             onClick={refetch}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
             title="Refresh"
           >
             <RefreshCw size={16} />

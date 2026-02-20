@@ -385,7 +385,7 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       {/* Theme picker button */}
       <button
         onClick={() => setShowThemePicker(!showThemePicker)}
-        className="absolute top-2 right-2 z-10 p-1.5 rounded bg-surface/80 hover:bg-surface text-gray-400 hover:text-white transition-colors"
+        className="absolute top-2 right-2 z-10 p-1.5 rounded bg-black/40 hover:bg-black/60 text-gray-300 hover:text-white transition-colors"
         title="Change theme"
       >
         <Palette size={14} />
@@ -395,7 +395,7 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
       {showThemePicker && (
         <div
           ref={themePickerRef}
-          className="absolute top-10 right-2 z-20 bg-surface border border-border rounded-md shadow-lg overflow-hidden"
+          className="absolute top-10 right-2 z-20 bg-[#1a1b23] border border-[#33344a] rounded-md shadow-lg overflow-hidden"
         >
           {Object.entries(THEME_LABELS).map(([key, label]) => (
             <button
@@ -404,7 +404,7 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
               className={`w-full px-4 py-2 text-left text-sm transition-colors flex items-center justify-between gap-4 ${
                 currentTheme === key
                   ? "bg-accent/20 text-accent-hover"
-                  : "text-gray-300 hover:bg-surface-lighter"
+                  : "text-gray-300 hover:bg-[#2a2b37]"
               }`}
             >
               <span>{label}</span>
@@ -424,7 +424,7 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
               ? "bg-yellow-900/20 text-yellow-400"
               : status === "error"
               ? "bg-red-900/20 text-red-400"
-              : "bg-gray-800 text-gray-400"
+              : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
           }`}
         >
           <span className="flex items-center gap-2">

@@ -152,7 +152,7 @@ export default function ChatView({ conversationId, onConversationCreated, onWait
             <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
               <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
             </div>
-            <div className="bg-surface-lighter rounded-xl px-4 py-3 text-sm text-gray-500">
+            <div className="bg-gray-100 dark:bg-surface-lighter rounded-xl px-4 py-3 text-sm text-gray-500 dark:text-gray-500">
               Thinking...
             </div>
           </div>

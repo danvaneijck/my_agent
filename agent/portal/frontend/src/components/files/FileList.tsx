@@ -36,20 +36,20 @@ export default function FileList({ files, onSelect, onDelete, selectedId }: File
   }
 
   return (
-    <div className="divide-y divide-border/50">
+    <div className="divide-y divide-light-border dark:divide-border/50">
       {files.map((file) => {
         const Icon = getFileIcon(file.mime_type);
         return (
           <div
             key={file.file_id}
             onClick={() => onSelect(file)}
-            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-surface-lighter ${
+            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-gray-100 dark:hover:bg-surface-lighter ${
               selectedId === file.file_id ? "bg-accent/10" : ""
             }`}
           >
             <Icon size={18} className="text-gray-500 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-200 truncate">{file.filename}</p>
+              <p className="text-sm text-gray-800 dark:text-gray-200 truncate">{file.filename}</p>
               <p className="text-xs text-gray-500">
                 {formatSize(file.size_bytes)} &middot;{" "}
                 {new Date(file.created_at).toLocaleDateString()}

@@ -72,9 +72,9 @@ export default function ProjectTaskDetailPage() {
   if (loading) {
     return (
       <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-4 animate-pulse">
-        <div className="h-5 bg-surface-lighter/60 rounded w-1/4" />
-        <div className="h-6 bg-surface-lighter/60 rounded w-1/2" />
-        <div className="h-32 bg-surface-lighter/60 rounded" />
+        <div className="h-5 bg-gray-200 dark:bg-surface-lighter/60 rounded w-1/4" />
+        <div className="h-6 bg-gray-200 dark:bg-surface-lighter/60 rounded w-1/2" />
+        <div className="h-32 bg-gray-200 dark:bg-surface-lighter/60 rounded" />
       </div>
     );
   }
@@ -82,7 +82,7 @@ export default function ProjectTaskDetailPage() {
   if (error || !task) {
     return (
       <div className="p-4 md:p-6 max-w-3xl mx-auto">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200 mb-4">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 mb-4">
           <ArrowLeft size={16} /> Back
         </button>
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
@@ -97,7 +97,7 @@ export default function ProjectTaskDetailPage() {
       {/* Back nav */}
       <button
         onClick={() => navigate(-1)}
-        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200"
+        className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
       >
         <ArrowLeft size={16} /> Back
       </button>
@@ -105,7 +105,7 @@ export default function ProjectTaskDetailPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-3 mb-1">
-          <h2 className="text-lg font-semibold text-white">{task.title}</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{task.title}</h2>
           <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_BADGE[task.status]}`}>
             {task.status.replace("_", " ")}
           </span>
@@ -115,41 +115,41 @@ export default function ProjectTaskDetailPage() {
       {/* Description */}
       {task.description && (
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Description</h3>
-          <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans">{task.description}</pre>
+          <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Description</h3>
+          <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans">{task.description}</pre>
         </div>
       )}
 
       {/* Acceptance Criteria */}
       {task.acceptance_criteria && (
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Acceptance Criteria</h3>
-          <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans">{task.acceptance_criteria}</pre>
+          <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Acceptance Criteria</h3>
+          <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans">{task.acceptance_criteria}</pre>
         </div>
       )}
 
       {/* Git & Integration Info */}
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
-        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Integration</h3>
+        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Integration</h3>
 
         {task.branch_name && (
           <div className="flex items-center gap-2 text-sm">
             <GitBranch size={14} className="text-gray-500" />
-            <span className="text-gray-300 font-mono text-xs">{task.branch_name}</span>
+            <span className="text-gray-700 dark:text-gray-300 font-mono text-xs">{task.branch_name}</span>
           </div>
         )}
 
         {task.pr_number && (
           <div className="flex items-center gap-2 text-sm">
             <GitPullRequest size={14} className="text-blue-400" />
-            <span className="text-gray-300">PR #{task.pr_number}</span>
+            <span className="text-gray-700 dark:text-gray-300">PR #{task.pr_number}</span>
           </div>
         )}
 
         {task.issue_number && (
           <div className="flex items-center gap-2 text-sm">
             <ExternalLink size={14} className="text-gray-500" />
-            <span className="text-gray-300">Issue #{task.issue_number}</span>
+            <span className="text-gray-700 dark:text-gray-300">Issue #{task.issue_number}</span>
           </div>
         )}
 
@@ -170,7 +170,7 @@ export default function ProjectTaskDetailPage() {
       {/* Skills */}
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-light-border dark:border-border flex items-center justify-between">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider flex items-center gap-2">
+          <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
             <Lightbulb size={14} className="text-accent" />
             Skills ({taskSkills.length})
           </h3>
@@ -195,12 +195,12 @@ export default function ProjectTaskDetailPage() {
             {taskSkills.map((skill) => (
               <div
                 key={skill.skill_id}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface-lighter border border-border rounded-lg text-xs"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded-lg text-xs"
               >
                 <Lightbulb size={12} className="text-accent" />
-                <span className="text-white">{skill.skill_name}</span>
+                <span className="text-gray-900 dark:text-white">{skill.skill_name}</span>
                 {skill.skill_category && (
-                  <span className="text-xs px-1.5 py-0.5 bg-surface rounded text-gray-400">
+                  <span className="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-surface rounded text-gray-600 dark:text-gray-400">
                     {skill.skill_category}
                   </span>
                 )}
@@ -235,7 +235,7 @@ export default function ProjectTaskDetailPage() {
 
       {/* Timestamps */}
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-2">
-        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Timeline</h3>
+        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Timeline</h3>
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Clock size={12} />
           Created: {formatDate(task.created_at)}

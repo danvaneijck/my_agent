@@ -58,7 +58,7 @@ export default function ThemeToggle() {
       {/* Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 rounded-lg text-gray-400 hover:text-gray-200 hover:bg-surface-lighter dark:hover:bg-surface-lighter transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50"
+        className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50"
         aria-label="Toggle theme"
         aria-expanded={isOpen}
         aria-haspopup="true"
@@ -68,7 +68,7 @@ export default function ThemeToggle() {
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-40 bg-surface-light dark:bg-surface-light border border-border dark:border-border rounded-lg shadow-lg py-1 z-50 animate-slide-down">
+        <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-lg shadow-lg py-1 z-50 animate-slide-down">
           {options.map((option) => {
             const Icon = option.icon;
             const isSelected = theme === option.value;
@@ -80,7 +80,7 @@ export default function ThemeToggle() {
                 className={`w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors ${
                   isSelected
                     ? "bg-accent/15 text-accent"
-                    : "text-gray-300 hover:bg-surface-lighter dark:hover:bg-surface-lighter hover:text-gray-100"
+                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-surface-lighter hover:text-gray-900 dark:hover:text-gray-100"
                 }`}
                 role="menuitem"
               >
