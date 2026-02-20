@@ -73,7 +73,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               </button>
               <button
                 onClick={this.handleGoHome}
-                className="px-6 py-2.5 bg-surface-lighter hover:bg-surface-light border border-border text-gray-200 rounded-lg font-medium transition-colors inline-flex items-center justify-center gap-2"
+                className="px-6 py-2.5 bg-white dark:bg-surface-lighter hover:bg-gray-100 dark:hover:bg-surface-light border border-light-border dark:border-border text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors inline-flex items-center justify-center gap-2"
               >
                 <Home size={16} />
                 Go Home

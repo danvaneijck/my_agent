@@ -22,9 +22,9 @@ interface ButtonProps {
 
 const variantStyles = {
   primary: "bg-accent hover:bg-accent-hover text-white",
-  secondary: "bg-surface-lighter hover:bg-surface-light border border-border text-gray-200",
-  ghost: "bg-transparent hover:bg-surface-lighter text-gray-400 hover:text-gray-200",
-  danger: "bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400",
+  secondary: "bg-white dark:bg-surface-lighter hover:bg-gray-100 dark:hover:bg-surface-light border border-light-border dark:border-border text-gray-700 dark:text-gray-200",
+  ghost: "bg-transparent hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
+  danger: "bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400",
 };
 
 const sizeStyles = {
