@@ -2,8 +2,7 @@ name: Build and Push Docker Images
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
 
 env:
   REGISTRY: ghcr.io
@@ -14,7 +13,7 @@ permissions:
   packages: write
 
 jobs:
-  # ── Step 1: Detect which services changed since the last tag ──
+  # ── Step 1: Detect which services changed since the last deploy ──
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
@@ -30,16 +29,15 @@ jobs:
       - name: Detect changed services
         id: filter
         run: |
-          CURRENT_TAG="${GITHUB_REF_NAME}"
-          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${CURRENT_TAG}$" | head -1)
+          BEFORE="${{ github.event.before }}"
 
-          if [ -z "$PREV_TAG" ]; then
-            echo "No previous tag found — building all services"
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "Initial push — building all services"
             BUILD_ALL=true
             CHANGED_FILES=""
           else
-            echo "Comparing $PREV_TAG..$CURRENT_TAG"
-            CHANGED_FILES=$(git diff --name-only "$PREV_TAG".."$CURRENT_TAG")
+            echo "Comparing ${BEFORE}..HEAD"
+            CHANGED_FILES=$(git diff --name-only "$BEFORE"..HEAD)
             echo "Changed files:"
             echo "$CHANGED_FILES"
             BUILD_ALL=false
@@ -161,7 +159,7 @@ jobs:
 
       - name: Extract version tag
         id: version
-        run: echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+        run: echo "tag=sha-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -190,7 +188,7 @@ jobs:
 
       - name: Extract version tag
         id: version
-        run: echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+        run: echo "tag=sha-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Update per-service tags in compose file
         run: |
