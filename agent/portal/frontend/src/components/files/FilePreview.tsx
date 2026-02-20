@@ -62,21 +62,21 @@ export default function FilePreview({ file, onClose }: FilePreviewProps) {
   const handleDownload = () => apiDownloadFile(file.file_id, file.filename);
 
   return (
-    <div className="bg-surface-light border border-border rounded-xl overflow-hidden">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <h3 className="text-sm font-medium text-white truncate">{file.filename}</h3>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-light-border dark:border-border">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-white truncate">{file.filename}</h3>
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleDownload}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
             title="Download"
           >
             <Download size={16} />
           </button>
           <button
             onClick={onClose}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           >
             <X size={16} />
           </button>
@@ -96,13 +96,13 @@ export default function FilePreview({ file, onClose }: FilePreviewProps) {
             className="max-w-full h-auto rounded"
           />
         ) : isMarkdown && content ? (
-          <div className="prose prose-invert prose-sm max-w-none">
+          <div className="prose dark:prose-invert prose-sm max-w-none">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {content}
             </ReactMarkdown>
           </div>
         ) : isText && content ? (
-          <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono log-viewer">
+          <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono log-viewer">
             {content}
           </pre>
         ) : isImage ? (

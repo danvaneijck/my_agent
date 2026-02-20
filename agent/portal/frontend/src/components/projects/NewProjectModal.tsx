@@ -213,7 +213,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                       ? "bg-accent text-white"
                       : done
                         ? "bg-green-500 text-white"
-                        : "bg-surface-lighter text-gray-500"
+                        : "bg-gray-200 dark:bg-surface-lighter text-gray-500"
                   }`}>
                     {done ? "\u2713" : i + 1}
                   </span>
@@ -365,7 +365,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                       className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
                         newRepoPrivate
                           ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                          : "bg-surface-lighter text-gray-300 border border-border"
+                          : "bg-gray-100 dark:bg-surface-lighter text-gray-600 dark:text-gray-300 border border-light-border dark:border-border"
                       }`}
                     >
                       {newRepoPrivate ? "Private" : "Public"}
@@ -464,7 +464,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                     type="button"
                     onClick={() => setAutoPush(!autoPush)}
                     className={`relative w-10 h-5 rounded-full transition-colors ${
-                      autoPush ? "bg-accent" : "bg-surface-lighter"
+                      autoPush ? "bg-accent" : "bg-gray-300 dark:bg-surface-lighter"
                     }`}
                   >
                     <div

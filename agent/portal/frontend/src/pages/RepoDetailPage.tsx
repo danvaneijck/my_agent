@@ -559,7 +559,7 @@ export default function RepoDetailPage() {
                           {issue.labels.map((label) => (
                             <span
                               key={label}
-                              className="px-1.5 py-0.5 rounded bg-surface-lighter text-gray-400"
+                              className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-surface-lighter text-gray-600 dark:text-gray-400"
                             >
                               {label}
                             </span>
@@ -682,13 +682,13 @@ export default function RepoDetailPage() {
 
             {/* Head branch */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 From branch (head)
               </label>
               <select
                 value={prHead}
                 onChange={(e) => setPrHead(e.target.value)}
-                className="w-full bg-surface-lighter border border-border rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-accent"
+                className="w-full bg-white dark:bg-surface-lighter border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:border-accent"
               >
                 {branches.map((b) => (
                   <option key={b.name} value={b.name}>
@@ -700,13 +700,13 @@ export default function RepoDetailPage() {
 
             {/* Base branch */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Into branch (base)
               </label>
               <select
                 value={prBase}
                 onChange={(e) => setPrBase(e.target.value)}
-                className="w-full bg-surface-lighter border border-border rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-accent"
+                className="w-full bg-white dark:bg-surface-lighter border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:border-accent"
               >
                 {branches
                   .filter((b) => b.name !== prHead)
@@ -720,7 +720,7 @@ export default function RepoDetailPage() {
 
             {/* Title */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Title
               </label>
               <input
@@ -734,7 +734,7 @@ export default function RepoDetailPage() {
 
             {/* Body */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Description (optional)
               </label>
               <textarea
@@ -761,7 +761,7 @@ export default function RepoDetailPage() {
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setCreatePROpen(false)}
-                className="px-4 py-2 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors"
+                className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-border transition-colors"
               >
                 Cancel
               </button>

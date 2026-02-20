@@ -152,7 +152,7 @@ function LogViewer({ deployId, serviceName }: { deployId: string; serviceName?: 
         <button
           onClick={fetchLogs}
           disabled={loading}
-          className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
         >
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
         </button>
@@ -235,7 +235,7 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
                         selectedService === svc.name ? null : svc.name
                       )
                     }
-                    className="p-1 rounded hover:bg-surface-lighter text-gray-500 hover:text-gray-300"
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                   >
                     <FileText size={14} />
                   </button>
@@ -330,7 +330,7 @@ function EnvVarEditor({
           </h3>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200"
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           >
             <X size={16} />
           </button>

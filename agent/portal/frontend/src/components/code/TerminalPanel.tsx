@@ -150,7 +150,7 @@ export default function TerminalPanel({
                 key={tab.id}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors shrink-0 ${
                   activeTabId === tab.id
-                    ? "bg-surface text-white"
+                    ? "bg-gray-200 dark:bg-surface text-gray-900 dark:text-white"
                     : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-surface/50"
                 }`}
               >
