@@ -172,7 +172,7 @@ async def list_running_workflow_runs(
     all_runs_nested = await asyncio.gather(*[_fetch_runs(r) for r in repos[:10]])
     all_runs = [run for batch in all_runs_nested for run in batch]
 
-    # Sort: in_progress first, then queued, then completed by updated_at desc
+    # Sort: in_progress first, then queued, then failed completions, then successful
     status_order = {"in_progress": 0, "queued": 1, "completed": 2}
     in_progress_and_queued = sorted(
         [r for r in all_runs if r.get("status") != "completed"],
@@ -183,7 +183,11 @@ async def list_running_workflow_runs(
         key=lambda r: r.get("updated_at", "") or "",
         reverse=True,
     )
-    merged = in_progress_and_queued + completed[:10]
+    # Always include failed/error runs so they don't silently vanish when
+    # a running action completes and shifts the completed window.
+    failed = [r for r in completed if r.get("conclusion") in ("failure", "cancelled", "timed_out")]
+    success = [r for r in completed if r not in failed]
+    merged = in_progress_and_queued + failed + success[:10]
 
     return {"total_count": len(merged), "workflow_runs": merged[:20]}
 
