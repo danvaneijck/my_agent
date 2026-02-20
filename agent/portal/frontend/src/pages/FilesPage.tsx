@@ -60,7 +60,7 @@ export default function FilesPage() {
       variants={pageVariants}
     >
       {/* File list panel */}
-      <div className="flex-1 flex flex-col min-w-0 border-r border-border">
+      <div className="flex-1 flex flex-col min-w-0 border-r border-light-border dark:border-border">
         <div className="p-4 space-y-3 shrink-0">
           {/* Search + refresh */}
           <div className="flex items-center gap-3">
@@ -73,13 +73,13 @@ export default function FilesPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search files..."
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
+                className="w-full pl-9 pr-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
                 aria-label="Search files"
               />
             </div>
             <button
               onClick={fetchFiles}
-              className="p-2 rounded-lg hover:bg-surface-lighter text-gray-400"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400"
               title="Refresh"
             >
               <RefreshCw size={16} />
