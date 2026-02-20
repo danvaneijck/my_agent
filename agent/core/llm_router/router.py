@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import structlog
 
-from core.llm_router.providers.base import LLMProvider, LLMResponse
+from core.llm_router.providers.base import LLMProvider, LLMResponse, PromptTooLongError
 from shared.config import Settings, parse_list
 
 logger = structlog.get_logger()
@@ -168,6 +168,8 @@ class LLMRouter:
                 temperature=temperature,
             )
             return response
+        except PromptTooLongError:
+            raise  # recoverable — let the agent loop trim and retry
         except Exception as e:
             # 400-class errors mean the payload is broken — fallback won't help
             if _is_bad_request(e):

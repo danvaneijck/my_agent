@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 
 import structlog
 from fastapi import Depends, FastAPI, HTTPException
@@ -305,23 +306,14 @@ async def continue_conversation(req: ContinueRequest, _=Depends(require_service_
             context_parts.append(
                 f"\nTask result summary: {json.dumps(summary, default=str)}"
             )
+    # Keep guidance concise — the system prompt already contains full
+    # project workflow instructions via _get_active_projects().  The
+    # on_success_message from the scheduler has the specific IDs.
     guidance = ""
     if req.result_data and isinstance(req.result_data, dict):
         task_status = req.result_data.get("status")
         if task_status == "completed":
-            guidance = (
-                "\nThe claude_code task completed successfully. Next steps: "
-                "1) Update the project task status to 'in_review'. "
-                "2) Create a PR from the phase branch into the project branch "
-                "using git_platform.create_pull_request. Store pr_number on the task. "
-                "3) If auto_merge is enabled on the project, merge the PR immediately "
-                "with git_platform.merge_pull_request and update status to 'done'. "
-                "Otherwise, notify the user the PR is ready for review. "
-                "4) Use get_next_task for the next todo task in the phase. "
-                "For subsequent tasks in the same phase, prefer continue_task on the "
-                "completed workspace (with auto_push=true) to keep file context. "
-                "5) If no more tasks, update the phase status."
-            )
+            guidance = "\nProceed with the project workflow using the information above."
         elif task_status == "awaiting_input":
             guidance = (
                 "\nThe claude_code task finished in plan mode. Present "
@@ -341,11 +333,18 @@ async def continue_conversation(req: ContinueRequest, _=Depends(require_service_
         )
     context_parts.append(guidance)
 
+    # For workflow continuations, use a unique thread ID so each phase
+    # gets a fresh conversation instead of accumulating messages from
+    # all prior phases (which can cause "prompt is too long" errors).
+    thread_id = req.platform_thread_id
+    if req.workflow_id:
+        thread_id = f"wf-{req.workflow_id}-{uuid.uuid4().hex[:8]}"
+
     incoming = IncomingMessage(
         platform=req.platform,
         platform_user_id=platform_user_id,
         platform_channel_id=req.platform_channel_id,
-        platform_thread_id=req.platform_thread_id,
+        platform_thread_id=thread_id,
         content="\n".join(context_parts),
     )
 

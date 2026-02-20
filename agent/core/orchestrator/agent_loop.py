@@ -10,12 +10,13 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.llm_router.providers.base import LLMResponse
+from core.llm_router.providers.base import LLMResponse, PromptTooLongError
 from core.llm_router.router import LLMRouter
 from core.llm_router.token_counter import estimate_cost
 from core.orchestrator.context_builder import ContextBuilder
 from core.orchestrator.tool_registry import ToolRegistry
 from shared.config import Settings, parse_list
+from shared.utils.tokens import count_tokens, count_messages_tokens
 from shared.llm_settings_resolver import get_user_llm_overrides
 from shared.models.conversation import Conversation, Message
 from shared.models.file import FileRecord
@@ -116,6 +117,13 @@ class AgentLoop:
             tool_names=[t.name for t in tools],
         )
 
+        # 5b. Measure actual tool definition token overhead
+        if openai_tools:
+            tools_json = json.dumps(openai_tools)
+            tool_overhead = int(count_tokens(tools_json, model or self.settings.default_model) * 1.2)
+        else:
+            tool_overhead = 0
+
         # 6. Determine model (None lets the router pick its effective default)
         model = persona.default_model if persona and persona.default_model else None
         max_tokens = persona.max_tokens_per_request if persona else 4000
@@ -166,6 +174,7 @@ class AgentLoop:
             model=model,
             tool_count=len(tools),
             llm_router=active_router,
+            tool_overhead_tokens=tool_overhead,
         )
 
         # Save the incoming user message
@@ -179,6 +188,10 @@ class AgentLoop:
         session.add(user_msg)
 
         # 8. Agent loop
+        # Pre-compute context budget for in-loop re-trimming
+        target_model = model or self.settings.default_model
+        context_budget = self.context_builder._get_context_budget(target_model) - tool_overhead
+
         final_content = ""
         files: list[dict] = []
         tool_call_summaries: list[ToolCallSummary] = []
@@ -188,12 +201,26 @@ class AgentLoop:
             iteration += 1
 
             # Call LLM — use per-user router when the user has personal API keys.
-            llm_response: LLMResponse = await active_router.chat(
-                messages=context,
-                tools=openai_tools,
-                model=model,
-                max_tokens=max_tokens,
-            )
+            try:
+                llm_response: LLMResponse = await active_router.chat(
+                    messages=context,
+                    tools=openai_tools,
+                    model=model,
+                    max_tokens=max_tokens,
+                )
+            except PromptTooLongError:
+                logger.warning(
+                    "prompt_too_long_recovering",
+                    context_messages=len(context),
+                    iteration=iteration,
+                )
+                context = self._emergency_trim(context)
+                llm_response = await active_router.chat(
+                    messages=context,
+                    tools=openai_tools,
+                    model=model,
+                    max_tokens=max_tokens,
+                )
 
             # Log token usage
             cost = estimate_cost(
@@ -343,6 +370,9 @@ class AgentLoop:
                                 "url": f["url"],
                             })
 
+            # Re-trim context after tool results to prevent exceeding budget
+            context = self._retrim_context(context, context_budget, target_model)
+
         else:
             # Max iterations reached
             if not final_content:
@@ -438,6 +468,60 @@ class AgentLoop:
         if user.token_budget_monthly is None:
             return True  # Unlimited
         return user.tokens_used_this_month < user.token_budget_monthly
+
+    @staticmethod
+    def _retrim_context(context: list[dict], budget: int, model: str) -> list[dict]:
+        """Re-trim context mid-loop to stay within token budget.
+
+        Preserves system messages and the most recent non-system messages
+        (the current reasoning chain), dropping older history from the
+        middle when the budget is exceeded.
+        """
+        total = count_messages_tokens(context, model)
+        if total <= budget:
+            return context
+
+        system = [m for m in context if m["role"] == "system"]
+        non_system = [m for m in context if m["role"] != "system"]
+
+        # Keep the tail (last 4 non-system messages) to preserve the
+        # most recent tool_call/tool_result pair and current exchange.
+        tail_count = min(4, len(non_system))
+        middle = non_system[:-tail_count] if tail_count else non_system
+        tail = non_system[-tail_count:] if tail_count else []
+
+        while middle and count_messages_tokens(system + middle + tail, model) > budget:
+            middle.pop(0)
+
+        result = system + middle + tail
+        return ContextBuilder._sanitize_tool_pairs(result)
+
+    @staticmethod
+    def _emergency_trim(context: list[dict]) -> list[dict]:
+        """Aggressively trim context as a last resort for prompt-too-long recovery.
+
+        Keeps only system messages, the last user message, and the 2 most
+        recent tool_call/tool_result pairs.
+        """
+        system = [m for m in context if m["role"] == "system"]
+        non_system = [m for m in context if m["role"] != "system"]
+
+        # Find the last user message
+        last_user = None
+        for m in reversed(non_system):
+            if m["role"] == "user":
+                last_user = m
+                break
+
+        # Keep the last 4 non-system messages (2 tool pairs)
+        tail = non_system[-4:] if len(non_system) >= 4 else non_system
+
+        # Ensure the last user message is included
+        if last_user and last_user not in tail:
+            tail = [last_user] + tail
+
+        result = system + tail
+        return ContextBuilder._sanitize_tool_pairs(result)
 
     async def _resolve_persona(
         self,

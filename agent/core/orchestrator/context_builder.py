@@ -90,12 +90,17 @@ class ContextBuilder:
         model: str | None = None,
         tool_count: int = 0,
         llm_router=None,
+        tool_overhead_tokens: int | None = None,
     ) -> list[dict]:
         """Build the context messages list for an LLM call.
 
         The optional *llm_router* parameter overrides ``self.llm_router`` when
         provided (used when a user has configured personal API keys so that
         embedding calls for semantic memory use their keys).
+
+        *tool_overhead_tokens* overrides the default ``tool_schema_token_budget``
+        with the actual measured token count of the tool definitions.  Pass
+        ``None`` to use the config default.
 
         Structure:
         1. System prompt (persona + tools + datetime)
@@ -105,8 +110,13 @@ class ContextBuilder:
         5. New user message
         """
         target_model = model or self.settings.default_model
-        # Reserve budget for tool definitions which are sent alongside messages
-        tool_overhead = getattr(self.settings, "tool_schema_token_budget", 4000) if tool_count > 0 else 0
+        # Reserve budget for tool definitions which are sent alongside messages.
+        # Use the caller-provided measured value when available, otherwise fall
+        # back to the configured estimate.
+        if tool_overhead_tokens is not None:
+            tool_overhead = tool_overhead_tokens
+        else:
+            tool_overhead = getattr(self.settings, "tool_schema_token_budget", 4000) if tool_count > 0 else 0
         budget = self._get_context_budget(target_model) - tool_overhead
         messages: list[dict] = []
 

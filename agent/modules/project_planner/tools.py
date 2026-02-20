@@ -93,8 +93,11 @@ class ProjectPlannerTools:
         project_id = uuid.uuid4()
         now = datetime.now(timezone.utc)
 
-        # Auto-generate a project integration branch when repo info is provided
-        proj_branch = f"project/{_slugify(name)}" if repo_owner and repo_name else None
+        # Auto-generate a project integration branch when repo info is provided.
+        # Use /integration suffix so the project branch doesn't conflict with
+        # phase branches nested under the same prefix (git refs can't be both
+        # a leaf and a directory).
+        proj_branch = f"project/{_slugify(name)}/integration" if repo_owner and repo_name else None
 
         async with self.session_factory() as session:
             project = Project(
@@ -120,9 +123,10 @@ class ProjectPlannerTools:
             if phases:
                 for idx, phase_data in enumerate(phases):
                     phase_id = uuid.uuid4()
-                    # Prefix phase branch with project branch if it exists
+                    # Phase branches sit alongside /integration under the project prefix
                     phase_suffix = f"phase/{idx}/{_slugify(phase_data['name'])}"
-                    phase_branch = f"{proj_branch}/{phase_suffix}" if proj_branch else phase_suffix
+                    proj_base = proj_branch.rsplit("/integration", 1)[0] if proj_branch else None
+                    phase_branch = f"{proj_base}/{phase_suffix}" if proj_base else phase_suffix
                     phase = ProjectPhase(
                         id=phase_id,
                         project_id=project_id,
@@ -407,9 +411,10 @@ class ProjectPlannerTools:
 
             phase_id = uuid.uuid4()
             order_idx = max_idx + 1
-            # Prefix phase branch with project branch if it exists
+            # Phase branches sit alongside /integration under the project prefix
             phase_suffix = f"phase/{order_idx}/{_slugify(name)}"
-            phase_branch = f"{project.project_branch}/{phase_suffix}" if project.project_branch else phase_suffix
+            proj_base = project.project_branch.rsplit("/integration", 1)[0] if project.project_branch else None
+            phase_branch = f"{proj_base}/{phase_suffix}" if proj_base else phase_suffix
             phase = ProjectPhase(
                 id=phase_id,
                 project_id=pid,
@@ -1377,15 +1382,19 @@ class ProjectPlannerTools:
         phase_id = phase_result["phase_id"]
         phase_name = phase_result["phase_name"]
 
-        # Create scheduler job to monitor this phase
+        # Create scheduler job to monitor this phase.
+        # Each workflow phase gets a fresh conversation, so the success
+        # message must be self-contained with all IDs and instructions.
         on_success_message = (
-            f"Project '{project.name}' phase '{phase_name}' (phase_id: {phase_id}) "
-            f"with claude_code task {claude_task_id} has completed. "
-            f"Use project_planner.complete_phase(phase_id='{phase_id}', claude_task_id='{claude_task_id}') "
-            f"to create the PR and update task statuses. Then check if there are more phases to execute "
-            f"by calling project_planner.execute_next_phase(project_id='{project_id}'). "
-            f"If another phase starts, create a new scheduler job to monitor it. "
-            f"Continue until all phases are complete. Workflow ID: {workflow_id}"
+            f"[Project Workflow] Project '{project.name}' (project_id: {project_id}), "
+            f"phase '{phase_name}' (phase_id: {phase_id}) with claude_code task "
+            f"{claude_task_id} has completed.\n\n"
+            f"Next steps:\n"
+            f"1. Call project_planner.complete_phase(phase_id='{phase_id}', claude_task_id='{claude_task_id}')\n"
+            f"2. Call project_planner.execute_next_phase(project_id='{project_id}')\n"
+            f"3. If a new phase started, create a scheduler.add_job to monitor it with "
+            f"on_complete='resume_conversation' and workflow_id='{workflow_id}'\n"
+            f"4. Repeat until all phases complete."
         )
 
         async with httpx.AsyncClient(timeout=30.0, headers=get_service_auth_headers()) as client:

@@ -206,8 +206,12 @@ class AnthropicProvider(LLMProvider):
             try:
                 response = await self.client.messages.create(**kwargs)
                 break
-            except BadRequestError:
-                raise  # 400 = bad payload, retrying won't help
+            except BadRequestError as e:
+                # Detect recoverable "prompt is too long" errors separately
+                if "prompt is too long" in str(e).lower():
+                    from core.llm_router.providers.base import PromptTooLongError
+                    raise PromptTooLongError(str(e)) from e
+                raise  # other 400s = bad payload, retrying won't help
             except Exception as e:
                 last_error = e
                 logger.warning("anthropic_api_error", attempt=attempt, error=str(e))

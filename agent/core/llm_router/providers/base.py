@@ -9,6 +9,13 @@ from pydantic import BaseModel
 from shared.schemas.tools import ToolCall
 
 
+class PromptTooLongError(Exception):
+    """Raised when the prompt exceeds the model's context window.
+
+    This is a recoverable error — the agent loop can trim context and retry.
+    """
+
+
 class LLMResponse(BaseModel):
     """Standardized response from any LLM provider."""
 
