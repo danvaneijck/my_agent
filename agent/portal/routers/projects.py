@@ -753,17 +753,19 @@ async def cancel_workflow(
         timeout=15.0,
     )
 
-    # Clear workflow_id from project
-    await call_tool(
-        module="project_planner",
-        tool_name="project_planner.update_project",
-        arguments={
-            "project_id": project_id,
-            "workflow_id": None,
-        },
-        user_id=uid,
-        timeout=15.0,
-    )
+    # Clear workflow_id from project directly in DB
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        db_result = await session.execute(
+            select(Project).where(
+                Project.id == uuid.UUID(project_id),
+                Project.user_id == uuid.UUID(uid),
+            )
+        )
+        project = db_result.scalar_one_or_none()
+        if project:
+            project.workflow_id = None
+            await session.commit()
 
     return result.get("result", {})
 
