@@ -229,7 +229,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd ~/my_agent_deploy
+            cd /var/lib/deploy/my_agent_deploy
             git pull
             make migrate
             make up
