@@ -88,8 +88,8 @@ export default function ProjectExecutionPanel({
 
   if (loading) {
     return (
-      <div className="bg-surface-light border border-border rounded-xl p-4">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
+        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
           <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           Loading execution status...
         </div>
@@ -178,7 +178,7 @@ export default function ProjectExecutionPanel({
   }
 
   return (
-    <div className="bg-surface-light border border-border rounded-xl p-4 space-y-4">
+    <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -188,7 +188,7 @@ export default function ProjectExecutionPanel({
           {isPaused && (
             <Pause size={16} className="text-yellow-400" />
           )}
-          <h3 className="text-sm font-medium text-white">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-white">
             {isPaused ? "Paused — " : "Executing: "}{currentPhase.name}
           </h3>
         </div>
@@ -206,11 +206,11 @@ export default function ProjectExecutionPanel({
 
       {/* Progress */}
       <div>
-        <div className="flex justify-between text-sm text-gray-400 mb-2">
+        <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 mb-2">
           <span>Overall Progress</span>
           <span>{doneTasks}/{totalTasks} tasks ({overallPct}%)</span>
         </div>
-        <div className="h-2 bg-surface rounded-full overflow-hidden">
+        <div className="h-2 bg-gray-200 dark:bg-surface rounded-full overflow-hidden">
           <div
             className="h-full bg-accent rounded-full transition-all"
             style={{ width: `${overallPct}%` }}
@@ -219,7 +219,7 @@ export default function ProjectExecutionPanel({
       </div>
 
       {/* Status details */}
-      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
         {claudeTask && (
           <span className="inline-flex items-center gap-1">
             <Clock size={12} />

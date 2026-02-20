@@ -321,8 +321,8 @@ export default function TaskList({ tasks }: TaskListProps) {
                           {task.id.slice(0, 8)}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-400 line-clamp-1">{task.prompt}</p>
-                      <div className="flex items-center gap-3 text-xs text-gray-600">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">{task.prompt}</p>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
                         <span>{formatTime(task.created_at)}</span>
                         <span>{formatElapsed(task.elapsed_seconds)}</span>
                       </div>
@@ -372,11 +372,11 @@ function ChainRows({
             <StatusBadge status={chain.latest.status} stale={isStale(chain.latest)} />
           </div>
         </td>
-        <td className="px-4 py-3 font-mono text-xs text-gray-400">
+        <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
           <div className="flex items-center gap-1.5">
             {chain.latest.id.slice(0, 8)}
             {isChain && (
-              <span className="inline-flex items-center gap-0.5 text-gray-600">
+              <span className="inline-flex items-center gap-0.5 text-gray-500">
                 <Layers size={10} />
                 {chain.tasks.length}
               </span>
@@ -398,10 +398,10 @@ function ChainRows({
             <span className="truncate">{chain.root.prompt}</span>
           </div>
         </td>
-        <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
           {formatTime(chain.root.created_at)}
         </td>
-        <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
           <span className="inline-flex items-center gap-1">
             <Clock size={14} />
             {formatElapsed(totalElapsed(chain))}
@@ -431,7 +431,7 @@ function ChainRows({
                 <CopyableId id={task.workspace} />
               )}
             </td>
-            <td className="px-4 py-2 text-gray-400 text-xs max-w-md truncate">
+            <td className="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs max-w-md truncate">
               {task.prompt}
             </td>
             <td className="px-4 py-2 text-gray-500 text-xs whitespace-nowrap">

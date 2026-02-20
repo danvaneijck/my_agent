@@ -22,12 +22,12 @@ export default function SkillCard({ skill, onClick }: SkillCardProps) {
   return (
     <button
       onClick={onClick}
-      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-border-light transition-colors w-full"
+      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-gray-300 dark:hover:border-border-light transition-colors w-full"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <FileCode size={16} className="text-accent flex-shrink-0" />
-          <h3 className="font-medium text-white truncate">{skill.name}</h3>
+          <h3 className="font-medium text-gray-900 dark:text-white truncate">{skill.name}</h3>
         </div>
         {skill.category && (
           <span
@@ -46,7 +46,7 @@ export default function SkillCard({ skill, onClick }: SkillCardProps) {
 
       <div className="flex items-center gap-2 flex-wrap">
         {skill.language && (
-          <span className="text-xs px-2 py-0.5 bg-surface-lighter rounded text-gray-400">
+          <span className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-surface-lighter rounded text-gray-500 dark:text-gray-400">
             {skill.language}
           </span>
         )}
@@ -60,7 +60,7 @@ export default function SkillCard({ skill, onClick }: SkillCardProps) {
             {skill.tags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
-                className="text-xs px-2 py-0.5 bg-surface-lighter rounded text-gray-500 flex items-center gap-1"
+                className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-surface-lighter rounded text-gray-500 flex items-center gap-1"
               >
                 <Tag size={10} />
                 {tag}

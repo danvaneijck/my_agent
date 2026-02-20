@@ -64,7 +64,7 @@ function PhaseRow({ phase, projectId, repoOwner, repoName, onClick, onRetry }: {
           )}
         </div>
         {phase.description && (
-          <p className="text-sm text-gray-400 truncate">{phase.description}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{phase.description}</p>
         )}
         {total > 0 && (
           <div className="flex items-center gap-3 mt-1.5">
@@ -287,11 +287,11 @@ export default function ProjectDetailPage() {
   if (loading) {
     return (
       <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4 animate-pulse">
-        <div className="h-6 bg-surface-lighter/60 rounded w-1/3" />
-        <div className="h-4 bg-surface-lighter/60 rounded w-2/3" />
+        <div className="h-6 bg-gray-200 dark:bg-surface-lighter/60 rounded w-1/3" />
+        <div className="h-4 bg-gray-200 dark:bg-surface-lighter/60 rounded w-2/3" />
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-14 bg-surface-lighter/60 rounded" />
+            <div key={i} className="h-14 bg-gray-200 dark:bg-surface-lighter/60 rounded" />
           ))}
         </div>
       </div>
@@ -390,7 +390,7 @@ export default function ProjectDetailPage() {
             </button>
           </div>
           {project.description && (
-            <p className="text-sm text-gray-400 mt-1">{project.description}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{project.description}</p>
           )}
           {project.repo_owner && project.repo_name && (
             <p className="text-xs text-gray-500 mt-1">
@@ -404,7 +404,7 @@ export default function ProjectDetailPage() {
       {/* Overall progress */}
       {totalTasks > 0 && (
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
-          <div className="flex justify-between text-sm text-gray-400 mb-2">
+          <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 mb-2">
             <span>Overall Progress</span>
             <span>{doneTasks}/{totalTasks} tasks ({overallPct}% complete)</span>
           </div>
@@ -618,7 +618,7 @@ export default function ProjectDetailPage() {
 
             {reapplying && (
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm text-gray-400">
+                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                   <RefreshCw size={14} className="animate-spin" />
                   {reapplyProgress}
                 </div>

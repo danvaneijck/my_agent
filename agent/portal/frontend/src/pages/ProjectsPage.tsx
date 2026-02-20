@@ -26,7 +26,7 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
   return (
     <button
       onClick={onClick}
-      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-border-light transition-colors w-full"
+      className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-gray-300 dark:hover:border-border-light transition-colors w-full"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <h3 className="font-medium text-gray-900 dark:text-white truncate">{project.name}</h3>
@@ -36,7 +36,7 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
       </div>
 
       {project.description && (
-        <p className="text-sm text-gray-400 line-clamp-2 mb-3">{project.description}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-3">{project.description}</p>
       )}
 
       {project.repo_owner && project.repo_name && (
@@ -47,7 +47,7 @@ function ProjectCard({ project, onClick }: { project: ProjectSummary; onClick: (
 
       {total > 0 && (
         <div className="space-y-1.5">
-          <div className="flex justify-between text-xs text-gray-400">
+          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
             <span>{done}/{total} tasks</span>
             <span>{pct}% complete</span>
           </div>
@@ -138,10 +138,10 @@ export default function ProjectsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 animate-pulse">
-              <div className="h-5 bg-surface-lighter/60 rounded w-2/3 mb-3" />
-              <div className="h-4 bg-surface-lighter/60 rounded w-full mb-2" />
-              <div className="h-4 bg-surface-lighter/60 rounded w-1/2 mb-3" />
-              <div className="h-1.5 bg-surface-lighter/60 rounded-full" />
+              <div className="h-5 bg-gray-200 dark:bg-surface-lighter/60 rounded w-2/3 mb-3" />
+              <div className="h-4 bg-gray-200 dark:bg-surface-lighter/60 rounded w-full mb-2" />
+              <div className="h-4 bg-gray-200 dark:bg-surface-lighter/60 rounded w-1/2 mb-3" />
+              <div className="h-1.5 bg-gray-200 dark:bg-surface-lighter/60 rounded-full" />
             </div>
           ))}
         </div>

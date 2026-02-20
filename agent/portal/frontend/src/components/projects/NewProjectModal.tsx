@@ -177,21 +177,21 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
     >
-      <div className="bg-surface-light border border-border rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-          <h3 className="text-base font-semibold text-white">New Project</h3>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-light-border dark:border-border shrink-0">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">New Project</h3>
           <button
             onClick={onClose}
             disabled={submitting}
-            className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-50"
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors disabled:opacity-50"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Step indicator */}
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-border shrink-0">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-light-border dark:border-border shrink-0">
           {STEPS.map((s, i) => {
             const labels = { details: "Details", repo: "Repository", options: "Options" };
             const active = i === stepIndex;
@@ -230,7 +230,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
           {step === "details" && (
             <>
               <div>
-                <label className="block text-sm text-gray-400 mb-1.5">
+                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1.5">
                   Project name <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -238,23 +238,23 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="My New Project"
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
+                  className="w-full px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && canNext()) goNext();
                   }}
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1.5">
+                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1.5">
                   Description
-                  <span className="text-gray-600 ml-1">(used as the project goal for Claude)</span>
+                  <span className="text-gray-400 dark:text-gray-600 ml-1">(used as the project goal for Claude)</span>
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe what this project should do, the tech stack, key features..."
                   rows={4}
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
+                  className="w-full px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
                 />
               </div>
             </>
@@ -277,7 +277,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                     className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${
                       repoChoice === id
                         ? "bg-accent/20 text-accent border border-accent/30"
-                        : "bg-surface-lighter text-gray-400 border border-border hover:text-gray-300"
+                        : "bg-gray-100 dark:bg-surface-lighter text-gray-500 dark:text-gray-400 border border-light-border dark:border-border hover:text-gray-700 dark:hover:text-gray-300"
                     }`}
                   >
                     <Icon size={14} />
@@ -295,10 +295,10 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                       value={repoSearch}
                       onChange={(e) => setRepoSearch(e.target.value)}
                       placeholder="Search repositories..."
-                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent"
                     />
                   </div>
-                  <div className="max-h-52 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+                  <div className="max-h-52 overflow-y-auto border border-light-border dark:border-border rounded-lg divide-y divide-light-border dark:divide-border bg-white dark:bg-surface">
                     {reposLoading ? (
                       <div className="px-3 py-4 text-sm text-gray-500 text-center">Loading repos...</div>
                     ) : filteredRepos.length === 0 ? (
@@ -311,12 +311,12 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                           key={repo.full_name}
                           type="button"
                           onClick={() => setSelectedRepo(repo)}
-                          className={`w-full text-left px-3 py-2.5 hover:bg-surface-lighter transition-colors ${
+                          className={`w-full text-left px-3 py-2.5 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors ${
                             selectedRepo?.full_name === repo.full_name ? "bg-accent/10" : ""
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-white font-mono">{repo.full_name}</span>
+                            <span className="text-sm text-gray-900 dark:text-white font-mono">{repo.full_name}</span>
                             {repo.private && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
                                 private
@@ -347,18 +347,18 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
               {repoChoice === "new" && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm text-gray-400 mb-1.5">
+                    <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1.5">
                       Repository name <span className="text-red-400">*</span>
                     </label>
                     <input
                       value={newRepoName}
                       onChange={(e) => setNewRepoName(e.target.value)}
                       placeholder="my-new-project"
-                      className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent font-mono"
+                      className="w-full px-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent font-mono"
                     />
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-sm text-gray-400">Visibility:</label>
+                    <label className="text-sm text-gray-600 dark:text-gray-400">Visibility:</label>
                     <button
                       type="button"
                       onClick={() => setNewRepoPrivate(!newRepoPrivate)}
@@ -376,7 +376,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
 
               {/* No repo info */}
               {repoChoice === "none" && (
-                <div className="bg-surface/50 border border-border rounded-lg px-4 py-3 text-sm text-gray-400">
+                <div className="bg-gray-50 dark:bg-surface/50 border border-light-border dark:border-border rounded-lg px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                   The project will be created without a linked repository. Claude will plan the project
                   but won&apos;t clone or push to any repo.
                 </div>
@@ -388,10 +388,10 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
           {step === "options" && (
             <>
               {/* Summary */}
-              <div className="bg-surface/50 border border-border rounded-lg px-4 py-3 space-y-1.5">
+              <div className="bg-gray-50 dark:bg-surface/50 border border-light-border dark:border-border rounded-lg px-4 py-3 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">Project</span>
-                  <span className="text-sm text-white font-medium">{name}</span>
+                  <span className="text-sm text-gray-900 dark:text-white font-medium">{name}</span>
                 </div>
                 {(repoChoice === "existing" && selectedRepo) && (
                   <div className="flex items-center justify-between">
@@ -408,14 +408,14 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                 {repoChoice === "none" && (
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-500">Repository</span>
-                    <span className="text-sm text-gray-400">None</span>
+                    <span className="text-sm text-gray-500">None</span>
                   </div>
                 )}
               </div>
 
               {/* Mode */}
               <div className="space-y-2">
-                <label className="block text-sm text-gray-400">Execution mode</label>
+                <label className="block text-sm text-gray-600 dark:text-gray-400">Execution mode</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -423,7 +423,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                     className={`flex-1 flex items-center gap-2 px-3 py-2.5 text-sm rounded-lg transition-colors ${
                       mode === "plan"
                         ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                        : "bg-surface-lighter text-gray-400 border border-border hover:text-gray-300"
+                        : "bg-gray-100 dark:bg-surface-lighter text-gray-500 dark:text-gray-400 border border-light-border dark:border-border hover:text-gray-700 dark:hover:text-gray-300"
                     }`}
                   >
                     <Sparkles size={14} />
@@ -438,7 +438,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
                     className={`flex-1 flex items-center gap-2 px-3 py-2.5 text-sm rounded-lg transition-colors ${
                       mode === "execute"
                         ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                        : "bg-surface-lighter text-gray-400 border border-border hover:text-gray-300"
+                        : "bg-gray-100 dark:bg-surface-lighter text-gray-500 dark:text-gray-400 border border-light-border dark:border-border hover:text-gray-700 dark:hover:text-gray-300"
                     }`}
                   >
                     <Play size={14} />
@@ -454,7 +454,7 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
               {repoChoice !== "none" && (
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="text-sm text-gray-400 flex items-center gap-1.5">
+                    <label className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
                       <Upload size={14} />
                       Auto-push on completion
                     </label>
@@ -487,12 +487,12 @@ export default function NewProjectModal({ open, onClose, onCreated }: NewProject
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-4 border-t border-border shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-t border-light-border dark:border-border shrink-0">
           <button
             type="button"
             onClick={stepIndex === 0 ? onClose : goBack}
             disabled={submitting}
-            className="px-4 py-2 text-sm rounded-lg bg-surface-lighter text-gray-300 hover:bg-border transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-border transition-colors disabled:opacity-50"
           >
             {stepIndex === 0 ? "Cancel" : "Back"}
           </button>

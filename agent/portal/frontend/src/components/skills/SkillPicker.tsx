@@ -74,24 +74,24 @@ export default function SkillPicker({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-surface border border-border rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+      <div className="bg-white dark:bg-surface border border-light-border dark:border-border rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-surface border-b border-border p-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+        <div className="sticky top-0 bg-white dark:bg-surface border-b border-light-border dark:border-border p-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Plus size={20} className="text-accent" />
             {title}
           </h2>
           <button
             onClick={onClose}
             disabled={!!attaching}
-            className="p-1 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 disabled:opacity-50"
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-50"
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Search and Filter */}
-        <div className="p-4 space-y-3 border-b border-border">
+        <div className="p-4 space-y-3 border-b border-light-border dark:border-border">
           <div className="relative">
             <Search
               size={16}
@@ -103,7 +103,7 @@ export default function SkillPicker({
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search skills..."
               disabled={!!attaching}
-              className="w-full pl-10 pr-3 py-2 bg-surface-lighter border border-border rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+              className="w-full pl-10 pr-3 py-2 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
             />
           </div>
 
@@ -111,7 +111,7 @@ export default function SkillPicker({
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
             disabled={!!attaching}
-            className="w-full px-3 py-2 bg-surface-lighter border border-border rounded text-white focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+            className="w-full px-3 py-2 bg-gray-100 dark:bg-surface-lighter border border-light-border dark:border-border rounded text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
           >
             <option value="">All categories</option>
             {CATEGORIES.map((cat) => (
@@ -152,16 +152,16 @@ export default function SkillPicker({
                   key={skill.skill_id}
                   onClick={() => handleAttach(skill.skill_id)}
                   disabled={!!attaching}
-                  className="w-full bg-surface-lighter border border-border rounded-lg p-3 text-left hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-gray-50 dark:bg-surface-lighter border border-light-border dark:border-border rounded-lg p-3 text-left hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-medium text-white truncate">
+                        <h3 className="font-medium text-gray-900 dark:text-white truncate">
                           {skill.name}
                         </h3>
                         {skill.category && (
-                          <span className="text-xs px-2 py-0.5 bg-surface rounded text-gray-400">
+                          <span className="text-xs px-2 py-0.5 bg-gray-200 dark:bg-surface rounded text-gray-500 dark:text-gray-400">
                             {skill.category}
                           </span>
                         )}
@@ -190,8 +190,8 @@ export default function SkillPicker({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border p-4">
-          <div className="flex justify-between items-center text-sm text-gray-400">
+        <div className="border-t border-light-border dark:border-border p-4">
+          <div className="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400">
             <span>
               {availableSkills.length} skill{availableSkills.length !== 1 ? "s" : ""}{" "}
               available
@@ -199,7 +199,7 @@ export default function SkillPicker({
             <button
               onClick={onClose}
               disabled={!!attaching}
-              className="px-4 py-2 bg-surface-lighter hover:bg-surface-light text-gray-300 rounded disabled:opacity-50"
+              className="px-4 py-2 bg-gray-100 dark:bg-surface-lighter hover:bg-gray-200 dark:hover:bg-surface-light text-gray-700 dark:text-gray-300 rounded disabled:opacity-50"
             >
               Close
             </button>

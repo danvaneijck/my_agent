@@ -413,7 +413,7 @@ export default function CodePage() {
                   <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : entries.length === 0 ? (
-                <div className="text-center py-4 text-gray-600 text-sm">
+                <div className="text-center py-4 text-gray-500 text-sm">
                   Empty directory
                 </div>
               ) : (
@@ -535,9 +535,9 @@ export default function CodePage() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-gray-600">
+        <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-600">
           <div className="text-center space-y-2">
-            <Code2 size={40} className="mx-auto text-gray-700" />
+            <Code2 size={40} className="mx-auto text-gray-400 dark:text-gray-700" />
             <p className="text-sm">
               Select a workspace to browse its files
             </p>

@@ -72,9 +72,9 @@ export default function ProjectTaskDetailPage() {
   if (loading) {
     return (
       <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-4 animate-pulse">
-        <div className="h-5 bg-surface-lighter/60 rounded w-1/4" />
-        <div className="h-6 bg-surface-lighter/60 rounded w-1/2" />
-        <div className="h-32 bg-surface-lighter/60 rounded" />
+        <div className="h-5 bg-gray-200 dark:bg-surface-lighter/60 rounded w-1/4" />
+        <div className="h-6 bg-gray-200 dark:bg-surface-lighter/60 rounded w-1/2" />
+        <div className="h-32 bg-gray-200 dark:bg-surface-lighter/60 rounded" />
       </div>
     );
   }
@@ -115,7 +115,7 @@ export default function ProjectTaskDetailPage() {
       {/* Description */}
       {task.description && (
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Description</h3>
+          <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Description</h3>
           <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans">{task.description}</pre>
         </div>
       )}
@@ -123,14 +123,14 @@ export default function ProjectTaskDetailPage() {
       {/* Acceptance Criteria */}
       {task.acceptance_criteria && (
         <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Acceptance Criteria</h3>
+          <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Acceptance Criteria</h3>
           <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans">{task.acceptance_criteria}</pre>
         </div>
       )}
 
       {/* Git & Integration Info */}
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
-        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Integration</h3>
+        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Integration</h3>
 
         {task.branch_name && (
           <div className="flex items-center gap-2 text-sm">
@@ -170,7 +170,7 @@ export default function ProjectTaskDetailPage() {
       {/* Skills */}
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-light-border dark:border-border flex items-center justify-between">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider flex items-center gap-2">
+          <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
             <Lightbulb size={14} className="text-accent" />
             Skills ({taskSkills.length})
           </h3>
@@ -235,7 +235,7 @@ export default function ProjectTaskDetailPage() {
 
       {/* Timestamps */}
       <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-2">
-        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Timeline</h3>
+        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Timeline</h3>
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Clock size={12} />
           Created: {formatDate(task.created_at)}

@@ -138,7 +138,7 @@ function CodeBlock({
 function SystemCard({ event }: { event: StreamEvent }) {
   const tools = event.data.tools as string[] | undefined;
   return (
-    <div className="flex items-center gap-2 text-xs text-gray-600 py-1">
+    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-600 py-1">
       <Terminal size={12} />
       <span>Session started</span>
       {typeof event.data.session_id === "string" && (
@@ -502,7 +502,7 @@ export default function TaskOutputViewer({ taskId, initialStatus }: Props) {
 
       <div ref={containerRef} className="flex-1 overflow-auto p-4 space-y-2">
         {events.length === 0 ? (
-          <div className="text-gray-600 italic">
+          <div className="text-gray-500 dark:text-gray-600 italic">
             {status === "queued"
               ? "Waiting for task to start..."
               : "No output yet..."}

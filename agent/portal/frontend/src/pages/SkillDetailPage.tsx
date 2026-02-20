@@ -118,7 +118,7 @@ export default function SkillDetailPage() {
                   {skill.name}
                 </h1>
                 {skill.description && (
-                  <p className="text-gray-400 mt-1">{skill.description}</p>
+                  <p className="text-gray-500 dark:text-gray-400 mt-1">{skill.description}</p>
                 )}
               </div>
             </div>

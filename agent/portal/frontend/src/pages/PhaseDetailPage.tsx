@@ -43,7 +43,7 @@ function TaskCard({
       <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">{task.title}</p>
 
       {task.description && (
-        <p className="text-xs text-gray-400 line-clamp-2 mb-2">{task.description}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">{task.description}</p>
       )}
 
       <div className="flex flex-wrap gap-1.5">
@@ -189,7 +189,7 @@ export default function PhaseDetailPage() {
             </button>
           </div>
           {phase?.description && (
-            <p className="text-sm text-gray-400 mt-1">{phase.description}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{phase.description}</p>
           )}
           <p className="text-xs text-gray-500 mt-1">
             {tasks.length} tasks total — drag cards between columns to update status
@@ -209,10 +209,10 @@ export default function PhaseDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-3 animate-pulse">
-              <div className="h-4 bg-surface-lighter/60 rounded w-1/2 mb-3" />
+              <div className="h-4 bg-gray-200 dark:bg-surface-lighter/60 rounded w-1/2 mb-3" />
               <div className="space-y-2">
-                <div className="h-20 bg-surface-lighter/60 rounded" />
-                <div className="h-20 bg-surface-lighter/60 rounded" />
+                <div className="h-20 bg-gray-200 dark:bg-surface-lighter/60 rounded" />
+                <div className="h-20 bg-gray-200 dark:bg-surface-lighter/60 rounded" />
               </div>
             </div>
           ))}
@@ -234,7 +234,7 @@ export default function PhaseDetailPage() {
               }`}
             >
               <div className="px-3 py-2 border-b border-light-border dark:border-border flex items-center justify-between">
-                <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {col.label}
                 </h3>
                 <span className="text-xs text-gray-500">{col.tasks.length}</span>
@@ -250,7 +250,7 @@ export default function PhaseDetailPage() {
                   />
                 ))}
                 {col.tasks.length === 0 && (
-                  <div className="text-center py-4 text-xs text-gray-600">
+                  <div className="text-center py-4 text-xs text-gray-500">
                     No tasks
                   </div>
                 )}

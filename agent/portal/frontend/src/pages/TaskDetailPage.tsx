@@ -158,7 +158,7 @@ export default function TaskDetailPage() {
             <ArrowLeft size={18} />
           </button>
           <StatusBadge status={task.status} stale={!!isStale} />
-          <span className="font-mono text-sm text-gray-400">{task.id}</span>
+          <span className="font-mono text-sm text-gray-500 dark:text-gray-400">{task.id}</span>
           {task.mode === "plan" && (
             <span className="px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-400">
               plan mode

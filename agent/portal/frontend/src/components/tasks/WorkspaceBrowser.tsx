@@ -118,7 +118,7 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
               <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             </div>
           ) : entries.length === 0 ? (
-            <div className="text-center py-4 text-gray-600 text-sm">Empty directory</div>
+            <div className="text-center py-4 text-gray-500 text-sm">Empty directory</div>
           ) : (
             entries.map((entry) => (
               <button

@@ -144,7 +144,7 @@ export default function SkillsPage() {
                 <div className="flex justify-end">
                   <button
                     onClick={clearFilters}
-                    className="text-sm text-gray-400 hover:text-white"
+                    className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                   >
                     Clear filters
                   </button>
@@ -210,7 +210,7 @@ export default function SkillsPage() {
 
         {/* Skills Count */}
         {!loading && !error && skills.length > 0 && (
-          <div className="text-sm text-gray-400 text-center">
+          <div className="text-sm text-gray-500 dark:text-gray-400 text-center">
             {skills.length} skill{skills.length !== 1 ? "s" : ""}
             {hasActiveFilters && " (filtered)"}
           </div>

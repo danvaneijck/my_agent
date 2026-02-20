@@ -150,7 +150,7 @@ export default function PlanningTaskPanel({
           </a>
         </div>
         {task.prompt && (
-          <p className="text-sm text-gray-400 line-clamp-2">{task.prompt}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{task.prompt}</p>
         )}
         <div className="flex items-center gap-4 text-xs text-gray-500">
           <span className="inline-flex items-center gap-1">
