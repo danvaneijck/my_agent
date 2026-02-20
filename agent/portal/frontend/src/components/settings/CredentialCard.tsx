@@ -98,7 +98,7 @@ const SETUP_GUIDES: Record<string, SetupGuide> = {
       },
       {
         instruction:
-          "Option 2: Manual PAT — Create a fine-grained personal access token at GitHub Settings > Developer settings > Personal access tokens. Grant 'repo' and 'user:email' scopes.",
+          "Option 2: Manual PAT — Create a fine-grained personal access token at GitHub Settings > Developer settings > Personal access tokens. Grant 'repo', 'user:email', and 'workflow' scopes.",
       },
       {
         instruction:
