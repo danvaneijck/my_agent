@@ -48,22 +48,18 @@ _session_factory = None
 # Fallback: global tools built from env vars
 _fallback_tools: GarminTools | None = None
 
-# Cache per-user GarminTools so Garmin token caches persist across requests
-_user_tools_cache: dict[str, GarminTools] = {}
-
-
 async def _get_tools_for_user(user_id: str | None) -> GarminTools | None:
     """Resolve a GarminTools instance for the given user.
+
+    Always fetches credentials from the DB so that updates made via the portal
+    are picked up immediately without restarting the module. The Garmin session
+    token file on disk (keyed by user_id) is preserved across calls regardless.
 
     Priority:
     1. User's stored Garmin credentials from credential store
     2. Global GARMIN_EMAIL/GARMIN_PASSWORD env vars (fallback)
     """
     if user_id and _credential_store and _session_factory:
-        # Return cached instance if available
-        if user_id in _user_tools_cache:
-            return _user_tools_cache[user_id]
-
         try:
             uid = uuid.UUID(user_id)
             async with _session_factory() as session:
@@ -72,9 +68,7 @@ async def _get_tools_for_user(user_id: str | None) -> GarminTools | None:
             password = creds.get("password")
             if email and password:
                 token_path = Path(f"/app/.garmin_tokens_{user_id[:8]}")
-                tools = GarminTools(email=email, password=password, tokenstore_path=token_path)
-                _user_tools_cache[user_id] = tools
-                return tools
+                return GarminTools(email=email, password=password, tokenstore_path=token_path)
         except Exception as e:
             logger.warning("user_credential_lookup_failed", user_id=user_id, error=str(e))
 
