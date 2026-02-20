@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Clock, CheckCircle, MessageSquare, ExternalLink, AlertCircle, RefreshCw } from "lucide-react";
+import { Clock, CheckCircle, MessageSquare, ExternalLink, AlertCircle, RefreshCw, Loader } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -10,6 +10,8 @@ import type { Task } from "@/types";
 interface PlanningTaskPanelProps {
   planningTaskId: string;
   projectId: string;
+  planApplyStatus: "idle" | "applying" | "applied" | "failed";
+  planApplyError: string | null;
   onPlanApplied: () => void;
 }
 
@@ -23,6 +25,8 @@ function formatElapsed(seconds: number | null): string {
 export default function PlanningTaskPanel({
   planningTaskId,
   projectId,
+  planApplyStatus,
+  planApplyError,
   onPlanApplied,
 }: PlanningTaskPanelProps) {
   const [task, setTask] = useState<Task | null>(null);
@@ -60,6 +64,24 @@ export default function PlanningTaskPanel({
       onPlanApplied();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to apply plan");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRetryAfterFailure = async () => {
+    setSubmitting(true);
+    setError("");
+    try {
+      // Clear phases resets plan_apply_status to "idle", then apply again
+      await api(`/api/projects/${projectId}/clear-phases`, { method: "POST" });
+      await api(`/api/projects/${projectId}/apply-plan`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      onPlanApplied();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to retry plan application");
     } finally {
       setSubmitting(false);
     }
@@ -104,6 +126,48 @@ export default function PlanningTaskPanel({
       setSubmitting(false);
     }
   };
+
+  // Persistent "applying" state — shown regardless of local task status
+  // This survives page navigation since it's sourced from the DB
+  if (planApplyStatus === "applying") {
+    return (
+      <div className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Loader size={16} className="text-accent animate-spin" />
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+            Applying plan to project...
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          This may take a minute. You can navigate away and return — your plan will still be applying.
+        </p>
+      </div>
+    );
+  }
+
+  // Persistent "failed" state
+  if (planApplyStatus === "failed") {
+    return (
+      <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <AlertCircle size={16} className="text-red-400" />
+          <span className="text-sm font-medium text-red-400">Plan Application Failed</span>
+        </div>
+        {planApplyError && (
+          <p className="text-sm text-red-400">{planApplyError}</p>
+        )}
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <button
+          onClick={handleRetryAfterFailure}
+          disabled={submitting}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent/20 text-accent text-sm font-medium hover:bg-accent/30 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={16} />
+          {submitting ? "Retrying..." : "Retry Plan Application"}
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -201,11 +265,11 @@ export default function PlanningTaskPanel({
           <div className="flex gap-2">
             <button
               onClick={handleApply}
-              disabled={submitting}
+              disabled={submitting || planApplyStatus === "applying"}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600/20 text-green-400 text-sm font-medium hover:bg-green-600/30 transition-colors disabled:opacity-50"
             >
               <CheckCircle size={16} />
-              {submitting ? "Applying Plan..." : "Apply Plan"}
+              {submitting || planApplyStatus === "applying" ? "Applying Plan..." : "Apply Plan"}
             </button>
             <button
               onClick={() => setFeedbackMode(true)}
@@ -278,11 +342,11 @@ export default function PlanningTaskPanel({
 
         <button
           onClick={handleApply}
-          disabled={submitting}
+          disabled={submitting || planApplyStatus === "applying"}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600/20 text-green-400 text-sm font-medium hover:bg-green-600/30 transition-colors disabled:opacity-50"
         >
           <CheckCircle size={16} />
-          {submitting ? "Applying Plan..." : "Apply Plan"}
+          {submitting || planApplyStatus === "applying" ? "Applying Plan..." : "Apply Plan"}
         </button>
       </div>
     );

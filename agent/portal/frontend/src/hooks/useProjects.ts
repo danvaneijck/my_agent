@@ -51,6 +51,14 @@ export function useProjectDetail(projectId: string | undefined) {
     fetchProject();
   }, [fetchProject]);
 
+  // Auto-poll every 3s while plan is being applied so the UI updates when
+  // the apply finishes — even if the user navigated away and came back.
+  useEffect(() => {
+    if (project?.plan_apply_status !== "applying") return;
+    const interval = setInterval(fetchProject, 3000);
+    return () => clearInterval(interval);
+  }, [project?.plan_apply_status, fetchProject]);
+
   return { project, loading, error, refetch: fetchProject };
 }
 

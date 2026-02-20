@@ -299,6 +299,8 @@ class ProjectPlannerTools:
             "planning_task_id": project.planning_task_id,
             "workflow_id": project.workflow_id,
             "status": project.status,
+            "plan_apply_status": project.plan_apply_status,
+            "plan_apply_error": project.plan_apply_error,
             "created_at": project.created_at.isoformat(),
             "updated_at": project.updated_at.isoformat(),
             "phases": phase_dicts,
