@@ -112,6 +112,7 @@ export default function ProjectDetailPage() {
   const [reapplying, setReapplying] = useState(false);
   const [reapplyProgress, setReapplyProgress] = useState("");
   const [retryingPhase, setRetryingPhase] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [removingSkillId, setRemovingSkillId] = useState<string | null>(null);
   const syncedRef = useRef(false);
@@ -172,11 +173,12 @@ export default function ProjectDetailPage() {
   const handleStartExecution = async () => {
     if (!projectId) return;
     setStarting(true);
+    setActionError(null);
     try {
       await executePhase(projectId, { auto_push: true });
       refetch(); // Refresh to show execution panel
-    } catch {
-      // Error
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : "Failed to start phase execution");
     } finally {
       setStarting(false);
     }
@@ -185,6 +187,7 @@ export default function ProjectDetailPage() {
   const handleResume = async () => {
     if (!projectId) return;
     setStarting(true);
+    setActionError(null);
     try {
       // Update status to active
       await api(`/api/projects/${projectId}`, {
@@ -194,8 +197,8 @@ export default function ProjectDetailPage() {
       // Start next phase
       await executePhase(projectId, { auto_push: true });
       refetch();
-    } catch {
-      // Error
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : "Failed to resume project");
     } finally {
       setStarting(false);
     }
@@ -204,11 +207,12 @@ export default function ProjectDetailPage() {
   const handleStartWorkflow = async () => {
     if (!projectId) return;
     setStarting(true);
+    setActionError(null);
     try {
       await startWorkflow(projectId, { auto_push: true });
       refetch(); // Refresh to show execution panel
-    } catch {
-      // Error
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : "Failed to start automated workflow");
     } finally {
       setStarting(false);
     }
@@ -230,11 +234,12 @@ export default function ProjectDetailPage() {
   const handleRetryPhase = async (phaseId: string) => {
     if (!projectId) return;
     setRetryingPhase(phaseId);
+    setActionError(null);
     try {
       await retryPhase(projectId, phaseId);
       refetch();
-    } catch {
-      // Error
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : "Failed to retry phase");
     } finally {
       setRetryingPhase(null);
     }
@@ -457,6 +462,16 @@ export default function ProjectDetailPage() {
             )
           )}
         </>
+      )}
+
+      {/* Action error display */}
+      {actionError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400 flex items-start justify-between gap-2">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="shrink-0 hover:text-red-300">
+            <X size={14} />
+          </button>
+        </div>
       )}
 
       {/* Resume button for paused projects */}

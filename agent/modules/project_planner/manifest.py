@@ -58,6 +58,7 @@ MANIFEST = ModuleManifest(
                 ToolParameter(name="default_branch", type="string", description="Base branch.", required=False),
                 ToolParameter(name="auto_merge", type="boolean", description="Auto-merge PRs after CI.", required=False),
                 ToolParameter(name="planning_task_id", type="string", description="Claude Code task ID for planning phase.", required=False),
+                ToolParameter(name="workflow_id", type="string", description="Active workflow ID for automated sequential execution.", required=False),
                 ToolParameter(name="user_id", type="string", description="User ID (injected by orchestrator).", required=False),
             ],
             required_permission="user",

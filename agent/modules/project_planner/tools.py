@@ -190,6 +190,7 @@ class ProjectPlannerTools:
         default_branch: str | None = None,
         auto_merge: bool | None = None,
         planning_task_id: str | None = None,
+        workflow_id: str | None = None,
         user_id: str | None = None,
     ) -> dict:
         if not user_id:
@@ -224,6 +225,8 @@ class ProjectPlannerTools:
                 project.auto_merge = auto_merge
             if planning_task_id is not None:
                 project.planning_task_id = planning_task_id
+            if workflow_id is not None:
+                project.workflow_id = workflow_id
 
             project.updated_at = datetime.now(timezone.utc)
             await session.commit()
@@ -294,6 +297,7 @@ class ProjectPlannerTools:
             "project_branch": project.project_branch,
             "auto_merge": project.auto_merge,
             "planning_task_id": project.planning_task_id,
+            "workflow_id": project.workflow_id,
             "status": project.status,
             "created_at": project.created_at.isoformat(),
             "updated_at": project.updated_at.isoformat(),
