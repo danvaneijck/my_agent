@@ -1558,8 +1558,10 @@ class ClaudeCodeTools:
                 )
                 task.save()
 
-            # Auto-push on final successful exit
-            if task.auto_push and task.repo_url and task.status in ("completed", "awaiting_input"):
+            # Auto-push on final exit — also runs on "failed" so that work
+            # committed before a push failure can still be recovered by the
+            # fallback. _auto_push_branch is a no-op when there is nothing new.
+            if task.auto_push and task.repo_url and task.status in ("completed", "awaiting_input", "failed"):
                 await self._auto_push_branch(task, user_mounts)
 
         except Exception as e:
@@ -2269,7 +2271,7 @@ class ClaudeCodeTools:
         try:
             # Check if Claude already pushed everything
             check_cmd = (
-                "git fetch origin 2>/dev/null; "
+                "git fetch origin 2>/dev/null || true; "
                 "LOCAL=$(git rev-parse HEAD); "
                 "REMOTE=$(git rev-parse @{u} 2>/dev/null || echo 'none'); "
                 "DIRTY=$(git status --porcelain | head -1); "
@@ -2427,9 +2429,13 @@ class ClaudeCodeTools:
             'exec su -p claude -c /tmp/git_run.sh\n'
         )
 
-        # Mount only this task's workspace for git operations
-        host_workspace = os.path.join(TASK_VOLUME, task.id)
-        container_workspace = os.path.join(TASK_BASE_DIR, task.id)
+        # Mount only this task's workspace for git operations.
+        # For continuation tasks, task.workspace is the *parent's* directory
+        # (named after the parent task.id), so derive the dir name from the
+        # workspace path rather than from task.id (which differs on continuations).
+        workspace_dir_name = os.path.basename(task.workspace)
+        host_workspace = os.path.join(TASK_VOLUME, workspace_dir_name)
+        container_workspace = task.workspace
 
         cmd: list[str] = [
             "docker", "run", "--rm", "--init",
