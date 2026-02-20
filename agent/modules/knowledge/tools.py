@@ -10,6 +10,7 @@ import structlog
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shared.auth import get_service_auth_headers
 from shared.config import Settings
 from shared.models.memory import MemorySummary
 
@@ -26,7 +27,7 @@ class KnowledgeTools:
     async def _get_embedding(self, text: str) -> list[float] | None:
         """Get embedding from the core orchestrator's LLM router."""
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with httpx.AsyncClient(timeout=15.0, headers=get_service_auth_headers()) as client:
                 resp = await client.post(
                     f"{self.settings.orchestrator_url}/embed",
                     json={"text": text},
