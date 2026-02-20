@@ -5,6 +5,7 @@ import type {
   Task,
   GitPullRequest,
   Deployment,
+  GitWorkflowRun,
 } from "@/types";
 import { mapTask } from "@/types";
 
@@ -40,6 +41,7 @@ export interface DashboardData {
   deployments: Deployment[];
   usage: UsageSummary | null;
   anthropicUsage: AnthropicUsageData | null;
+  workflowRuns: GitWorkflowRun[];
 }
 
 export interface DashboardState extends DashboardData {
@@ -57,6 +59,7 @@ export function useDashboard(): DashboardState {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [anthropicUsage, setAnthropicUsage] = useState<AnthropicUsageData | null>(null);
+  const [workflowRuns, setWorkflowRuns] = useState<GitWorkflowRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -171,6 +174,31 @@ export function useDashboard(): DashboardState {
     }
   }, []);
 
+  const fetchWorkflowRuns = useCallback(async () => {
+    try {
+      const data = await api<{ total_count: number; workflow_runs: GitWorkflowRun[] }>(
+        "/api/repos/actions/running"
+      );
+      setWorkflowRuns(data.workflow_runs || []);
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.workflowRuns;
+        return next;
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load workflow runs";
+      // Silently ignore "not configured" errors — card hides itself in that case
+      if (/not configured|no provider configured|no github/i.test(msg)) {
+        setWorkflowRuns([]);
+        return;
+      }
+      setErrors((prev) => ({
+        ...prev,
+        workflowRuns: msg,
+      }));
+    }
+  }, []);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     await Promise.allSettled([
@@ -180,9 +208,10 @@ export function useDashboard(): DashboardState {
       fetchDeployments(),
       fetchUsage(),
       fetchAnthropicUsage(),
+      fetchWorkflowRuns(),
     ]);
     setLoading(false);
-  }, [fetchProjects, fetchTasks, fetchPullRequests, fetchDeployments, fetchUsage, fetchAnthropicUsage]);
+  }, [fetchProjects, fetchTasks, fetchPullRequests, fetchDeployments, fetchUsage, fetchAnthropicUsage, fetchWorkflowRuns]);
 
   const refetchSection = useCallback(
     (section: keyof DashboardData) => {
@@ -194,10 +223,11 @@ export function useDashboard(): DashboardState {
         deployments: fetchDeployments,
         usage: fetchUsage,
         anthropicUsage: fetchAnthropicUsage,
+        workflowRuns: fetchWorkflowRuns,
       };
       map[section]?.();
     },
-    [fetchProjects, fetchTasks, fetchPullRequests, fetchDeployments, fetchUsage, fetchAnthropicUsage]
+    [fetchProjects, fetchTasks, fetchPullRequests, fetchDeployments, fetchUsage, fetchAnthropicUsage, fetchWorkflowRuns]
   );
 
   useEffect(() => {
@@ -212,6 +242,7 @@ export function useDashboard(): DashboardState {
     deployments,
     usage,
     anthropicUsage,
+    workflowRuns,
     loading,
     errors,
     refetch: fetchAll,

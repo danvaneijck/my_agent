@@ -13,6 +13,7 @@ import {
   ExternalLink,
   ArrowRight,
   AlertCircle,
+  Zap,
 } from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -22,6 +23,7 @@ import type {
   Task,
   GitPullRequest as PRType,
   Deployment,
+  GitWorkflowRun,
 } from "@/types";
 import { Skeleton } from "@/components/common/Skeleton";
 import { pageVariants, staggerContainerVariants, staggerItemVariants } from "@/utils/animations";
@@ -1088,6 +1090,139 @@ function ProjectTasksCard({
 }
 
 // ---------------------------------------------------------------------------
+// GitHub Actions Card
+// ---------------------------------------------------------------------------
+
+const WORKFLOW_RUN_STATUS_COLORS: Record<string, string> = {
+  in_progress: "bg-yellow-500/20 text-yellow-400",
+  queued: "bg-blue-500/20 text-blue-400",
+  success: "bg-green-500/20 text-green-400",
+  failure: "bg-red-500/20 text-red-400",
+  cancelled: "bg-gray-500/20 text-gray-400",
+  skipped: "bg-gray-600/20 text-gray-500",
+  timed_out: "bg-orange-500/20 text-orange-400",
+  neutral: "bg-gray-500/20 text-gray-400",
+};
+
+function workflowDisplayStatus(run: GitWorkflowRun): string {
+  if (run.status === "in_progress") return "in_progress";
+  if (run.status === "queued") return "queued";
+  return run.conclusion || "completed";
+}
+
+function GitHubActionsCard({
+  workflowRuns,
+  loading,
+  error,
+}: {
+  workflowRuns: GitWorkflowRun[];
+  loading: boolean;
+  error?: string;
+}) {
+  const navigate = useNavigate();
+
+  const isNotConfigured = error
+    ? /not configured|no provider configured|no github/i.test(error)
+    : false;
+
+  if (isNotConfigured) return null;
+
+  const stats = useMemo(() => {
+    const running = workflowRuns.filter((r) => r.status === "in_progress").length;
+    const queued = workflowRuns.filter((r) => r.status === "queued").length;
+    const success = workflowRuns.filter(
+      (r) => r.status === "completed" && r.conclusion === "success"
+    ).length;
+    const failed = workflowRuns.filter(
+      (r) => r.status === "completed" && r.conclusion === "failure"
+    ).length;
+    return { running, queued, success, failed };
+  }, [workflowRuns]);
+
+  const recent = useMemo(() => workflowRuns.slice(0, 5), [workflowRuns]);
+
+  return (
+    <DashboardCard
+      title="GitHub Actions"
+      icon={Zap}
+      loading={loading && workflowRuns.length === 0}
+      error={isNotConfigured ? undefined : error}
+      headerAction={
+        <button
+          onClick={() => navigate("/repos")}
+          className="text-xs text-accent hover:text-accent-hover flex items-center gap-1"
+          aria-label="View repositories"
+        >
+          View repos <ArrowRight size={12} />
+        </button>
+      }
+    >
+      <StatRow
+        items={[
+          { label: "Running", value: stats.running, color: "text-yellow-400" },
+          { label: "Queued", value: stats.queued, color: "text-blue-400" },
+          { label: "Success", value: stats.success, color: "text-green-400" },
+          { label: "Failed", value: stats.failed, color: "text-red-400" },
+        ]}
+      />
+      {recent.length === 0 ? (
+        <div className="px-4 pb-4 text-sm text-gray-500 text-center">
+          No recent workflow runs
+        </div>
+      ) : (
+        <div className="divide-y divide-light-border dark:divide-border/50">
+          {recent.map((run) => {
+            const displayStatus = workflowDisplayStatus(run);
+            return (
+              <div
+                key={`${run.owner}-${run.repo}-${run.id}`}
+                className="flex items-center gap-3 px-4 py-3"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                      {run.display_title || run.name}
+                    </span>
+                    <Badge status={displayStatus} colorMap={WORKFLOW_RUN_STATUS_COLORS} />
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
+                    {run.owner && run.repo && (
+                      <button
+                        onClick={() =>
+                          navigate(`/repos/${run.owner}/${run.repo}?provider=github`)
+                        }
+                        className="hover:text-accent transition-colors"
+                      >
+                        {run.owner}/{run.repo}
+                      </button>
+                    )}
+                    {run.branch && (
+                      <span className="font-mono">{run.branch}</span>
+                    )}
+                    <span>{formatRelative(run.updated_at)}</span>
+                  </div>
+                </div>
+                {run.url && (
+                  <a
+                    href={run.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-500 hover:text-accent p-1 transition-colors shrink-0"
+                    title="View on GitHub"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </DashboardCard>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard Skeleton
 // ---------------------------------------------------------------------------
 
@@ -1242,6 +1377,13 @@ export default function HomePage() {
               data={dashboard.anthropicUsage}
               loading={dashboard.loading}
               error={dashboard.errors.anthropicUsage}
+            />
+          </motion.div>
+          <motion.div variants={staggerItemVariants}>
+            <GitHubActionsCard
+              workflowRuns={dashboard.workflowRuns}
+              loading={dashboard.loading}
+              error={dashboard.errors.workflowRuns}
             />
           </motion.div>
         </motion.div>

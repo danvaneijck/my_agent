@@ -15,6 +15,7 @@ import {
   ArrowUp,
   ArrowDown,
   X,
+  Zap,
 } from "lucide-react";
 import { api } from "@/api/client";
 import { useRepoDetail } from "@/hooks/useRepoDetail";
@@ -22,9 +23,9 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import NewTaskModal from "@/components/tasks/NewTaskModal";
 import { pageVariants } from "@/utils/animations";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
-import type { GitRepo } from "@/types";
+import type { GitRepo, GitWorkflowRun } from "@/types";
 
-type Tab = "branches" | "pulls" | "issues";
+type Tab = "branches" | "pulls" | "issues" | "actions";
 type SortField = "name" | "updated_at";
 type SortDir = "asc" | "desc";
 
@@ -53,6 +54,56 @@ function formatRelativeDate(dateStr: string | null): string {
   return formatDate(dateStr);
 }
 
+// ---------------------------------------------------------------------------
+// Workflow run helper components
+// ---------------------------------------------------------------------------
+
+function WorkflowStatusDot({ run }: { run: GitWorkflowRun }) {
+  if (run.status === "in_progress") {
+    return <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse shrink-0" />;
+  }
+  if (run.status === "queued") {
+    return <span className="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0" />;
+  }
+  if (run.conclusion === "success") return <span className="w-2.5 h-2.5 rounded-full bg-green-400 shrink-0" />;
+  if (run.conclusion === "failure") return <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />;
+  if (run.conclusion === "cancelled") return <span className="w-2.5 h-2.5 rounded-full bg-gray-400 shrink-0" />;
+  return <span className="w-2.5 h-2.5 rounded-full bg-gray-500 shrink-0" />;
+}
+
+function WorkflowStatusBadge({ run }: { run: GitWorkflowRun }) {
+  if (run.status === "in_progress") {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-yellow-500/20 text-yellow-400 whitespace-nowrap">
+        in progress
+      </span>
+    );
+  }
+  if (run.status === "queued") {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-400 whitespace-nowrap">
+        queued
+      </span>
+    );
+  }
+  const label = run.conclusion || "completed";
+  const style =
+    run.conclusion === "success"
+      ? "bg-green-500/20 text-green-400"
+      : run.conclusion === "failure"
+      ? "bg-red-500/20 text-red-400"
+      : run.conclusion === "cancelled"
+      ? "bg-gray-500/20 text-gray-400"
+      : run.conclusion === "timed_out"
+      ? "bg-orange-500/20 text-orange-400"
+      : "bg-gray-500/20 text-gray-400";
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] whitespace-nowrap ${style}`}>
+      {label}
+    </span>
+  );
+}
+
 export default function RepoDetailPage() {
   const { owner = "", repo = "" } = useParams<{ owner: string; repo: string }>();
   usePageTitle(`${owner}/${repo}`);
@@ -63,7 +114,7 @@ export default function RepoDetailPage() {
   // Get provider from query params
   const provider = new URLSearchParams(window.location.search).get("provider") || "github";
 
-  const { branches, issues, pullRequests, loading, error, refetch } =
+  const { branches, issues, pullRequests, workflowRuns, loading, error, refetch } =
     useRepoDetail(owner, repo, provider);
 
   // Modal state
@@ -223,6 +274,7 @@ export default function RepoDetailPage() {
     { key: "branches", label: "Branches", icon: GitBranch, count: branches.length },
     { key: "pulls", label: "Pull Requests", icon: GitPullRequest, count: pullRequests.length },
     { key: "issues", label: "Issues", icon: CircleDot, count: issues.length },
+    { key: "actions", label: "Actions", icon: Zap, count: workflowRuns.length },
   ];
 
   return (
@@ -533,6 +585,59 @@ export default function RepoDetailPage() {
                         <Play size={12} />
                         New Task
                       </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Actions */}
+            {tab === "actions" && (
+              <div className="divide-y divide-light-border dark:divide-border/50">
+                {workflowRuns.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500 text-sm">
+                    No workflow runs found
+                  </div>
+                ) : (
+                  workflowRuns.map((run) => (
+                    <div
+                      key={run.id}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-surface-lighter/50 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <WorkflowStatusDot run={run} />
+                          <span className="text-sm text-gray-200 truncate">
+                            {run.display_title || run.name}
+                          </span>
+                          <WorkflowStatusBadge run={run} />
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-500 ml-[18px]">
+                          <span className="text-gray-400">{run.name}</span>
+                          {run.branch && (
+                            <span className="font-mono text-gray-500">{run.branch}</span>
+                          )}
+                          {run.event && (
+                            <span className="px-1.5 py-0.5 rounded bg-surface-lighter text-gray-400">
+                              {run.event}
+                            </span>
+                          )}
+                          {run.updated_at && (
+                            <span>{formatRelativeDate(run.updated_at)}</span>
+                          )}
+                        </div>
+                      </div>
+                      {run.url && (
+                        <a
+                          href={run.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 rounded-lg text-gray-500 hover:text-accent hover:bg-accent/10 transition-colors shrink-0 ml-3"
+                          title="View on GitHub"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
                     </div>
                   ))
                 )}
