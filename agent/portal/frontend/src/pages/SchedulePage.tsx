@@ -107,7 +107,7 @@ function ProgressBar({
       
       
 >
- <div className="w-16 bg-surface rounded-full h-1.5">
+ <div className="w-16 bg-gray-200 dark:bg-surface rounded-full h-1.5">
  <div
  className={`h-1.5 rounded-full ${color}`}
  style={{ width: `${pct}%` }}
@@ -162,11 +162,11 @@ function JobRow({
   compact?: boolean;
 }) {
   return (
-    <tr className="hover:bg-surface-lighter/50 transition-colors">
+    <tr className="hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-colors">
       <td className="px-4 py-3 font-mono text-xs text-gray-400">
         {compact ? "" : job.job_id.slice(0, 8)}
       </td>
-      <td className="px-4 py-3 text-gray-300 text-xs">
+      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 text-xs">
         <div className="flex items-center gap-2">
           <span>{TYPE_LABELS[job.job_type] || job.job_type}</span>
           <CompletionBadge mode={job.on_complete} />
@@ -236,7 +236,7 @@ function WorkflowGroupView({
   return (
     <>
       <tr
-        className="bg-surface-lighter/30 cursor-pointer hover:bg-surface-lighter/60 transition-colors"
+        className="bg-gray-50 dark:bg-surface-lighter/30 cursor-pointer hover:bg-gray-100 dark:hover:bg-surface-lighter/60 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         <td className="px-4 py-2.5" colSpan={2}>
@@ -317,7 +317,7 @@ function JobCard({
         <span>every {formatDuration(job.interval_seconds)}</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="flex-1 bg-surface rounded-full h-1.5">
+        <div className="flex-1 bg-gray-200 dark:bg-surface rounded-full h-1.5">
           <div
             className={`h-1.5 rounded-full ${
               job.status === "completed"
@@ -421,7 +421,7 @@ export default function SchedulePage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Clock size={20} className="text-accent" />
             Scheduled Jobs
           </h2>
@@ -430,7 +430,7 @@ export default function SchedulePage() {
               setLoading(true);
               fetchJobs();
             }}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
             title="Refresh"
           >
             <RefreshCw size={16} />
@@ -456,7 +456,7 @@ export default function SchedulePage() {
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 filter === s
                   ? "bg-accent/15 text-accent-hover"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-surface-lighter"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-surface-lighter"
               }`}
             >
               {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -530,7 +530,7 @@ export default function SchedulePage() {
               {/* Workflow groups */}
               {workflows.map((group) => (
                 <div key={group.workflow_id}>
-                  <div className="px-4 py-2 bg-surface-lighter/30 flex items-center gap-2">
+                  <div className="px-4 py-2 bg-gray-50 dark:bg-surface-lighter/30 flex items-center gap-2">
                     <Workflow size={14} className="text-blue-400" />
                     <span className="text-xs font-medium text-blue-400">
                       Workflow

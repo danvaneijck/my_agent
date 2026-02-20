@@ -84,13 +84,13 @@ export default function ReposPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <GitBranch size={20} className="text-accent" />
             Repositories
           </h2>
           <button
             onClick={refetch}
-            className="p-2 rounded hover:bg-surface-lighter text-gray-400 hover:text-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+            className="p-2 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
             title="Refresh"
             aria-label="Refresh repositories"
           >
@@ -112,7 +112,7 @@ export default function ReposPage() {
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search repositories..."
-            className="pl-9 pr-3 py-2 w-full sm:w-72 rounded-lg bg-surface border border-border text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
+            className="pl-9 pr-3 py-2 w-full sm:w-72 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/50"
             aria-label="Search repositories"
           />
         </div>
@@ -120,7 +120,7 @@ export default function ReposPage() {
 
       {/* Provider tabs - only show if multiple providers configured */}
       {providers.length > 1 && (
-        <div className="flex gap-1 bg-surface-light rounded-lg p-1 border border-border">
+        <div className="flex gap-1 bg-gray-100 dark:bg-surface-light rounded-lg p-1 border border-light-border dark:border-border">
           {providers.map((provider) => (
             <button
               key={provider}
@@ -128,7 +128,7 @@ export default function ReposPage() {
               className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
                 activeProvider === provider
                   ? "bg-accent/15 text-accent-hover"
-                  : "text-gray-400 hover:text-gray-200"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
             >
               {provider === 'github' ? 'GitHub' : 'Bitbucket'}
@@ -163,7 +163,7 @@ export default function ReposPage() {
             <button
               key={repo.full_name}
               onClick={() => navigate(`/repos/${repo.owner}/${repo.repo}?provider=${activeProvider}`)}
-              className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-accent/50 hover:bg-surface-lighter/50 transition-all group"
+              className="bg-white dark:bg-surface-light border border-light-border dark:border-border rounded-xl p-4 text-left hover:border-accent/50 hover:bg-gray-50 dark:hover:bg-surface-lighter/50 transition-all group"
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="min-w-0">

@@ -153,7 +153,7 @@ export default function TaskDetailPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate("/")}
-            className="p-1.5 rounded hover:bg-surface-lighter text-gray-400"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400"
           >
             <ArrowLeft size={18} />
           </button>
@@ -194,7 +194,7 @@ export default function TaskDetailPage() {
           {task.status !== "running" && task.status !== "queued" && (
             <button
               onClick={() => setShowDelete(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-lighter text-gray-400 text-sm hover:text-red-400 hover:bg-red-600/20 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-surface-lighter text-gray-600 dark:text-gray-400 text-sm hover:text-red-400 hover:bg-red-600/20 transition-colors"
               title="Delete workspace"
             >
               <Trash2 size={14} />
@@ -203,7 +203,7 @@ export default function TaskDetailPage() {
           )}
         </div>
 
-        <p className="text-sm text-gray-200 line-clamp-3">{task.prompt}</p>
+        <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-3">{task.prompt}</p>
 
         <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
           <span className="inline-flex items-center gap-1">
@@ -278,7 +278,7 @@ export default function TaskDetailPage() {
             className={`px-4 py-2 text-sm font-medium transition-colors capitalize ${
               viewMode === mode
                 ? "text-accent border-b-2 border-accent"
-                : "text-gray-500 hover:text-gray-300"
+                : "text-gray-500 hover:text-gray-800 dark:hover:text-gray-300"
             }`}
           >
             {mode}

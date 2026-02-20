@@ -424,7 +424,7 @@ export default function TerminalView({ taskId, sessionId, onClose }: TerminalVie
               ? "bg-yellow-900/20 text-yellow-400"
               : status === "error"
               ? "bg-red-900/20 text-red-400"
-              : "bg-gray-800 text-gray-400"
+              : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
           }`}
         >
           <span className="flex items-center gap-2">

@@ -58,7 +58,7 @@ export default function NotFoundPage() {
         >
           <motion.button
             onClick={() => navigate(-1)}
-            className="px-6 py-2.5 bg-surface-lighter hover:bg-surface-light border border-border text-gray-200 rounded-lg font-medium transition-colors inline-flex items-center justify-center gap-2"
+            className="px-6 py-2.5 bg-gray-100 dark:bg-surface-lighter hover:bg-gray-200 dark:hover:bg-surface-light border border-light-border dark:border-border text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors inline-flex items-center justify-center gap-2"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
