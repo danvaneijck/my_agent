@@ -109,9 +109,11 @@ function Collapsible({
 function CodeBlock({
   content,
   maxLines = 20,
+  isError = false,
 }: {
   content: string;
   maxLines?: number;
+  isError?: boolean;
 }) {
   const lines = content.split("\n");
   const truncated = lines.length > maxLines;
@@ -120,7 +122,13 @@ function CodeBlock({
 
   return (
     <div>
-      <pre className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-black/30 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all max-h-96 overflow-y-auto">
+      <pre
+        className={`text-xs bg-gray-100 dark:bg-black/30 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all max-h-96 overflow-y-auto ${
+          isError
+            ? "text-red-500 dark:text-red-400"
+            : "text-gray-600 dark:text-gray-400"
+        }`}
+      >
         {display}
       </pre>
       {truncated && !expanded && (
@@ -153,23 +161,33 @@ function SystemCard({ event }: { event: StreamEvent }) {
   );
 }
 
-function formatToolResult(resultEvent: StreamEvent): string {
+function parseToolResult(resultEvent: StreamEvent): { content: string; isError: boolean } {
+  const isError = resultEvent.data.is_error === true;
   let content = resultEvent.data.content;
+
   if (Array.isArray(content)) {
     content = (content as Record<string, unknown>[])
-      .map((c) =>
-        typeof c === "string"
-          ? c
-          : (c.text as string) ||
-            (c.content as string) ||
-            JSON.stringify(c),
-      )
+      .map((c) => {
+        if (typeof c === "string") return c;
+        if (c.type === "text" && c.text) return c.text as string;
+        // nested content blocks (e.g. subagent tool results)
+        if (c.type === "tool_result" && Array.isArray(c.content)) {
+          return (c.content as Record<string, unknown>[])
+            .map((i) => (i.text as string) || JSON.stringify(i))
+            .join("\n");
+        }
+        if (c.text) return c.text as string;
+        if (c.content && typeof c.content === "string") return c.content as string;
+        return JSON.stringify(c);
+      })
       .join("\n");
   }
+
   if (typeof content !== "string") {
     content = JSON.stringify(content, null, 2);
   }
-  return content as string;
+
+  return { content: content as string, isError };
 }
 
 function AssistantCard({
@@ -206,8 +224,14 @@ function AssistantCard({
           const resultEvent = toolUseId
             ? toolResults.get(toolUseId)
             : undefined;
+          const isInferred = resultEvent?.data._inferred === true;
           const isRunning = !resultEvent && taskRunning;
-          const isError = resultEvent?.data.is_error === true;
+          const parsed =
+            resultEvent && !isInferred
+              ? parseToolResult(resultEvent)
+              : null;
+          const resultContent = parsed?.content ?? "";
+          const resultIsError = parsed?.isError ?? false;
           const hasResult = !!resultEvent;
 
           const summary = toolSummary(
@@ -223,7 +247,7 @@ function AssistantCard({
             borderClass = "border-yellow-500/40";
             bgClass = "bg-yellow-500/5";
             iconColor = "text-yellow-400";
-          } else if (isError) {
+          } else if (resultIsError) {
             borderClass = "border-red-500/40";
             bgClass = "bg-red-500/5";
             iconColor = "text-red-400";
@@ -233,10 +257,7 @@ function AssistantCard({
             iconColor = "text-green-400";
           }
 
-          const resultContent = resultEvent
-            ? formatToolResult(resultEvent)
-            : undefined;
-          const resultLines = resultContent?.split("\n") || [];
+          const resultLines = resultContent.split("\n");
           const isLongResult = resultLines.length > 3;
 
           return (
@@ -250,7 +271,7 @@ function AssistantCard({
                     size={12}
                     className="text-yellow-400 animate-spin"
                   />
-                ) : isError ? (
+                ) : resultIsError ? (
                   <XCircle size={12} className={iconColor} />
                 ) : hasResult ? (
                   <CheckCircle2 size={12} className={iconColor} />
@@ -281,13 +302,28 @@ function AssistantCard({
                   />
                 </Collapsible>
               ) : null}
-              {resultContent && (
+              {parsed && resultContent && (
                 <Collapsible
-                  label={`Output (${resultLines.length} lines)`}
-                  defaultOpen={!isLongResult}
+                  label={`${resultIsError ? "Error output" : "Output"} (${resultLines.length} line${resultLines.length !== 1 ? "s" : ""})`}
+                  defaultOpen={!isLongResult || resultIsError}
                 >
-                  <CodeBlock content={resultContent} />
+                  <CodeBlock content={resultContent} isError={resultIsError} />
                 </Collapsible>
+              )}
+              {parsed && !resultContent && (
+                <p className="text-[11px] text-gray-400 dark:text-gray-600 italic mt-1 pl-1">
+                  no output
+                </p>
+              )}
+              {!parsed && isInferred && (
+                <p className="text-[11px] text-gray-400 dark:text-gray-600 italic mt-1 pl-1">
+                  output not captured
+                </p>
+              )}
+              {toolUseId && (
+                <p className="text-[10px] text-gray-300 dark:text-gray-700 font-mono mt-1 select-all truncate">
+                  {toolUseId}
+                </p>
               )}
             </div>
           );
@@ -462,11 +498,17 @@ export default function TaskOutputViewer({ taskId, initialStatus }: Props) {
           }
         }
       } else if (event.type === "tool_result") {
-        // Explicit tool_result events (if the CLI emits them)
+        // Explicit tool_result events emitted by the CLI
         const toolUseId = event.data.tool_use_id as string;
         if (toolUseId) {
+          // Preferred: match by ID — exact and always correct
           map.set(toolUseId, event);
-        } else if (pendingIds.length > 0) {
+          // Remove from pending so flushPending won't overwrite with a synthetic
+          const idx = pendingIds.indexOf(toolUseId);
+          if (idx !== -1) pendingIds.splice(idx, 1);
+        } else if (pendingIds.length === 1) {
+          // Positional fallback is safe only when there is exactly one pending
+          // tool — batched calls can't be matched positionally without IDs
           map.set(pendingIds.shift()!, event);
         }
       } else if (event.type === "result") {
