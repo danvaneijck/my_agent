@@ -126,6 +126,68 @@ async def list_repos(
     return result
 
 
+@router.get("/actions/running")
+async def list_running_workflow_runs(
+    provider: str = Query("github"),
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """List in-progress and recently completed workflow runs across all repos."""
+    repos_result, err = await _safe_call(
+        "git_platform",
+        "git_platform.list_repos",
+        {"per_page": 20, "sort": "updated", "provider": provider},
+        str(user.user_id),
+    )
+    if err:
+        return err
+
+    repos = repos_result.get("repos", [])
+    if not repos:
+        return {"total_count": 0, "workflow_runs": []}
+
+    async def _fetch_runs(repo: dict) -> list[dict]:
+        owner_name = repo.get("owner", "")
+        repo_name = repo.get("repo", "")
+        try:
+            result = await call_tool(
+                module="git_platform",
+                tool_name="git_platform.list_workflow_runs",
+                arguments={
+                    "owner": owner_name,
+                    "repo": repo_name,
+                    "per_page": 5,
+                    "provider": provider,
+                },
+                user_id=str(user.user_id),
+                timeout=10.0,
+            )
+            runs = result.get("result", {}).get("workflow_runs", [])
+            for run in runs:
+                run["owner"] = owner_name
+                run["repo"] = repo_name
+            return runs
+        except Exception:
+            return []
+
+    all_runs_nested = await asyncio.gather(*[_fetch_runs(r) for r in repos[:10]])
+    all_runs = [run for batch in all_runs_nested for run in batch]
+
+    # Sort: in_progress first, then queued, then completed by updated_at desc
+    status_order = {"in_progress": 0, "queued": 1, "completed": 2}
+    in_progress_and_queued = sorted(
+        [r for r in all_runs if r.get("status") != "completed"],
+        key=lambda r: status_order.get(r.get("status", ""), 3),
+    )
+    completed = sorted(
+        [r for r in all_runs if r.get("status") == "completed"],
+        key=lambda r: r.get("updated_at", "") or "",
+        reverse=True,
+    )
+    merged = in_progress_and_queued + completed[:10]
+
+    return {"total_count": len(merged), "workflow_runs": merged[:20]}
+
+
 @router.get("/pulls/all")
 async def list_all_pull_requests(
     provider: str = Query("github"),
@@ -453,6 +515,34 @@ async def comment_on_pull_request(
         "git_platform.comment_on_pull_request",
         {"owner": owner, "repo": repo, "pr_number": pr_number, "body": body.body, "provider": body.provider},
         str(user.user_id),
+    )
+    if err:
+        return err
+    return result
+
+
+@router.get("/{owner}/{repo}/actions")
+async def list_repo_workflow_runs(
+    owner: str,
+    repo: str,
+    status: str | None = Query(None),
+    branch: str | None = Query(None),
+    per_page: int = Query(20, ge=1, le=100),
+    provider: str = Query("github"),
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """List GitHub Actions workflow runs for a repository."""
+    args: dict = {"owner": owner, "repo": repo, "per_page": per_page, "provider": provider}
+    if status:
+        args["status"] = status
+    if branch:
+        args["branch"] = branch
+    result, err = await _safe_call(
+        "git_platform",
+        "git_platform.list_workflow_runs",
+        args,
+        str(user.user_id),
+        timeout=15.0,
     )
     if err:
         return err

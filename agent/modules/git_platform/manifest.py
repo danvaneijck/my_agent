@@ -189,5 +189,33 @@ MANIFEST = ModuleManifest(
             ],
             required_permission="user",
         ),
+        ToolDefinition(
+            name="git_platform.list_workflow_runs",
+            description="List GitHub Actions workflow runs for a repository. Returns run status (queued/in_progress/completed), conclusion (success/failure/cancelled), branch, and workflow name.",
+            parameters=[
+                _OWNER,
+                _REPO,
+                ToolParameter(
+                    name="status",
+                    type="string",
+                    description="Filter by run status.",
+                    enum=["queued", "in_progress", "completed", "waiting", "requested", "action_required"],
+                    required=False,
+                ),
+                ToolParameter(
+                    name="branch",
+                    type="string",
+                    description="Filter runs by branch name.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="per_page",
+                    type="integer",
+                    description="Max runs to return (default 20, max 100).",
+                    required=False,
+                ),
+            ],
+            required_permission="user",
+        ),
     ],
 )

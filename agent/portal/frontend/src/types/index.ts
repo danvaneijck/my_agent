@@ -231,6 +231,23 @@ export interface GitPullRequest {
   updated_at?: string;
 }
 
+export interface GitWorkflowRun {
+  id: number;
+  name: string;
+  display_title: string;
+  status: "queued" | "in_progress" | "completed";
+  conclusion: "success" | "failure" | "cancelled" | "skipped" | "timed_out" | "neutral" | null;
+  event: string;
+  branch: string | null;
+  sha: string;
+  created_at: string;
+  updated_at: string;
+  url: string;
+  // Cross-repo fields (added by dashboard endpoint)
+  owner?: string;
+  repo?: string;
+}
+
 // Deployment types (from deployer module)
 export interface ServicePort {
   host: number;

@@ -91,5 +91,14 @@ class GitProvider(ABC):
     async def get_ci_status(self, owner: str, repo: str, ref: str) -> dict:
         """Get CI/check status for a commit or branch."""
 
+    @abstractmethod
+    async def list_workflow_runs(
+        self, owner: str, repo: str,
+        status: str | None = None,
+        branch: str | None = None,
+        per_page: int = 20,
+    ) -> dict:
+        """List CI/CD workflow runs for a repository."""
+
     async def close(self) -> None:
         """Clean up resources. Override if the provider holds connections."""

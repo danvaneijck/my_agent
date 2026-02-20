@@ -624,6 +624,19 @@ class BitbucketProvider(GitProvider):
             "check_runs": check_runs,
         }
 
+    async def list_workflow_runs(
+        self, owner: str, repo: str,
+        status: str | None = None,
+        branch: str | None = None,
+        per_page: int = 20,
+    ) -> dict:
+        # Bitbucket uses Pipelines, not GitHub Actions — return empty list
+        return {
+            "total_count": 0,
+            "workflow_runs": [],
+            "note": "GitHub Actions are not available for Bitbucket repositories.",
+        }
+
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------

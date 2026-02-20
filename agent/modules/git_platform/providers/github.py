@@ -432,6 +432,36 @@ class GitHubProvider(GitProvider):
             "check_runs": check_runs,
         }
 
+    async def list_workflow_runs(
+        self, owner: str, repo: str,
+        status: str | None = None,
+        branch: str | None = None,
+        per_page: int = 20,
+    ) -> dict:
+        params: dict = {"per_page": min(per_page, 100)}
+        if status:
+            params["status"] = status
+        if branch:
+            params["branch"] = branch
+        data = await self._get(f"/repos/{owner}/{repo}/actions/runs", **params)
+        runs = [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "display_title": r.get("display_title", r["name"]),
+                "status": r["status"],
+                "conclusion": r.get("conclusion"),
+                "event": r.get("event"),
+                "branch": r.get("head_branch"),
+                "sha": (r.get("head_sha") or "")[:12],
+                "created_at": r.get("created_at"),
+                "updated_at": r.get("updated_at"),
+                "url": r.get("html_url"),
+            }
+            for r in data.get("workflow_runs", [])
+        ]
+        return {"total_count": data.get("total_count", len(runs)), "workflow_runs": runs}
+
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------

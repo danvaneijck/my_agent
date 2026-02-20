@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/api/client";
-import type { GitBranch, GitIssue, GitPullRequest } from "@/types";
+import type { GitBranch, GitIssue, GitPullRequest, GitWorkflowRun } from "@/types";
 
 interface RepoDetailData {
   branches: GitBranch[];
   issues: GitIssue[];
   pullRequests: GitPullRequest[];
+  workflowRuns: GitWorkflowRun[];
 }
 
 export function useRepoDetail(owner: string, repo: string, provider: string = "github") {
@@ -13,6 +14,7 @@ export function useRepoDetail(owner: string, repo: string, provider: string = "g
     branches: [],
     issues: [],
     pullRequests: [],
+    workflowRuns: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +23,7 @@ export function useRepoDetail(owner: string, repo: string, provider: string = "g
     if (!owner || !repo) return;
     setLoading(true);
     try {
-      const [branchRes, issueRes, prRes] = await Promise.all([
+      const [branchRes, issueRes, prRes, runsRes] = await Promise.all([
         api<{ count: number; branches: GitBranch[] }>(
           `/api/repos/${owner}/${repo}/branches?per_page=100&provider=${provider}`
         ),
@@ -31,11 +33,15 @@ export function useRepoDetail(owner: string, repo: string, provider: string = "g
         api<{ count: number; pull_requests: GitPullRequest[] }>(
           `/api/repos/${owner}/${repo}/pulls?state=open&per_page=50&provider=${provider}`
         ),
+        api<{ total_count: number; workflow_runs: GitWorkflowRun[] }>(
+          `/api/repos/${owner}/${repo}/actions?per_page=20&provider=${provider}`
+        ).catch(() => ({ total_count: 0, workflow_runs: [] })),
       ]);
       setData({
         branches: branchRes.branches || [],
         issues: issueRes.issues || [],
         pullRequests: prRes.pull_requests || [],
+        workflowRuns: runsRes.workflow_runs || [],
       });
       setError(null);
     } catch (e) {

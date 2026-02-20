@@ -56,6 +56,7 @@ TOOL_MAP = {
     "comment_on_pull_request",
     "merge_pull_request",
     "get_ci_status",
+    "list_workflow_runs",
 }
 
 # Credential store for per-user token lookup

@@ -93,3 +93,13 @@ class GitPlatformTools:
 
     async def get_ci_status(self, owner: str, repo: str, ref: str) -> dict:
         return await self.provider.get_ci_status(owner, repo, ref)
+
+    async def list_workflow_runs(
+        self, owner: str, repo: str,
+        status: str | None = None,
+        branch: str | None = None,
+        per_page: int = 20,
+    ) -> dict:
+        return await self.provider.list_workflow_runs(
+            owner, repo, status=status, branch=branch, per_page=per_page
+        )
