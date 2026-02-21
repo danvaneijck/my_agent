@@ -417,6 +417,17 @@ async def merge_pull_request(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Merge a pull request and update any linked project tasks."""
+    # Get PR details first so we have head/base for project-completion detection
+    pr_details, _ = await _safe_call(
+        "git_platform",
+        "git_platform.get_pull_request",
+        {"owner": owner, "repo": repo, "pr_number": pr_number, "provider": body.provider},
+        str(user.user_id),
+        timeout=15.0,
+    )
+    head_branch = (pr_details or {}).get("head", "")
+    base_branch = (pr_details or {}).get("base", "")
+
     result, err = await _safe_call(
         "git_platform",
         "git_platform.merge_pull_request",
@@ -434,22 +445,37 @@ async def merge_pull_request(
         return err
 
     # After successful merge, transition linked project tasks in_review → done
+    # and detect project branch → main merges for project completion
     if result.get("success") or result.get("result", {}).get("merged"):
         asyncio.create_task(
-            _on_pr_merged(pr_number=pr_number, user_id=user.user_id)
+            _on_pr_merged(
+                pr_number=pr_number,
+                user_id=user.user_id,
+                head_branch=head_branch,
+                base_branch=base_branch,
+            )
         )
 
     return result
 
 
-async def _on_pr_merged(pr_number: int, user_id) -> None:
+async def _on_pr_merged(
+    pr_number: int,
+    user_id,
+    head_branch: str = "",
+    base_branch: str = "",
+) -> None:
     """Move project tasks linked to this PR from in_review → done.
 
     If all tasks in the project are now done, mark the project as completed.
+    Also detects when a project integration branch is merged into main and
+    marks the project completed directly.
     """
     try:
         factory = get_session_factory()
         async with factory() as session:
+            now = datetime.now(timezone.utc)
+
             # Find tasks linked to this PR that are in_review
             tasks_result = await session.execute(
                 select(ProjectTask).where(
@@ -460,43 +486,62 @@ async def _on_pr_merged(pr_number: int, user_id) -> None:
             )
             tasks = list(tasks_result.scalars().all())
 
-            if not tasks:
-                return
+            project_ids: set = set()
+            if tasks:
+                for task in tasks:
+                    task.status = "done"
+                    task.completed_at = now
+                    task.updated_at = now
+                    project_ids.add(task.project_id)
 
-            now = datetime.now(timezone.utc)
-            project_ids = set()
-            for task in tasks:
-                task.status = "done"
-                task.completed_at = now
-                task.updated_at = now
-                project_ids.add(task.project_id)
+                await session.commit()
+                logger.info(
+                    "tasks_marked_done_on_merge",
+                    pr_number=pr_number,
+                    task_count=len(tasks),
+                )
 
-            await session.commit()
-            logger.info(
-                "tasks_marked_done_on_merge",
-                pr_number=pr_number,
-                task_count=len(tasks),
-            )
+                # Check if any linked projects are now fully done
+                for pid in project_ids:
+                    remaining = await session.execute(
+                        select(func.count(ProjectTask.id)).where(
+                            ProjectTask.project_id == pid,
+                            ProjectTask.status.notin_(["done", "failed"]),
+                        )
+                    )
+                    if remaining.scalar() == 0:
+                        project = await session.get(Project, pid)
+                        if project and project.status != "completed":
+                            project.status = "completed"
+                            project.updated_at = now
+                            await session.commit()
+                            logger.info(
+                                "project_completed",
+                                project_id=str(pid),
+                                project_name=project.name,
+                            )
 
-            # Check if any linked projects are now fully done
-            for pid in project_ids:
-                remaining = await session.execute(
-                    select(func.count(ProjectTask.id)).where(
-                        ProjectTask.project_id == pid,
-                        ProjectTask.status.notin_(["done", "failed"]),
+            # Detect project branch → main merge: mark the project completed
+            if head_branch:
+                proj_result = await session.execute(
+                    select(Project).where(
+                        Project.project_branch == head_branch,
+                        Project.user_id == user_id,
+                        Project.status != "completed",
                     )
                 )
-                if remaining.scalar() == 0:
-                    project = await session.get(Project, pid)
-                    if project and project.status != "completed":
-                        project.status = "completed"
-                        project.updated_at = now
-                        await session.commit()
-                        logger.info(
-                            "project_completed",
-                            project_id=str(pid),
-                            project_name=project.name,
-                        )
+                for project in proj_result.scalars().all():
+                    project.status = "completed"
+                    project.updated_at = now
+                    logger.info(
+                        "project_completed_on_branch_merge",
+                        project_id=str(project.id),
+                        project_name=project.name,
+                        head_branch=head_branch,
+                        base_branch=base_branch,
+                    )
+                await session.commit()
+
     except Exception as e:
         logger.error("on_pr_merged_failed", pr_number=pr_number, error=str(e))
 
