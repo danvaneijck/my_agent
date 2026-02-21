@@ -45,9 +45,10 @@ interface SidebarProps {
   openPrCount?: number;
   activeTaskCount?: number;
   openErrorCount?: number;
+  bannerVisible?: boolean;
 }
 
-export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCount = 0, activeTaskCount = 0, openErrorCount = 0 }: SidebarProps) {
+export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCount = 0, activeTaskCount = 0, openErrorCount = 0, bannerVisible = false }: SidebarProps) {
   // Check if we're on desktop (md breakpoint and above)
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -89,7 +90,7 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
           damping: 30,
           stiffness: 300,
         }}
-        className="fixed inset-y-0 left-0 z-40 w-56 bg-white dark:bg-surface-light border-r border-light-border dark:border-border md:static"
+        className={`fixed left-0 z-40 w-56 bg-white dark:bg-surface-light border-r border-light-border dark:border-border md:static${bannerVisible ? " top-9 bottom-0" : " inset-y-0"}`}
       >
         <div className="flex items-center justify-between h-14 px-4 border-b border-light-border dark:border-border">
           <NavLink
