@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { X, Rocket, Search, ChevronDown } from "lucide-react";
+import { X, Rocket, Search, ChevronDown, AlertTriangle } from "lucide-react";
 import { api } from "@/api/client";
 import { mapTask } from "@/types";
 import type { Task } from "@/types";
@@ -68,6 +68,7 @@ export default function NewDeploymentModal({
   // Task picker state
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksError, setTasksError] = useState(false);
   const [taskSearch, setTaskSearch] = useState("");
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -76,7 +77,7 @@ export default function NewDeploymentModal({
   const firstInputRef = useRef<HTMLInputElement>(null);
   const taskPickerRef = useRef<HTMLDivElement>(null);
 
-  // Reset form when modal opens/closes
+  // Reset form when modal opens
   useEffect(() => {
     if (open) {
       setProjectName("");
@@ -90,18 +91,23 @@ export default function NewDeploymentModal({
       setSelectedTask(null);
       setTaskSearch("");
       setTaskPickerOpen(false);
+      setTasksError(false);
       setPathMode("task");
       setTimeout(() => firstInputRef.current?.focus(), 50);
     }
   }, [open]);
 
-  // Fetch tasks for path picker
+  // Fetch tasks for path picker; fall back to manual mode on error
   useEffect(() => {
     if (!open) return;
     setTasksLoading(true);
+    setTasksError(false);
     api<{ tasks: Record<string, unknown>[] }>("/api/tasks")
       .then((data) => setTasks((data.tasks || []).map(mapTask)))
-      .catch(() => setTasks([]))
+      .catch(() => {
+        setTasksError(true);
+        setPathMode("manual");
+      })
       .finally(() => setTasksLoading(false));
   }, [open]);
 
@@ -120,15 +126,15 @@ export default function NewDeploymentModal({
     return () => document.removeEventListener("mousedown", handler);
   }, [taskPickerOpen]);
 
-  // Escape key closes modal
+  // Escape key closes modal (but not while submitting)
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !submitting) onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [open, onClose, submitting]);
 
   const filteredTasks = tasks.filter(
     (t) =>
@@ -143,7 +149,6 @@ export default function NewDeploymentModal({
     setProjectPath(task.workspace);
     setTaskPickerOpen(false);
     setTaskSearch("");
-    // Clear path error if it was set
     if (touched.project_path) {
       setErrors((prev) => ({ ...prev, project_path: undefined }));
     }
@@ -164,7 +169,9 @@ export default function NewDeploymentModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Mark all fields as touched
+    // Block submission if tasks are still loading (race condition guard)
+    if (tasksLoading) return;
+
     setTouched({ project_name: true, project_path: true, container_port: true });
     const newErrors = validate(projectName, projectPath, containerPort);
     setErrors(newErrors);
@@ -200,6 +207,11 @@ export default function NewDeploymentModal({
   if (!open) return null;
 
   const hasErrors = Object.keys(validate(projectName, projectPath, containerPort)).length > 0;
+  // Button is disabled while submitting, tasks are loading, or there are visible validation errors
+  const submitDisabled =
+    submitting ||
+    tasksLoading ||
+    (Object.keys(touched).length > 0 && hasErrors);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -212,11 +224,22 @@ export default function NewDeploymentModal({
           </h3>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            disabled={submitting}
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <X size={16} />
           </button>
         </div>
+
+        {/* Tasks-load-failed notice */}
+        {tasksError && (
+          <div className="mx-5 mt-4 flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2.5 text-xs text-yellow-600 dark:text-yellow-400">
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+            <span>
+              Could not load task workspaces. Enter the project path manually below.
+            </span>
+          </div>
+        )}
 
         {/* Body */}
         <form id="new-deployment-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -255,39 +278,45 @@ export default function NewDeploymentModal({
               <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 Project Path <span className="text-red-400">*</span>
               </label>
-              <div className="flex gap-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => handlePathModeSwitch("task")}
-                  className={`px-2 py-0.5 rounded transition-colors ${
-                    pathMode === "task"
-                      ? "bg-accent/15 text-accent-hover"
-                      : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-                  }`}
-                >
-                  From task
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePathModeSwitch("manual")}
-                  className={`px-2 py-0.5 rounded transition-colors ${
-                    pathMode === "manual"
-                      ? "bg-accent/15 text-accent-hover"
-                      : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-                  }`}
-                >
-                  Manual
-                </button>
-              </div>
+              {/* Only show mode toggle when task fetch didn't error */}
+              {!tasksError && (
+                <div className="flex gap-1 text-xs">
+                  <button
+                    type="button"
+                    disabled={tasksLoading}
+                    onClick={() => handlePathModeSwitch("task")}
+                    className={`px-2 py-0.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      pathMode === "task"
+                        ? "bg-accent/15 text-accent-hover"
+                        : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                    }`}
+                  >
+                    From task
+                  </button>
+                  <button
+                    type="button"
+                    disabled={tasksLoading}
+                    onClick={() => handlePathModeSwitch("manual")}
+                    className={`px-2 py-0.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      pathMode === "manual"
+                        ? "bg-accent/15 text-accent-hover"
+                        : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                    }`}
+                  >
+                    Manual
+                  </button>
+                </div>
+              )}
             </div>
 
             {pathMode === "task" ? (
               <div ref={taskPickerRef} className="relative">
                 <button
                   type="button"
-                  onClick={() => setTaskPickerOpen((v) => !v)}
+                  disabled={tasksLoading}
+                  onClick={() => !tasksLoading && setTaskPickerOpen((v) => !v)}
                   onBlur={() => handleBlur("project_path")}
-                  className={`w-full flex items-center justify-between bg-white dark:bg-surface border rounded-lg px-3 py-2 text-sm text-left transition-colors focus:outline-none ${
+                  className={`w-full flex items-center justify-between bg-white dark:bg-surface border rounded-lg px-3 py-2 text-sm text-left transition-colors focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
                     errors.project_path
                       ? "border-red-400"
                       : "border-light-border dark:border-border focus:border-accent"
@@ -300,16 +329,20 @@ export default function NewDeploymentModal({
                     </span>
                   ) : (
                     <span className="text-gray-400 dark:text-gray-600">
-                      {tasksLoading ? "Loading tasks…" : "Select a completed task"}
+                      {tasksLoading ? "Loading workspaces…" : "Select a completed task"}
                     </span>
                   )}
-                  <ChevronDown
-                    size={14}
-                    className={`ml-2 shrink-0 text-gray-400 transition-transform ${taskPickerOpen ? "rotate-180" : ""}`}
-                  />
+                  {tasksLoading ? (
+                    <div className="ml-2 shrink-0 w-3.5 h-3.5 border-2 border-gray-300 dark:border-gray-600 border-t-accent rounded-full animate-spin" />
+                  ) : (
+                    <ChevronDown
+                      size={14}
+                      className={`ml-2 shrink-0 text-gray-400 transition-transform ${taskPickerOpen ? "rotate-180" : ""}`}
+                    />
+                  )}
                 </button>
 
-                {taskPickerOpen && (
+                {taskPickerOpen && !tasksLoading && (
                   <div className="absolute z-10 mt-1 w-full bg-white dark:bg-surface border border-light-border dark:border-border rounded-lg shadow-lg overflow-hidden">
                     <div className="p-2 border-b border-light-border dark:border-border">
                       <div className="flex items-center gap-2 bg-gray-100 dark:bg-surface-lighter rounded px-2 py-1.5">
@@ -327,7 +360,7 @@ export default function NewDeploymentModal({
                     <div className="max-h-48 overflow-y-auto">
                       {filteredTasks.length === 0 ? (
                         <div className="px-3 py-4 text-xs text-gray-400 text-center">
-                          {tasksLoading ? "Loading…" : "No completed tasks found"}
+                          No completed tasks found
                         </div>
                       ) : (
                         filteredTasks.map((task) => (
@@ -444,14 +477,15 @@ export default function NewDeploymentModal({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-surface-lighter transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
           <button
             type="submit"
             form="new-deployment-form"
-            disabled={submitting || (Object.keys(touched).length > 0 && hasErrors)}
+            disabled={submitDisabled}
+            title={tasksLoading ? "Waiting for workspaces to load…" : undefined}
             className="px-4 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
           >
             {submitting ? (
