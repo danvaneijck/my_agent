@@ -82,6 +82,15 @@ function utilizationColor(pct: number): string {
   return "bg-accent";
 }
 
+const FIVE_HOUR_MS = 5 * 60 * 60 * 1000;
+const SEVEN_DAY_MS = 7 * 24 * 60 * 60 * 1000;
+
+function computeIdealPct(resetTimestamp: number, windowDurationMs: number): number {
+  const windowStart = resetTimestamp - windowDurationMs;
+  const elapsed = Date.now() - windowStart;
+  return Math.min(100, Math.max(0, (elapsed / windowDurationMs) * 100));
+}
+
 function budgetColor(pct: number): string {
   if (pct > 90) return "bg-red-500";
   if (pct > 70) return "bg-yellow-500";
@@ -290,6 +299,7 @@ function AnthropicUsageSection({ data }: { data: AnthropicUsageData }) {
             label="5 Hour Usage"
             pct={data.five_hour.utilization_percent}
             resetTimestamp={data.five_hour.reset_timestamp}
+            windowDurationMs={FIVE_HOUR_MS}
           />
         )}
         {data.seven_day && (
@@ -297,6 +307,7 @@ function AnthropicUsageSection({ data }: { data: AnthropicUsageData }) {
             label="Weekly Usage"
             pct={data.seven_day.utilization_percent}
             resetTimestamp={data.seven_day.reset_timestamp}
+            windowDurationMs={SEVEN_DAY_MS}
           />
         )}
       </div>
@@ -315,10 +326,12 @@ function UsageBar({
   label,
   pct,
   resetTimestamp,
+  windowDurationMs,
 }: {
   label: string;
   pct: number;
   resetTimestamp: number;
+  windowDurationMs: number;
 }) {
   const resetDate = new Date(resetTimestamp);
   const now = new Date();
@@ -331,19 +344,29 @@ function UsageBar({
       ? `Resets in ${hours > 0 ? `${hours}h ` : ""}${mins}m`
       : "Reset time passed";
 
+  const idealPct = computeIdealPct(resetTimestamp, windowDurationMs);
+
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
         <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
         <span className="text-lg font-bold text-gray-900 dark:text-white">{Math.round(pct)}%</span>
       </div>
-      <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-3">
+      <div className="relative w-full bg-gray-200 dark:bg-surface rounded-full h-3 overflow-hidden">
         <div
           className={`h-3 rounded-full transition-all ${utilizationColor(pct)}`}
           style={{ width: `${Math.min(100, pct)}%` }}
         />
+        <div
+          className="absolute top-0 h-full w-0.5 bg-white opacity-90 z-10"
+          style={{ left: `${idealPct}%` }}
+          title={`Ideal pace: ${Math.round(idealPct)}%`}
+        />
       </div>
-      <p className="text-xs text-gray-500">{resetLabel}</p>
+      <p className="text-xs text-gray-500">
+        {resetLabel}
+        <span className="ml-2 text-gray-400">· Ideal pace: {Math.round(idealPct)}%</span>
+      </p>
     </div>
   );
 }
