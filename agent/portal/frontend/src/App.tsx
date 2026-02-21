@@ -5,6 +5,7 @@ import { getToken, setToken, setUser, clearAuth, api } from "@/api/client";
 import ErrorBoundary from "@/components/common/ErrorBoundary";
 import LoadingScreen from "@/components/common/LoadingScreen";
 import Layout from "@/components/layout/Layout";
+import OnboardingModal, { type OnboardingStatus } from "@/components/onboarding/OnboardingModal";
 
 // Lazy load all page components for code splitting
 const HomePage = lazy(() => import("@/pages/HomePage"));
@@ -251,8 +252,12 @@ function AuthCallback() {
   );
 }
 
+const ONBOARDING_SESSION_KEY = "onboarding_shown";
+
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -267,14 +272,37 @@ export default function App() {
       setAuthenticated(false);
       return;
     }
-    // Verify token is still valid
+
+    // Verify token is still valid, then check onboarding status
     api("/api/auth/me")
-      .then(() => setAuthenticated(true))
+      .then(async () => {
+        setAuthenticated(true);
+
+        // Only check onboarding once per browser session
+        if (sessionStorage.getItem(ONBOARDING_SESSION_KEY)) return;
+
+        try {
+          const status = await api<OnboardingStatus>("/api/settings/onboarding-status");
+          if (status.needs_onboarding) {
+            setOnboardingStatus(status);
+            setShowOnboarding(true);
+          } else {
+            sessionStorage.setItem(ONBOARDING_SESSION_KEY, "1");
+          }
+        } catch {
+          // Credential store may not be configured — silently skip onboarding
+        }
+      })
       .catch(() => {
         clearAuth();
         setAuthenticated(false);
       });
   }, []);
+
+  const handleOnboardingClose = () => {
+    sessionStorage.setItem(ONBOARDING_SESSION_KEY, "1");
+    setShowOnboarding(false);
+  };
 
   // Show callback route regardless of auth state
   if (window.location.pathname.startsWith("/auth/callback")) {
@@ -328,6 +356,14 @@ export default function App() {
           </AnimatePresence>
         </Suspense>
       </Layout>
+
+      {/* Onboarding modal — rendered outside Layout so it overlays everything */}
+      {showOnboarding && onboardingStatus && (
+        <OnboardingModal
+          status={onboardingStatus}
+          onClose={handleOnboardingClose}
+        />
+      )}
     </ErrorBoundary>
   );
 }
