@@ -128,6 +128,40 @@ async def get_deployment_env(
     return result.get("result", {})
 
 
+class DeployBody(BaseModel):
+    project_path: str
+    project_name: str
+    project_type: str | None = None
+    container_port: int | None = None
+    env_vars: dict[str, str] | None = None
+
+
+@router.post("")
+async def create_deployment(
+    body: DeployBody,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Trigger a new deployment."""
+    args: dict = {
+        "project_path": body.project_path,
+        "project_name": body.project_name,
+    }
+    if body.project_type:
+        args["project_type"] = body.project_type
+    if body.container_port is not None:
+        args["container_port"] = body.container_port
+    if body.env_vars:
+        args["env_vars"] = body.env_vars
+    result = await call_tool(
+        module="deployer",
+        tool_name="deployer.deploy",
+        arguments=args,
+        user_id=str(user.user_id),
+        timeout=120.0,
+    )
+    return result.get("result", {})
+
+
 class UpdateEnvBody(BaseModel):
     env_vars: dict[str, str]
     restart: bool = True
