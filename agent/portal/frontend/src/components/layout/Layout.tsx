@@ -185,7 +185,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const showDeployBanner = deployRun !== null && deployRun.id !== dismissedRunId;
 
   return (
-    <div className="h-full flex">
+    <div className={`h-full flex${showDeployBanner ? " pt-9" : ""}`}>
       {showDeployBanner && (
         <DeploymentBanner
           run={deployRun!}
@@ -203,7 +203,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         openErrorCount={openErrorCount}
         bannerVisible={showDeployBanner}
       />
-      <div className={`flex-1 flex flex-col min-w-0${showDeployBanner ? " pt-9" : ""}`}>
+      <div className="flex-1 flex flex-col min-w-0">
         <Header
           title={title}
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}

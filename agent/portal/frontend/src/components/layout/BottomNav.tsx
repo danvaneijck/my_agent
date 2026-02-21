@@ -16,7 +16,7 @@ interface BottomNavProps {
 
 export default function BottomNav({ onMenuOpen, activeTaskCount = 0, chatUnreadCount = 0 }: BottomNavProps) {
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-30 md:hidden bg-white dark:bg-surface-light border-t border-light-border dark:border-border flex items-stretch safe-bottom">
+    <nav className="fixed bottom-0 inset-x-0 z-20 md:hidden bg-white dark:bg-surface-light border-t border-light-border dark:border-border flex items-stretch safe-bottom">
       {BOTTOM_TABS.map(({ to, icon: Icon, label, end }) => (
         <NavLink
           key={to}
