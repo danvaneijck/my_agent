@@ -265,11 +265,11 @@ export default function PlanningTaskPanel({
           <div className="flex gap-2">
             <button
               onClick={handleApply}
-              disabled={submitting || planApplyStatus === "applying"}
+              disabled={submitting}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600/20 text-green-400 text-sm font-medium hover:bg-green-600/30 transition-colors disabled:opacity-50"
             >
               <CheckCircle size={16} />
-              {submitting || planApplyStatus === "applying" ? "Applying Plan..." : "Apply Plan"}
+              {submitting ? "Applying Plan..." : "Apply Plan"}
             </button>
             <button
               onClick={() => setFeedbackMode(true)}
@@ -342,11 +342,11 @@ export default function PlanningTaskPanel({
 
         <button
           onClick={handleApply}
-          disabled={submitting || planApplyStatus === "applying"}
+          disabled={submitting}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600/20 text-green-400 text-sm font-medium hover:bg-green-600/30 transition-colors disabled:opacity-50"
         >
           <CheckCircle size={16} />
-          {submitting || planApplyStatus === "applying" ? "Applying Plan..." : "Apply Plan"}
+          {submitting ? "Applying Plan..." : "Apply Plan"}
         </button>
       </div>
     );
