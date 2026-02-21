@@ -386,8 +386,12 @@ export interface RecallResponse {
 export interface ModuleHealth {
   module: string;
   status: "ok" | "error" | "unknown";
+  latency_ms: number | null;
   error?: string;
 }
+
+// Top-level shape returned by GET /api/health
+export type ModuleHealthMap = Record<string, Omit<ModuleHealth, "module">>;
 
 // New project creation flow
 export interface CreateProjectPayload {
