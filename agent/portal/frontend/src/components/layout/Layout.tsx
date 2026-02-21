@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import BottomNav from "./BottomNav";
 import SkipToContent from "@/components/common/SkipToContent";
 import EnvironmentBadge from "@/components/common/EnvironmentBadge";
 import { connectWs } from "@/api/websocket";
@@ -164,10 +165,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           title={title}
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
         />
-        <main id="main-content" className="flex-1 overflow-auto" tabIndex={-1}>
+        <main id="main-content" className="flex-1 overflow-auto pb-16 md:pb-0" tabIndex={-1}>
           {children}
         </main>
       </div>
+      <BottomNav
+        onMenuOpen={() => setSidebarOpen(true)}
+        activeTaskCount={activeTaskCount}
+        chatUnreadCount={chatUnreadCount}
+      />
 
       {/* Notification toasts */}
       {toasts.length > 0 && (

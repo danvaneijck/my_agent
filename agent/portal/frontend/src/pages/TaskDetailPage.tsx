@@ -149,8 +149,9 @@ export default function TaskDetailPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 md:px-6 border-b border-light-border dark:border-border space-y-3 shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="px-4 md:px-6 pt-4 md:pt-4 border-b border-light-border dark:border-border shrink-0">
+        {/* Always-visible action row */}
+        <div className="flex items-center gap-3 pb-3">
           <button
             onClick={() => navigate("/")}
             className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-surface-lighter text-gray-500 dark:text-gray-400"
@@ -203,70 +204,73 @@ export default function TaskDetailPage() {
           )}
         </div>
 
-        <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-3">{task.prompt}</p>
+        {/* Scrollable details — capped on mobile so output area always gets space */}
+        <div className="overflow-y-auto max-h-[40vh] md:max-h-none space-y-3 pb-3">
+          <p className="text-sm text-gray-800 dark:text-gray-200 line-clamp-3">{task.prompt}</p>
 
-        <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
-          <span className="inline-flex items-center gap-1">
-            <Clock size={12} />
-            {formatElapsed(task.elapsed_seconds)}
-          </span>
-          {task.repo_url && (
-            <RepoLabel repoUrl={task.repo_url} branch={task.branch} size="md" />
-          )}
-          <span className="inline-flex items-center gap-1">
-            <FolderOpen size={12} />
-            {task.workspace}
-          </span>
-          {(task.context_tracking && task.context_tracking.num_turns > 0) || task.result?.token_summary != null ? (
-            <ContextUsageBadge
-              tracking={task.context_tracking?.num_turns ? task.context_tracking : undefined}
-              summary={task.result?.token_summary as TokenSummary | undefined}
-            />
-          ) : null}
-        </div>
-
-        {task.error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-sm text-red-400">
-            {task.error}
+          <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+            <span className="inline-flex items-center gap-1">
+              <Clock size={12} />
+              {formatElapsed(task.elapsed_seconds)}
+            </span>
+            {task.repo_url && (
+              <RepoLabel repoUrl={task.repo_url} branch={task.branch} size="md" />
+            )}
+            <span className="inline-flex items-center gap-1">
+              <FolderOpen size={12} />
+              {task.workspace}
+            </span>
+            {(task.context_tracking && task.context_tracking.num_turns > 0) || task.result?.token_summary != null ? (
+              <ContextUsageBadge
+                tracking={task.context_tracking?.num_turns ? task.context_tracking : undefined}
+                summary={task.result?.token_summary as TokenSummary | undefined}
+              />
+            ) : null}
           </div>
-        )}
 
-        {/* Plan Review Panel — shown when awaiting user input */}
-        {task.status === "awaiting_input" && (
-          <PlanReviewPanel
-            task={task}
-            onContinued={(newId) => navigate(`/tasks/${newId}`)}
-          />
-        )}
+          {task.error && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-sm text-red-400">
+              {task.error}
+            </div>
+          )}
 
-        {/* Resume form — shown for timed out tasks */}
-        {task.status === "timed_out" && (
-          <ContinueTaskForm
-            taskId={task.id}
-            onContinued={(newId) => navigate(`/tasks/${newId}`)}
-            label="Resume"
-          />
-        )}
+          {/* Plan Review Panel — shown when awaiting user input */}
+          {task.status === "awaiting_input" && (
+            <PlanReviewPanel
+              task={task}
+              onContinued={(newId) => navigate(`/tasks/${newId}`)}
+            />
+          )}
 
-        {/* Retry form — shown for failed tasks */}
-        {task.status === "failed" && (
-          <ContinueTaskForm
-            taskId={task.id}
-            onContinued={(newId) => navigate(`/tasks/${newId}`)}
-            label="Retry"
-          />
-        )}
+          {/* Resume form — shown for timed out tasks */}
+          {task.status === "timed_out" && (
+            <ContinueTaskForm
+              taskId={task.id}
+              onContinued={(newId) => navigate(`/tasks/${newId}`)}
+              label="Resume"
+            />
+          )}
 
-        {/* Continue form — shown for completed non-plan tasks */}
-        {task.status === "completed" && (
-          <ContinueTaskForm
-            taskId={task.id}
-            onContinued={(newId) => navigate(`/tasks/${newId}`)}
-          />
-        )}
+          {/* Retry form — shown for failed tasks */}
+          {task.status === "failed" && (
+            <ContinueTaskForm
+              taskId={task.id}
+              onContinued={(newId) => navigate(`/tasks/${newId}`)}
+              label="Retry"
+            />
+          )}
 
-        {/* Task chain timeline */}
-        <TaskChainViewer taskId={task.id} currentTaskId={task.id} />
+          {/* Continue form — shown for completed non-plan tasks */}
+          {task.status === "completed" && (
+            <ContinueTaskForm
+              taskId={task.id}
+              onContinued={(newId) => navigate(`/tasks/${newId}`)}
+            />
+          )}
+
+          {/* Task chain timeline */}
+          <TaskChainViewer taskId={task.id} currentTaskId={task.id} />
+        </div>
       </div>
 
       {/* View mode tabs */}
