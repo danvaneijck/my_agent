@@ -16,20 +16,6 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/api", tags=["system"])
 
 
-@router.get("/health")
-async def health(
-    user: PortalUser = Depends(require_auth),
-) -> dict:
-    """Portal health check. Also validates the auth token."""
-    return {
-        "status": "ok",
-        "user": {
-            "username": user.username,
-            "permission_level": user.permission_level,
-        },
-    }
-
-
 @router.get("/system/modules")
 async def module_status(
     user: PortalUser = Depends(require_auth),

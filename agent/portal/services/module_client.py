@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import httpx
 import structlog
 
@@ -48,15 +50,18 @@ async def call_tool(
 
 
 async def check_module_health(module: str) -> dict:
-    """GET /health for a module. Returns {status, module, error?}."""
+    """GET /health for a module. Returns {status, module, latency_ms, error?}."""
     settings = get_settings()
     base_url = settings.module_services.get(module)
     if not base_url:
-        return {"module": module, "status": "unknown", "error": "not configured"}
+        return {"module": module, "status": "unknown", "error": "not configured", "latency_ms": None}
+    t0 = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(f"{base_url}/health")
             resp.raise_for_status()
-        return {"module": module, "status": "ok"}
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        return {"module": module, "status": "ok", "latency_ms": latency_ms}
     except Exception as e:
-        return {"module": module, "status": "error", "error": str(e)}
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        return {"module": module, "status": "error", "error": str(e), "latency_ms": latency_ms}
