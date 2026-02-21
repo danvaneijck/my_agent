@@ -240,6 +240,33 @@ async def list_all_pull_requests(
     all_prs = [pr for batch in all_prs_nested for pr in batch]
     all_prs.sort(key=lambda p: p.get("created_at", ""), reverse=True)
 
+    # Annotate project-related PRs with context for the portal UI
+    try:
+        factory = get_session_factory()
+        async with factory() as session:
+            proj_result = await session.execute(
+                select(Project.project_branch, Project.name).where(
+                    Project.user_id == user.user_id,
+                    Project.project_branch.isnot(None),
+                )
+            )
+            project_branch_map = {
+                row.project_branch: row.name for row in proj_result.all()
+            }
+        for pr in all_prs:
+            head = pr.get("head", "")
+            if head in project_branch_map:
+                pr["project_context"] = {
+                    "type": "project_final",
+                    "project_name": project_branch_map[head],
+                }
+            elif head.startswith("project/") and "/phase/" in head:
+                pr["project_context"] = {"type": "phase"}
+            else:
+                pr["project_context"] = None
+    except Exception as e:
+        logger.warning("pr_annotation_failed", error=str(e))
+
     return {"count": len(all_prs), "pull_requests": all_prs}
 
 

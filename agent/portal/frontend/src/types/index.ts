@@ -240,6 +240,11 @@ export interface GitPullRequest {
   files?: PRFile[];
   merged_at?: string | null;
   updated_at?: string;
+  // Project workflow context (annotated by list_all_pull_requests)
+  project_context?: {
+    type: "project_final" | "phase";
+    project_name?: string;
+  } | null;
 }
 
 export interface GitWorkflowRun {
