@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from portal.auth import verify_ws_auth
-from portal.routers import auth, chat, deployments, errors, files, knowledge, projects, repos, schedule, settings, skills, system, tasks, usage
+from portal.routers import auth, chat, deployments, errors, files, health, knowledge, projects, repos, schedule, settings, skills, system, tasks, usage
 from portal.services.terminal_service import get_terminal_service
 from shared.config import get_settings
 from shared.database import get_session_factory
@@ -27,6 +27,7 @@ app = FastAPI(title="Agent Portal", version="1.0.0")
 # --------------- Routers ---------------
 
 app.include_router(auth.router)
+app.include_router(health.router)
 app.include_router(system.router)
 app.include_router(tasks.router)
 app.include_router(repos.router)
