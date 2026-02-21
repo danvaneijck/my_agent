@@ -11,6 +11,8 @@ import {
   Pause,
   Play,
   Loader2,
+  Circle,
+  ListTodo,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -18,7 +20,7 @@ import rehypeHighlight from "rehype-highlight";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { getToken } from "@/api/client";
 import { streamEntryVariants } from "@/utils/animations";
-import type { WsTaskMessage } from "@/types";
+import type { WsTaskMessage, TodoItem } from "@/types";
 
 interface Props {
   taskId: string;
@@ -77,6 +79,12 @@ function toolSummary(name: string, input: Record<string, unknown>): string {
         (input.prompt as string)?.slice(0, 80) ||
         ""
       );
+    case "TodoWrite": {
+      const todos = input.todos as Array<{ status: string }> | undefined;
+      if (!todos) return "";
+      const done = todos.filter((t) => t.status === "completed").length;
+      return `${done}/${todos.length} completed`;
+    }
     default:
       return "";
   }
@@ -139,6 +147,83 @@ function CodeBlock({
           Show all {lines.length} lines
         </button>
       )}
+    </div>
+  );
+}
+
+// --- Todo rendering ---
+
+function TodoRow({ todo }: { todo: TodoItem }) {
+  const isCompleted = todo.status === "completed";
+  const isInProgress = todo.status === "in_progress";
+
+  return (
+    <div className="flex items-center gap-2">
+      {isCompleted ? (
+        <CheckCircle2 size={13} className="text-green-400 shrink-0" />
+      ) : isInProgress ? (
+        <Loader2 size={13} className="text-yellow-400 animate-spin shrink-0" />
+      ) : (
+        <Circle size={13} className="text-gray-400 dark:text-gray-600 shrink-0" />
+      )}
+      <span
+        className={`flex-1 text-xs ${
+          isCompleted
+            ? "line-through text-gray-400 dark:text-gray-600"
+            : isInProgress
+            ? "text-gray-800 dark:text-gray-200 font-medium"
+            : "text-gray-600 dark:text-gray-400"
+        }`}
+      >
+        {todo.content}
+      </span>
+      {todo.priority && (
+        <span
+          className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
+            todo.priority === "high"
+              ? "bg-red-500/20 text-red-400"
+              : todo.priority === "medium"
+              ? "bg-yellow-500/20 text-yellow-500"
+              : "bg-gray-500/20 text-gray-500"
+          }`}
+        >
+          {todo.priority}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function TodoCard({ todos }: { todos: TodoItem[] }) {
+  const completedCount = todos.filter((t) => t.status === "completed").length;
+  const hasInProgress = todos.some((t) => t.status === "in_progress");
+  const allDone = todos.length > 0 && completedCount === todos.length;
+
+  let borderClass = "border-light-border dark:border-border";
+  let bgClass = "bg-gray-50 dark:bg-surface/50";
+
+  if (hasInProgress) {
+    borderClass = "border-yellow-500/30";
+    bgClass = "bg-yellow-500/5";
+  } else if (allDone) {
+    borderClass = "border-green-500/30";
+    bgClass = "bg-green-500/5";
+  }
+
+  return (
+    <div className={`border rounded-lg p-3 ${borderClass} ${bgClass}`}>
+      <div className="flex items-center gap-2 mb-2">
+        <ListTodo size={13} className="text-gray-400 shrink-0" />
+        <span className="text-xs font-medium text-gray-500">Todo List</span>
+        <span className="text-xs text-gray-400">
+          {completedCount}/{todos.length}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {todos.map((todo) => (
+          <TodoRow key={todo.id} todo={todo} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -220,6 +305,19 @@ function AssistantCard({
           );
         }
         if (block.type === "tool_use") {
+          // Special rendering for TodoWrite — show a structured checklist
+          if (block.name === "TodoWrite") {
+            const todos = ((block.input as { todos?: TodoItem[] }).todos ?? []);
+            return (
+              <div key={i} className="flex gap-2 py-1">
+                <div className="w-[14px] shrink-0" />
+                <div className="flex-1">
+                  <TodoCard todos={todos} />
+                </div>
+              </div>
+            );
+          }
+
           const toolUseId = block.id as string;
           const resultEvent = toolUseId
             ? toolResults.get(toolUseId)
