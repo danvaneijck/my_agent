@@ -1486,6 +1486,11 @@ class ClaudeCodeTools:
                 "\n- Commit your changes with descriptive commit messages as you work."
                 "\n- When you are done, push your branch: git push -u origin HEAD"
                 "\n- Do NOT leave uncommitted changes."
+                "\n- When creating a pull request, do NOT include PLAN.md in the PR diff."
+                " PLAN.md is a planning artifact only. Before opening the PR, remove it"
+                " from the branch with:"
+                " `git rm --cached PLAN.md && git commit -m 'chore: remove planning artifact'`"
+                " (skip this step if PLAN.md was never committed on this branch)."
             )
 
         original_prompt = prompt_for_cli
