@@ -12,3 +12,4 @@ pgvector>=0.3
 redis>=5.0
 httpx>=0.26
 structlog>=24.1
+croniter>=2.0
