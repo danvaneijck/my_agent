@@ -115,6 +115,7 @@ Step-by-step guides for implementing common features and patterns.
 | [Background Jobs](features/background-jobs.md) | Scheduler integration patterns | Implementing long-running tasks |
 | [Authentication](features/authentication.md) | External API auth patterns | Integrating APIs with OAuth/tokens |
 | [Testing Modules](features/testing-modules.md) | Module testing strategies | Writing tests for modules |
+| [Writing Skills](features/writing-skills.md) | Skills authoring best practices | Creating effective, reusable skills |
 
 ---
 
@@ -190,6 +191,7 @@ Diagnosing and fixing common issues.
 - **Deploy to production** → [Production Setup](deployment/production-setup.md)
 - **Get started developing** → [Getting Started](development/getting-started.md)
 - **Understand the architecture** → [Architecture Overview](architecture/overview.md)
+- **Write a good skill** → [Writing Skills](features/writing-skills.md)
 
 ---
 
