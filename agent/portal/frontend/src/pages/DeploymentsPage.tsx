@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import NewDeploymentModal from "@/components/deployments/NewDeploymentModal";
 import type { Deployment, DeploymentService, ServicePort } from "@/types";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -601,6 +602,7 @@ export default function DeploymentsPage() {
   const [teardownAllOpen, setTeardownAllOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [envEditorId, setEnvEditorId] = useState<string | null>(null);
+  const [newDeploymentOpen, setNewDeploymentOpen] = useState(false);
 
   const fetchDeployments = useCallback(async () => {
     try {
@@ -722,6 +724,14 @@ export default function DeploymentsPage() {
               </button>
             ))}
           </div>
+          {/* New Deployment */}
+          <button
+            onClick={() => setNewDeploymentOpen(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/15 text-accent-hover hover:bg-accent/25 transition-colors flex items-center gap-1"
+          >
+            <Plus size={14} />
+            New Deployment
+          </button>
           {/* Teardown All */}
           {deployments.length > 0 && (
             <button
@@ -827,6 +837,16 @@ export default function DeploymentsPage() {
           onClose={() => setEnvEditorId(null)}
         />
       )}
+
+      {/* New deployment modal */}
+      <NewDeploymentModal
+        open={newDeploymentOpen}
+        onClose={() => setNewDeploymentOpen(false)}
+        onCreated={() => {
+          setNewDeploymentOpen(false);
+          fetchDeployments();
+        }}
+      />
     </div>
   );
 }
