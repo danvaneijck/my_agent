@@ -1,3 +1,14 @@
+// TodoWrite tool types (from Claude Code stream events)
+export type TodoStatus = "pending" | "in_progress" | "completed";
+export type TodoPriority = "high" | "medium" | "low";
+
+export interface TodoItem {
+  id: string;
+  content: string;
+  status: TodoStatus;
+  priority?: TodoPriority;
+}
+
 // Task types (from claude_code module)
 export interface ContextTracking {
   peak_context_tokens: number;
