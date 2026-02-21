@@ -37,6 +37,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [activeTaskCount, setActiveTaskCount] = useState(0);
   const [deployRun, setDeployRun] = useState<DeployRun | null>(null);
   const [dismissedRunId, setDismissedRunId] = useState<number | null>(null);
+  const [openErrorCount, setOpenErrorCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -120,6 +121,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, [fetchDeployStatus]);
 
+  // Fetch open error count (admin-only; silently skips for non-admins)
+  const fetchErrorCount = useCallback(() => {
+    api<{ open: number }>("/api/errors/summary")
+      .then((data) => setOpenErrorCount(data.open || 0))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchErrorCount();
+    const interval = setInterval(fetchErrorCount, 60000);
+    return () => clearInterval(interval);
+  }, [fetchErrorCount]);
+
   // Re-fetch PR count when a PR is merged
   useEffect(() => {
     const handler = () => fetchPrCount();
@@ -186,6 +200,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         chatUnreadCount={chatUnreadCount}
         openPrCount={openPrCount}
         activeTaskCount={activeTaskCount}
+        openErrorCount={openErrorCount}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Header
