@@ -1,235 +1,156 @@
-# Implementation Plan: Plan Review "View Full Plan" Button & PR Prompt Fix
+# Implementation Plan: Mobile Sidebar Scrollability & Deployment Banner Fix
 
-## Overview
+## Problem Analysis
 
-Two related improvements to the auto-push / plan-review workflow:
+### Issue 1 — Sidebar nav items not scrollable on mobile
 
-1. **"View Full Plan" button** — When a plan task reaches `awaiting_input`, the `PlanReviewPanel` shows a truncated preview. We add a button that switches to the "files" tab and auto-selects + renders `PLAN.md` as formatted markdown.
-2. **PR prompt fix** — Update the task prompt (in `tools.py`) so the agent knows to exclude `PLAN.md` when creating pull requests.
+**Root cause:** `Sidebar.tsx`'s `<aside>` element is not a flex container, so the
+`<motion.nav>` inside it has no mechanism to take the remaining height and
+overflow-scroll. With 15 nav items (~44 px each ≈ 660 px of content), this overflows
+on most phones (e.g. iPhone 8 only has ~611 px below the sidebar header).
+
+### Issue 2 — Deployment banner broken on mobile
+
+Two distinct sub-problems:
+
+**2a — Sidebar overlay doesn't cover BottomNav.**
+`BottomNav` has `z-30` (same as the sidebar backdrop overlay). DOM order makes the
+BottomNav appear *above* the dark overlay when the sidebar is open, because it is
+rendered later in the DOM. The bottom nav remains visible and tappable when the
+sidebar overlay is active — confusing UX that makes the banner interaction feel broken
+(two navigation surfaces visible at once).
+
+**2b — Desktop sidebar is partially hidden behind the banner.**
+The outer layout `<div className="h-full flex">` has no top offset when the banner is
+visible. Only the *content column* gets `pt-9`. The `<aside>` on desktop is
+`md:static` (in normal flow), so its `top-9` Tailwind class has **no effect** on a
+statically-positioned element — the sidebar starts at y=0 and the first 36 px of its
+logo header is covered by the fixed banner. On mobile the sidebar is `position: fixed`
+so `top-9` works correctly; on desktop it does not. Moving `pt-9` to the outer wrapper
+fixes the desktop case and keeps mobile correct (fixed elements are viewport-relative
+and unaffected by their parent's padding).
 
 ---
 
 ## Files to Modify
 
-| File | Purpose |
-|------|---------|
-| `agent/portal/frontend/src/components/tasks/PlanReviewPanel.tsx` | Add "View Full Plan" button with `onViewPlan` callback prop |
-| `agent/portal/frontend/src/components/tasks/WorkspaceBrowser.tsx` | Add `initialFilePath` prop for auto-selection; add markdown rendering for `.md` files |
-| `agent/portal/frontend/src/pages/TaskDetailPage.tsx` | Wire `onViewPlan` callback; pass `initialFilePath` and a `selectedFilePath` setter to `WorkspaceBrowser` |
-| `agent/modules/claude_code/tools.py` | Extend the auto-push Git workflow prompt to instruct the agent to exclude `PLAN.md` from PRs |
+| File | Change |
+|---|---|
+| `agent/portal/frontend/src/components/layout/Sidebar.tsx` | Add `flex flex-col` to `<aside>`; add `flex-1 overflow-y-auto` to `<motion.nav>` |
+| `agent/portal/frontend/src/components/layout/Layout.tsx` | Move `pt-9` from the content column div to the outer `div.h-full.flex` |
+| `agent/portal/frontend/src/components/layout/BottomNav.tsx` | Change `z-30` → `z-20` so the sidebar overlay properly dims it |
 
 ---
 
-## Step-by-Step Implementation
+## Step-by-Step Changes
 
-### Step 1 — `WorkspaceBrowser.tsx`: Add `initialFilePath` prop and markdown rendering
+### Step 1 — `Sidebar.tsx`: make nav scrollable
 
-**Location**: `agent/portal/frontend/src/components/tasks/WorkspaceBrowser.tsx`
-
-#### 1a. Extend the props interface
-
-```tsx
-interface WorkspaceBrowserProps {
-  taskId: string;
-  initialFilePath?: string;      // NEW — path relative to workspace root (e.g. "PLAN.md")
-}
+**Current `<aside>` className** (line 93):
+```
+fixed left-0 z-40 w-56 bg-white dark:bg-surface-light border-r
+border-light-border dark:border-border md:static{bannerVisible ? " top-9 bottom-0" : " inset-y-0"}
 ```
 
-#### 1b. Auto-select file on mount / prop change
+**Change:** append `flex flex-col` to the `<aside>` className.
 
-Add a `useEffect` that fires once the root-level `entries` have loaded and `initialFilePath` is set. Because `PLAN.md` lives at the workspace root (`currentPath === ""`), the logic is straightforward:
+No explicit `h-full` is needed:
+- On **mobile** (`fixed`), the `top` / `bottom` constraints (`top-9 bottom-0` or
+  `inset-y-0`) already give the aside a definite height.
+- On **desktop** (`md:static`), the aside is a flex item inside `div.h-full.flex`
+  whose `align-items` defaults to `stretch`, so it already fills the container height.
 
-```tsx
-useEffect(() => {
-  if (!initialFilePath || loading || entries.length === 0 || currentPath !== "" || selectedFile) return;
-  const targetName = initialFilePath.split("/").pop() ?? initialFilePath;
-  const entry = entries.find((e) => e.name === targetName && e.type === "file");
-  if (entry) handleEntryClick(entry);
-}, [initialFilePath, loading, entries]);
+**Current `<motion.nav>` className** (line 120):
+```
+p-3 space-y-1
 ```
 
-Guard conditions:
-- Skip if no `initialFilePath` specified
-- Skip while still loading the directory listing
-- Skip if not at the root (we only support root-level pre-selection for now; PLAN.md is always at root)
-- Skip if a file is already selected (avoid re-fetching on unrelated renders)
-
-#### 1c. Markdown rendering for `.md` files
-
-`ReactMarkdown`, `remark-gfm`, and `rehype-highlight` are already installed (used by `PlanReviewPanel`). Add an import and a small rendering branch inside the content viewer:
-
-```tsx
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeHighlight from "rehype-highlight";
-
-// Inside the content viewer, replace the single <pre> with:
-const isMarkdown = /\.(md|markdown)$/i.test(selectedFile.path ?? "");
-
-{isMarkdown ? (
-  <div className="flex-1 p-4 overflow-auto prose dark:prose-invert prose-sm max-w-none">
-    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-      {selectedFile.content ?? ""}
-    </ReactMarkdown>
-  </div>
-) : (
-  <pre className="flex-1 p-4 text-sm text-gray-700 dark:text-gray-300 whitespace-pre overflow-auto font-mono leading-relaxed">
-    {selectedFile.content}
-  </pre>
-)}
+**Change:** add `flex-1 overflow-y-auto`:
+```
+p-3 space-y-1 flex-1 overflow-y-auto
 ```
 
-This change benefits all `.md` files in the workspace browser, not just `PLAN.md`.
+`flex-1` causes the nav to occupy all remaining height inside the flex-column aside
+(below the fixed `h-14` logo header). `overflow-y-auto` enables scrolling when the 15
+nav items exceed the available height.
+
+**Height math on a 667 px iPhone 8 with banner visible:**
+- Sidebar height = 667 − 36 (banner) = 631 px
+- Logo header = 56 px (`h-14`)
+- Nav scroll area = 631 − 56 = **575 px** for 660 px of content → scrollable ✓
 
 ---
 
-### Step 2 — `PlanReviewPanel.tsx`: Add "View Full Plan" button
+### Step 2 — `Layout.tsx`: move banner offset to the outer wrapper
 
-**Location**: `agent/portal/frontend/src/components/tasks/PlanReviewPanel.tsx`
-
-#### 2a. Add `onViewPlan` to the props interface
-
-```tsx
-interface PlanReviewPanelProps {
-  task: Task;
-  onContinued: (newTaskId: string) => void;
-  onViewPlan?: () => void;   // NEW — called when user wants to view full PLAN.md
-}
+**Current outer div** (line 188):
+```jsx
+<div className="h-full flex">
 ```
 
-#### 2b. Add button to the action row
-
-Import `FileText` from `lucide-react`. Place the button alongside the existing "Approve & Implement" and "Give Feedback" buttons:
-
-```tsx
-{onViewPlan && (
-  <button
-    onClick={onViewPlan}
-    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600/20 text-blue-400 text-sm hover:bg-blue-600/30 transition-colors"
-  >
-    <FileText size={16} />
-    View Full Plan
-  </button>
-)}
+**Change to:**
+```jsx
+<div className={`h-full flex${showDeployBanner ? " pt-9" : ""}`}>
 ```
 
-The button only renders when `onViewPlan` is provided, keeping the component backward-compatible.
+**Current content column** (line 206):
+```jsx
+<div className={`flex-1 flex flex-col min-w-0${showDeployBanner ? " pt-9" : ""}`}>
+```
+
+**Change to:**
+```jsx
+<div className="flex-1 flex min-w-0 flex-col">
+```
+
+**Why this is safe on both breakpoints:**
+
+- *Mobile*: The `<aside>` is `position: fixed` (viewport-relative). The outer div's
+  `pt-9` does not affect it. The sidebar's own `top-9` when `bannerVisible` still
+  positions it correctly below the banner. The content column (in-flow child of the
+  outer div) is offset 36 px from the top — same effective result as before.
+- *Desktop*: The `<aside>` is `md:static` and is a flex item. It now starts 36 px
+  below the outer div's top edge (matching the banner height) instead of being
+  partially covered by the banner.
+- The `top-9 bottom-0` on the sidebar when `bannerVisible` remains correct and
+  harmless on desktop (CSS `top`/`bottom` have no effect on statically-positioned
+  elements).
 
 ---
 
-### Step 3 — `TaskDetailPage.tsx`: Wire everything together
+### Step 3 — `BottomNav.tsx`: fix z-index so sidebar overlay covers it
 
-**Location**: `agent/portal/frontend/src/pages/TaskDetailPage.tsx`
-
-#### 3a. Add `initialFilePath` state
-
-```tsx
-const [initialFilePath, setInitialFilePath] = useState<string | undefined>();
+**Current nav className** (line 19):
+```
+fixed bottom-0 inset-x-0 z-30 md:hidden ...
 ```
 
-#### 3b. Pass `onViewPlan` to `PlanReviewPanel`
-
-```tsx
-<PlanReviewPanel
-  task={task}
-  onContinued={(newId) => navigate(`/tasks/${newId}`)}
-  onViewPlan={() => {
-    setInitialFilePath("PLAN.md");
-    setViewMode("files");
-  }}
-/>
+**Change:** `z-30` → `z-20`:
+```
+fixed bottom-0 inset-x-0 z-20 md:hidden ...
 ```
 
-Clicking "View Full Plan":
-1. Sets `initialFilePath` to `"PLAN.md"`
-2. Switches `viewMode` to `"files"`, which mounts `WorkspaceBrowser`
+**Why:** The sidebar backdrop overlay is `z-30`. With BottomNav also at `z-30`, the
+BottomNav (rendered later in the DOM) appears *above* the overlay. Setting BottomNav
+to `z-20` means the overlay correctly covers it when the sidebar is open.
 
-#### 3c. Pass `initialFilePath` to `WorkspaceBrowser`
+Z-index stack after this change:
 
-```tsx
-{viewMode === "files" && (
-  <WorkspaceBrowser taskId={task.id} initialFilePath={initialFilePath} />
-)}
-```
+| Layer | z-index |
+|---|---|
+| Regular content | 0–10 |
+| BottomNav | **z-20** (was z-30) |
+| Sidebar overlay (backdrop) | z-30 — now covers BottomNav ✓ |
+| Sidebar panel | z-40 |
+| Deployment banner | z-40 |
+| Notification toasts | z-50 |
 
-**Reset consideration**: `initialFilePath` is intentionally not reset after the file is selected. If the user navigates to a different file in the browser and then clicks "View Full Plan" again, the `useEffect` guard (`selectedFile` check is removed here; instead rely on the tab switch causing a fresh mount) will re-select PLAN.md. Because switching away from "files" tab unmounts `WorkspaceBrowser`, the next mount will always start fresh and the `initialFilePath` effect will fire correctly.
+The BottomNav does not need to sit above the sidebar or banner (it is at the bottom of
+the screen, spatially separated from both), so `z-20` is safe.
 
 ---
 
-### Step 4 — `tools.py`: Extend the PR exclusion instruction
+## No New Files, No New Dependencies
 
-**Location**: `agent/modules/claude_code/tools.py`, lines ~1483–1489
-
-The current auto-push prompt block:
-
-```python
-if task.auto_push and task.repo_url:
-    prompt_for_cli += (
-        "\n\nIMPORTANT — Git workflow:"
-        "\n- Commit your changes with descriptive commit messages as you work."
-        "\n- When you are done, push your branch: git push -u origin HEAD"
-        "\n- Do NOT leave uncommitted changes."
-    )
-```
-
-Add one additional bullet:
-
-```python
-if task.auto_push and task.repo_url:
-    prompt_for_cli += (
-        "\n\nIMPORTANT — Git workflow:"
-        "\n- Commit your changes with descriptive commit messages as you work."
-        "\n- When you are done, push your branch: git push -u origin HEAD"
-        "\n- Do NOT leave uncommitted changes."
-        "\n- When creating a pull request, do NOT include PLAN.md in the PR diff."
-        " PLAN.md is a planning artifact only. Before opening the PR, remove it"
-        " from the branch with:"
-        " `git rm --cached PLAN.md && git commit -m 'chore: remove planning artifact'`"
-        " (skip this if PLAN.md was never committed on this branch)."
-    )
-```
-
-This is appended to every auto-push task prompt (both plan mode and execute mode use the same prompt augmentation path), so the agent will always be aware of this rule when it has push access.
-
----
-
-## Data Flow Summary
-
-```
-TaskDetailPage
-  │
-  ├─ state: viewMode ("output" | "logs" | "files")
-  ├─ state: initialFilePath (string | undefined)
-  │
-  ├─ PlanReviewPanel
-  │     onViewPlan={() => {
-  │       setInitialFilePath("PLAN.md")
-  │       setViewMode("files")        ← switches tab
-  │     }}
-  │     [renders "View Full Plan" button]
-  │
-  └─ WorkspaceBrowser (only mounted when viewMode === "files")
-        initialFilePath="PLAN.md"
-        │
-        useEffect fires after entries load
-        → fetches /api/tasks/{id}/workspace/file?path=PLAN.md
-        → setSelectedFile(...)
-        → renders ReactMarkdown (because path ends in .md)
-```
-
----
-
-## Dependency Check
-
-- `react-markdown`, `remark-gfm`, `rehype-highlight` — already installed; already imported in `PlanReviewPanel.tsx`. No new packages required.
-- `FileText` from `lucide-react` — already available (lucide-react is in the project).
-- No backend API changes needed — the workspace file endpoint already serves any file at any path.
-- No new database migrations, no Docker changes, no shared-package changes.
-
----
-
-## Out of Scope
-
-- Supporting `initialFilePath` for subdirectories (PLAN.md is always at the repo root).
-- A "raw/rendered" toggle for markdown files in the workspace browser (can be added later).
-- Modifying how PLAN.md is committed during plan mode — the file stays committed on the plan branch; the PR instruction handles exclusion at PR-creation time.
+All changes are pure className/CSS adjustments in three existing components. No new
+components, hooks, packages, migrations, or Docker changes are required.
