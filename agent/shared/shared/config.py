@@ -147,6 +147,15 @@ class Settings(BaseSettings):
     git_platform_username: str = ""  # Required for Bitbucket (app password owner)
     git_platform_base_url: str = "https://api.github.com"  # or "https://api.bitbucket.org/2.0"
 
+    # Deployment banner — shown in the portal when the configured workflow is running
+    # Set DEPLOY_WORKFLOW_REPO_OWNER and DEPLOY_WORKFLOW_REPO_NAME to the GitHub repo
+    # that runs the deployment workflow (e.g. "danvaneijck" / "my_agent").
+    # DEPLOY_WORKFLOW_NAME is the workflow's "name:" field in the YAML file.
+    # Uses git_platform_token for authentication (works on public repos without a token too).
+    deploy_workflow_repo_owner: str = ""
+    deploy_workflow_repo_name: str = ""
+    deploy_workflow_name: str = "Build and Push Docker Images"
+
     # GitHub OAuth (for portal git credential setup)
     github_oauth_client_id: str = ""
     github_oauth_client_secret: str = ""
