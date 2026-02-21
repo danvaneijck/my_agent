@@ -10,6 +10,12 @@ import {
   Unlock,
   Lock,
 } from "lucide-react";
+import ModelSelect from "@/components/common/ModelSelect";
+import {
+  DEFAULT_MODEL_PRESETS,
+  SUMMARIZATION_MODEL_PRESETS,
+  EMBEDDING_MODEL_PRESETS,
+} from "@/config/modelPresets";
 
 interface LlmStatus {
   configured_keys: string[];
@@ -32,12 +38,6 @@ const PROVIDER_HINTS: Record<string, string> = {
   google_api_key: "e.g. AIzaSy...",
 };
 
-const MODEL_HINTS: Record<string, string> = {
-  default_model:
-    "e.g. claude-sonnet-4-20250514 · gpt-4o · gemini-2.0-flash",
-  summarization_model: "e.g. gpt-4o-mini · claude-haiku-4-5-20251001",
-  embedding_model: "e.g. text-embedding-3-small · gemini-embedding-001",
-};
 
 export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
   const [status, setStatus] = useState<LlmStatus | null>(null);
@@ -357,30 +357,36 @@ export default function LlmSettingsCard({ onUpdate }: LlmSettingsCardProps) {
                 label: "Default Chat Model",
                 value: defaultModel,
                 set: setDefaultModel,
+                presets: DEFAULT_MODEL_PRESETS,
+                placeholder: "Select default chat model…",
               },
               {
                 key: "summarization_model",
                 label: "Summarisation Model",
                 value: summarizationModel,
                 set: setSummarizationModel,
+                presets: SUMMARIZATION_MODEL_PRESETS,
+                placeholder: "Select summarisation model…",
               },
               {
                 key: "embedding_model",
                 label: "Embedding Model",
                 value: embeddingModel,
                 set: setEmbeddingModel,
+                presets: EMBEDDING_MODEL_PRESETS,
+                placeholder: "Select embedding model…",
               },
-            ].map(({ key, label, value, set }) => (
+            ].map(({ key, label, value, set, presets, placeholder }) => (
               <div key={key}>
                 <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
                   {label}
                 </label>
-                <input
-                  type="text"
+                <ModelSelect
+                  presets={presets}
                   value={value}
-                  onChange={(e) => set(e.target.value)}
-                  placeholder={MODEL_HINTS[key] ?? `Enter model name...`}
-                  className="w-full bg-gray-50 dark:bg-surface border border-light-border dark:border-border rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:border-accent"
+                  onChange={set}
+                  placeholder={placeholder}
+                  id={key}
                 />
               </div>
             ))}

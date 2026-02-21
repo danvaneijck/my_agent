@@ -443,6 +443,49 @@ async def get_profile(user: PortalUser = Depends(require_auth)) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Onboarding status
+# ---------------------------------------------------------------------------
+
+
+@router.get("/onboarding-status")
+async def get_onboarding_status(user: PortalUser = Depends(require_auth)) -> dict:
+    """Return consolidated credential setup status for the onboarding modal.
+
+    Checks three key areas: Claude OAuth, GitHub OAuth, and at least one LLM
+    API key. If any are missing, ``needs_onboarding`` is True. Token budget
+    info is included so the frontend can show accurate cap messaging.
+    """
+    store = _get_credential_store()
+    factory = get_session_factory()
+    async with factory() as session:
+        llm_creds = await store.get_all(session, user.user_id, "llm_settings")
+        claude_creds_raw = await store.get(
+            session, user.user_id, "claude_code", "credentials_json"
+        )
+        github_token = await store.get(
+            session, user.user_id, "github", "github_token"
+        )
+        db_user_result = await session.execute(
+            select(User).where(User.id == user.user_id)
+        )
+        db_user = db_user_result.scalar_one_or_none()
+
+    api_keys = {"anthropic_api_key", "openai_api_key", "google_api_key"}
+    has_llm = bool(api_keys & set(llm_creds.keys()))
+    has_claude = claude_creds_raw is not None
+    has_github = github_token is not None
+
+    return {
+        "has_claude_oauth": has_claude,
+        "has_github_oauth": has_github,
+        "has_llm_key": has_llm,
+        "needs_onboarding": not (has_llm and has_claude and has_github),
+        "token_budget_monthly": db_user.token_budget_monthly if db_user else None,
+        "tokens_used_this_month": db_user.tokens_used_this_month if db_user else 0,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Connected accounts
 # ---------------------------------------------------------------------------
 
