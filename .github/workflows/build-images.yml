@@ -3,6 +3,17 @@ name: Build and Push Docker Images
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Comma-separated services to rebuild (e.g. claude-code-worker,core). Leave empty to rebuild ALL."
+        required: false
+        default: ""
+      no_cache:
+        description: "Skip Docker layer cache (forces fresh install of npm/pip packages)"
+        required: false
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -29,29 +40,6 @@ jobs:
       - name: Detect changed services
         id: filter
         run: |
-          BEFORE="${{ github.event.before }}"
-
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            echo "Initial push — building all services"
-            BUILD_ALL=true
-            CHANGED_FILES=""
-          else
-            echo "Comparing ${BEFORE}..HEAD"
-            CHANGED_FILES=$(git diff --name-only "$BEFORE"..HEAD)
-            echo "Changed files:"
-            echo "$CHANGED_FILES"
-            BUILD_ALL=false
-          fi
-
-          # Check if shared/ changed (forces rebuild of everything)
-          SHARED_CHANGED=false
-          if [ "$BUILD_ALL" = "true" ]; then
-            SHARED_CHANGED=true
-          elif echo "$CHANGED_FILES" | grep -q "^agent/shared/"; then
-            SHARED_CHANGED=true
-            echo "agent/shared/ changed — all services will be rebuilt"
-          fi
-
           # Service definitions: service|dockerfile|context|path_prefix
           declare -a ALL_SERVICES=(
             "core|agent/core/Dockerfile|./agent|agent/core/"
@@ -80,6 +68,71 @@ jobs:
             "injective|agent/modules/injective/Dockerfile|./agent|agent/modules/injective/"
             "nginx|agent/nginx/Dockerfile|./agent/nginx|agent/nginx/"
           )
+
+          # ── Manual dispatch: build explicitly listed services (or all) ──
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MANUAL_SERVICES="${{ github.event.inputs.services }}"
+
+            MATRIX_JSON="["
+            SERVICE_LIST=""
+            FIRST=true
+
+            for entry in "${ALL_SERVICES[@]}"; do
+              IFS='|' read -r service dockerfile context path_prefix <<< "$entry"
+
+              INCLUDE=false
+              if [ -z "$MANUAL_SERVICES" ]; then
+                INCLUDE=true
+              elif echo ",$MANUAL_SERVICES," | grep -q ",${service},"; then
+                INCLUDE=true
+              fi
+
+              if [ "$INCLUDE" = "true" ]; then
+                if [ "$FIRST" = "true" ]; then FIRST=false; else MATRIX_JSON+=","; SERVICE_LIST+=","; fi
+                MATRIX_JSON+="{\"service\":\"${service}\",\"dockerfile\":\"${dockerfile}\",\"context\":\"${context}\"}"
+                SERVICE_LIST+="${service}"
+              fi
+            done
+
+            MATRIX_JSON+="]"
+
+            if [ "$FIRST" = "true" ]; then
+              echo "has_changes=false" >> $GITHUB_OUTPUT
+              echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+              echo "services=" >> $GITHUB_OUTPUT
+              echo "No matching services found for: ${MANUAL_SERVICES}"
+            else
+              echo "has_changes=true" >> $GITHUB_OUTPUT
+              echo "matrix={\"include\":${MATRIX_JSON}}" >> $GITHUB_OUTPUT
+              echo "services=${SERVICE_LIST}" >> $GITHUB_OUTPUT
+              echo "Manual rebuild: ${SERVICE_LIST}"
+            fi
+            exit 0
+          fi
+
+          # ── Push event: detect changes from git diff ──
+          BEFORE="${{ github.event.before }}"
+
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "Initial push — building all services"
+            BUILD_ALL=true
+            CHANGED_FILES=""
+          else
+            echo "Comparing ${BEFORE}..HEAD"
+            CHANGED_FILES=$(git diff --name-only "$BEFORE"..HEAD)
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+            BUILD_ALL=false
+          fi
+
+          # Check if shared/ changed (forces rebuild of everything)
+          SHARED_CHANGED=false
+          if [ "$BUILD_ALL" = "true" ]; then
+            SHARED_CHANGED=true
+          elif echo "$CHANGED_FILES" | grep -q "^agent/shared/"; then
+            SHARED_CHANGED=true
+            echo "agent/shared/ changed — all services will be rebuilt"
+          fi
 
           # Extra paths that trigger a core rebuild
           CORE_EXTRA="agent/alembic/ agent/alembic.ini agent/cli.py"
@@ -110,12 +163,7 @@ jobs:
             fi
 
             if [ "$NEEDS_BUILD" = "true" ]; then
-              if [ "$FIRST" = "true" ]; then
-                FIRST=false
-              else
-                MATRIX_JSON+=","
-                SERVICE_LIST+=","
-              fi
+              if [ "$FIRST" = "true" ]; then FIRST=false; else MATRIX_JSON+=","; SERVICE_LIST+=","; fi
               MATRIX_JSON+="{\"service\":\"${service}\",\"dockerfile\":\"${dockerfile}\",\"context\":\"${context}\"}"
               SERVICE_LIST+="${service}"
             fi
@@ -170,7 +218,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ steps.version.outputs.tag }}
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
-          cache-from: type=gha,scope=${{ matrix.service }}
+          no-cache: ${{ github.event.inputs.no_cache == 'true' }}
+          cache-from: ${{ github.event.inputs.no_cache == 'true' && '' || format('type=gha,scope={0}', matrix.service) }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   # ── Step 3: Update per-service tags in the deploy repo ──

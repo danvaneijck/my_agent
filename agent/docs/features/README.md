@@ -19,6 +19,7 @@ This directory contains practical, task-oriented guides that walk you through im
 | [Background Jobs](background-jobs.md) | Long-running tasks | Using the scheduler for async work |
 | [Authentication](authentication.md) | External API auth | OAuth, tokens, credentials |
 | [Testing Modules](testing-modules.md) | Module testing | Writing tests for modules |
+| [Writing Skills](writing-skills.md) | Skills best practices | Creating effective, reusable skills |
 
 ## Guide Structure
 
