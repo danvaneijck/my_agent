@@ -106,6 +106,13 @@ def _build_planning_prompt(project_data: dict, description: str | None) -> str:
         "   This file will be used as context for all subsequent implementation phases.",
         "",
         "Focus on creating an actionable, well-structured plan that can be executed incrementally.",
+        "",
+        "## Git Workflow",
+        "",
+        "- Commit PLAN.md with the message: `docs: add project plan`",
+        "- Push your branch: `git push -u origin HEAD`",
+        "- **Do NOT start implementing.** Stop immediately after pushing PLAN.md.",
+        "  Implementation will be requested as a separate step.",
     ])
     return "\n".join(lines)
 
@@ -345,14 +352,23 @@ async def kickoff_project(
                 # No tasks to execute — fall back to planning
                 prompt = _build_planning_prompt(project_data, body.description)
                 mode = "plan"
-                branch = f"project/{_slugify(project_data.get('name', 'new'))}"
+                branch = (
+                    project_data.get("project_branch")
+                    or f"project/{_slugify(project_data.get('name', 'new'))}/integration"
+                )
         except Exception:
             prompt = _build_planning_prompt(project_data, body.description)
             mode = "plan"
-            branch = f"project/{_slugify(project_data.get('name', 'new'))}"
+            branch = (
+                project_data.get("project_branch")
+                or f"project/{_slugify(project_data.get('name', 'new'))}/integration"
+            )
     else:
         prompt = _build_planning_prompt(project_data, body.description)
-        branch = f"project/{_slugify(project_data.get('name', 'new'))}"
+        branch = (
+            project_data.get("project_branch")
+            or f"project/{_slugify(project_data.get('name', 'new'))}/integration"
+        )
 
     # 3. Fire claude_code task
     task_args: dict = {
@@ -1062,11 +1078,105 @@ async def sync_pr_status(
             logger.info("project_completed", project_id=project_id, project_name=project.name)
 
         logger.info("pr_status_synced", project_id=project_id, synced=synced, merged_prs=list(merged_prs))
+
+        # Check if project branch has been merged into main externally
+        # (handles the case where the user merged directly on GitHub)
+        if (
+            project.project_branch
+            and project.repo_owner
+            and project.repo_name
+            and project.status != "completed"
+        ):
+            try:
+                closed_result = await call_tool(
+                    module="git_platform",
+                    tool_name="git_platform.list_pull_requests",
+                    arguments={
+                        "owner": project.repo_owner,
+                        "repo": project.repo_name,
+                        "state": "closed",
+                        "per_page": 20,
+                    },
+                    user_id=str(uid),
+                    timeout=15.0,
+                )
+                for pr in closed_result.get("result", {}).get("pull_requests", []):
+                    if (
+                        pr.get("head") == project.project_branch
+                        and pr.get("merged_at")
+                    ):
+                        project.status = "completed"
+                        project.updated_at = now
+                        await session.commit()
+                        logger.info(
+                            "project_completed_external_merge",
+                            project_id=project_id,
+                            project_name=project.name,
+                        )
+                        break
+            except Exception as e:
+                logger.warning("sync_project_branch_failed", error=str(e))
+
         return {
             "synced": synced,
             "merged_prs": list(merged_prs),
             "project_completed": project.status == "completed",
         }
+
+
+@router.post("/{project_id}/create-project-pr")
+async def create_project_pr(
+    project_id: str,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Create a PR from the project integration branch into the repo default branch (main).
+
+    This is the final step — merging this PR marks the project as completed.
+    """
+    uid = str(user.user_id)
+
+    project_result = await call_tool(
+        module="project_planner",
+        tool_name="project_planner.get_project",
+        arguments={"project_id": project_id},
+        user_id=uid,
+        timeout=15.0,
+    )
+    project_data = project_result.get("result", {})
+
+    repo_owner = project_data.get("repo_owner")
+    repo_name = project_data.get("repo_name")
+    project_branch = project_data.get("project_branch")
+    default_branch = project_data.get("default_branch", "main")
+
+    if not all([repo_owner, repo_name, project_branch]):
+        raise HTTPException(
+            status_code=400,
+            detail="Project has no linked repository or project branch configured.",
+        )
+
+    pr_body = (
+        f"Merges all completed phases of project **{project_data['name']}** "
+        f"into `{default_branch}`.\n\n"
+        "This pull request was created automatically by the project workflow."
+    )
+
+    result = await call_tool(
+        module="git_platform",
+        tool_name="git_platform.create_pull_request",
+        arguments={
+            "owner": repo_owner,
+            "repo": repo_name,
+            "title": f"{project_data['name']}: merge to {default_branch}",
+            "head": project_branch,
+            "base": default_branch,
+            "body": pr_body,
+            "draft": False,
+        },
+        user_id=uid,
+        timeout=30.0,
+    )
+    return result.get("result", {})
 
 
 @router.post("/{project_id}/sync-phase-status")

@@ -240,6 +240,11 @@ export interface GitPullRequest {
   files?: PRFile[];
   merged_at?: string | null;
   updated_at?: string;
+  // Project workflow context (annotated by list_all_pull_requests)
+  project_context?: {
+    type: "project_final" | "phase";
+    project_name?: string;
+  } | null;
 }
 
 export interface GitWorkflowRun {
@@ -335,6 +340,7 @@ export interface ProjectDetail {
   repo_owner: string | null;
   repo_name: string | null;
   default_branch: string;
+  project_branch: string | null;
   auto_merge: boolean;
   planning_task_id: string | null;
   status: string;

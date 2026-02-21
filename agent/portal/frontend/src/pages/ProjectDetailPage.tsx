@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, RotateCcw, CheckCircle, Archive, Lightbulb, Plus, X } from "lucide-react";
-import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase } from "@/hooks/useProjects";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, GitMerge, RotateCcw, CheckCircle, Archive, Lightbulb, Plus, X } from "lucide-react";
+import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase, createProjectPr } from "@/hooks/useProjects";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
@@ -115,6 +115,8 @@ export default function ProjectDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [removingSkillId, setRemovingSkillId] = useState<string | null>(null);
+  const [creatingProjectPr, setCreatingProjectPr] = useState(false);
+  const [projectPrUrl, setProjectPrUrl] = useState<string | null>(null);
   const syncedRef = useRef(false);
 
   // Fetch project skills
@@ -245,6 +247,21 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const handleCreateProjectPr = async () => {
+    if (!projectId) return;
+    setCreatingProjectPr(true);
+    setActionError(null);
+    try {
+      const result = await createProjectPr(projectId);
+      if (result.url) setProjectPrUrl(result.url);
+      refetch();
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : "Failed to create project PR");
+    } finally {
+      setCreatingProjectPr(false);
+    }
+  };
+
   const handleAttachSkill = async (skillId: string) => {
     if (!projectId) return;
     await attachSkillToProject(projectId, skillId);
@@ -335,6 +352,15 @@ export default function ProjectDetailPage() {
       failed: (acc.failed || 0) + (counts.failed || 0),
     };
   }, {} as { todo?: number; doing?: number; in_review?: number; done?: number; failed?: number });
+
+  const allPhasesComplete =
+    sortedPhases.length > 0 &&
+    sortedPhases.every((p) => p.status === "completed");
+  const hasRepo = Boolean(
+    project.repo_owner && project.repo_name && project.project_branch,
+  );
+  const showFinalPrButton =
+    allPhasesComplete && hasRepo && project.status !== "completed";
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4">
@@ -469,6 +495,43 @@ export default function ProjectDetailPage() {
             )
           )}
         </>
+      )}
+
+      {/* Final PR — shown when all phases complete and project not yet done */}
+      {showFinalPrButton && !projectPrUrl && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={handleCreateProjectPr}
+            disabled={creatingProjectPr}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-500 transition-colors disabled:opacity-50"
+            title="Create a pull request merging the project branch into main"
+          >
+            <GitMerge size={16} />
+            {creatingProjectPr ? "Creating PR..." : "Create Final PR"}
+          </button>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            All phases complete — merge the project branch into main to finish.
+          </span>
+        </div>
+      )}
+
+      {/* Link to the project PR once created */}
+      {projectPrUrl && (
+        <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
+          <GitMerge size={14} className="text-purple-400 shrink-0" />
+          <span className="text-purple-300">
+            Project PR created —{" "}
+            <a
+              href={projectPrUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-purple-100"
+            >
+              review and merge it
+            </a>{" "}
+            to mark the project complete.
+          </span>
+        </div>
       )}
 
       {/* Action error display */}

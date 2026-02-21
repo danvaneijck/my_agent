@@ -101,6 +101,16 @@ export default function PullRequestsPage() {
                       Draft
                     </span>
                   )}
+                  {pr.project_context?.type === "project_final" && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 shrink-0">
+                      Final PR{pr.project_context.project_name ? ` · ${pr.project_context.project_name}` : ""}
+                    </span>
+                  )}
+                  {pr.project_context?.type === "phase" && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 shrink-0">
+                      Phase PR
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-500 ml-6 flex-wrap">
                   <span

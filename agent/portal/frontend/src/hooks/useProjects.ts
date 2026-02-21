@@ -161,3 +161,9 @@ export async function retryPhase(
     body: JSON.stringify({ phase_id: phaseId }),
   });
 }
+
+export async function createProjectPr(
+  projectId: string,
+): Promise<{ pr_number?: number; url?: string }> {
+  return api(`/api/projects/${projectId}/create-project-pr`, { method: "POST" });
+}
