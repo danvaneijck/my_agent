@@ -26,14 +26,28 @@ class ScheduledJob(Base):
     platform_thread_id: Mapped[str | None] = mapped_column(default=None)
     platform_server_id: Mapped[str | None] = mapped_column(default=None)
 
+    # Human-readable label
+    name: Mapped[str | None] = mapped_column(default=None)
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+
     # What to check
-    job_type: Mapped[str]  # "poll_module" | "delay" | "poll_url"
+    job_type: Mapped[str]  # "poll_module" | "delay" | "poll_url" | "cron" | "webhook"
     check_config: Mapped[dict] = mapped_column(JSON)
 
     # Schedule
     interval_seconds: Mapped[int] = mapped_column(Integer, default=30)
     max_attempts: Mapped[int] = mapped_column(Integer, default=120)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Reliability: track consecutive transient errors for exponential backoff
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Recurring job tracking (used by cron type)
+    runs_completed: Mapped[int] = mapped_column(Integer, default=0)
+    max_runs: Mapped[int | None] = mapped_column(Integer, default=None)
+
+    # Optional wall-clock expiry (alternative to max_attempts)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
     # What to say when done
     on_success_message: Mapped[str] = mapped_column(Text)
@@ -45,6 +59,9 @@ class ScheduledJob(Base):
 
     # Optional workflow grouping — jobs sharing a workflow_id are a multi-step chain
     workflow_id: Mapped[uuid.UUID | None] = mapped_column(default=None)
+
+    # Last result captured from the polled module (for observability)
+    last_result: Mapped[dict | None] = mapped_column(JSON, default=None)
 
     # Lifecycle
     status: Mapped[str] = mapped_column(default="active")  # active | completed | failed | cancelled
