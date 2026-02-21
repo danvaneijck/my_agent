@@ -57,6 +57,43 @@ _GIT_REF_PATTERN = re.compile(r"^[a-zA-Z0-9._/:\-]+$")
 
 WORKER_NETWORK = "worker-net"
 
+# Environment description prepended to every worker prompt so the Claude agent
+# knows what tools and runtimes are available inside the container.
+WORKER_ENV_CONTEXT = """\
+## Environment
+
+You are running inside an isolated Docker container with the following tools \
+and runtimes pre-installed. Use them freely — no need to install them.
+
+**Languages & runtimes:** Node.js 20 (npm, npx), Python 3 (pip, venv), \
+Go 1.23, Rust (rustc, cargo), Bun, Deno, Ruby 3.1 (gem), PHP 8.2, \
+Java 17 (OpenJDK, javac, jar)
+
+**Build tools:** gcc, g++, make, cmake, autoconf, automake, libtool, \
+pkg-config, gfortran
+
+**Database CLIs:** psql (PostgreSQL 15), sqlite3, mysql (MariaDB client), \
+redis-cli
+
+**Native build libraries (pre-installed — npm/pip packages with native \
+extensions will compile without extra setup):** libvips (sharp), \
+cairo + pango (node-canvas), libpq (pg-native), OpenBLAS + LAPACK \
+(numpy/scipy), image format libs (Pillow), libxml2/libxslt (lxml), \
+HDF5 (h5py)
+
+**Media tools:** ffmpeg, imagemagick
+
+**CLI tools:** git, gh (GitHub CLI), git-lfs, ripgrep (rg), jq, curl, \
+wget, tree, zip/unzip, htop, lsof, less
+
+**Note:** You have passwordless sudo but you do NOT have Docker. You \
+cannot build or run Docker containers. If the task requires Docker, \
+let the user know.
+
+---
+
+"""
+
 
 async def _resolve_network_name(hint: str = WORKER_NETWORK) -> str:
     """Find the real Docker network name matching *hint*.
@@ -1475,7 +1512,8 @@ class ClaudeCodeTools:
 
         # effective_prompt allows run_task to augment the prompt (e.g. plan
         # mode instructions) while keeping the original prompt in task metadata.
-        prompt_for_cli = effective_prompt or task.prompt
+        # Prepend environment context so the agent knows what tools are available.
+        prompt_for_cli = WORKER_ENV_CONTEXT + (effective_prompt or task.prompt)
 
         # When auto_push is enabled, instruct Claude to commit and push with
         # descriptive messages.  The _auto_push_branch fallback will catch any
