@@ -8,6 +8,8 @@ import Header from "./Header";
 import BottomNav from "./BottomNav";
 import SkipToContent from "@/components/common/SkipToContent";
 import EnvironmentBadge from "@/components/common/EnvironmentBadge";
+import DeploymentBanner from "@/components/common/DeploymentBanner";
+import type { DeployRun } from "@/components/common/DeploymentBanner";
 import { connectWs } from "@/api/websocket";
 import { api } from "@/api/client";
 import type { Conversation, WsNotification } from "@/types";
@@ -33,6 +35,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [openPrCount, setOpenPrCount] = useState(0);
   const [activeTaskCount, setActiveTaskCount] = useState(0);
+  const [deployRun, setDeployRun] = useState<DeployRun | null>(null);
+  const [dismissedRunId, setDismissedRunId] = useState<number | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -101,6 +105,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, [fetchActiveTaskCount]);
 
+  // Poll deployment workflow status — shared server-side check, works for all users
+  const fetchDeployStatus = useCallback(() => {
+    api<{ active: boolean; run: DeployRun | null; configured: boolean }>(
+      "/api/system/deploy-status"
+    )
+      .then((data) => setDeployRun(data.active ? data.run : null))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchDeployStatus();
+    const interval = setInterval(fetchDeployStatus, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchDeployStatus]);
+
   // Re-fetch PR count when a PR is merged
   useEffect(() => {
     const handler = () => fetchPrCount();
@@ -149,8 +168,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     PAGE_TITLES[location.pathname] ||
     (location.pathname.startsWith("/tasks/") ? "Task Detail" : "Agent Portal");
 
+  const showDeployBanner = deployRun !== null && deployRun.id !== dismissedRunId;
+
   return (
-    <div className="h-full flex">
+    <div className={`h-full flex${showDeployBanner ? " pt-9" : ""}`}>
+      {showDeployBanner && (
+        <DeploymentBanner
+          run={deployRun!}
+          onDismiss={() => setDismissedRunId(deployRun!.id)}
+        />
+      )}
       <SkipToContent />
       <EnvironmentBadge />
       <Sidebar
