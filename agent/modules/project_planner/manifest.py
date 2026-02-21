@@ -67,7 +67,7 @@ MANIFEST = ModuleManifest(
             name="project_planner.get_project",
             description="Get a project with its phases and task status summary.",
             parameters=[
-                ToolParameter(name="project_id", type="string", description="UUID of the project."),
+                ToolParameter(name="project_id", type="string", description="UUID or name of the project."),
                 ToolParameter(name="user_id", type="string", description="User ID (injected by orchestrator).", required=False),
             ],
             required_permission="user",
@@ -200,7 +200,7 @@ MANIFEST = ModuleManifest(
                 "Returns null if all tasks are done or in progress."
             ),
             parameters=[
-                ToolParameter(name="project_id", type="string", description="UUID of the project. Finds the earliest phase with todo tasks.", required=False),
+                ToolParameter(name="project_id", type="string", description="UUID or name of the project. Finds the earliest phase with todo tasks.", required=False),
                 ToolParameter(name="phase_id", type="string", description="UUID of a specific phase. Takes priority over project_id.", required=False),
                 ToolParameter(name="user_id", type="string", description="User ID (injected by orchestrator).", required=False),
             ],
@@ -285,7 +285,7 @@ MANIFEST = ModuleManifest(
                 "current phase, and any failed/blocked tasks."
             ),
             parameters=[
-                ToolParameter(name="project_id", type="string", description="UUID of the project."),
+                ToolParameter(name="project_id", type="string", description="UUID or name of the project."),
                 ToolParameter(name="user_id", type="string", description="User ID (injected by orchestrator).", required=False),
             ],
             required_permission="user",
@@ -343,6 +343,74 @@ MANIFEST = ModuleManifest(
             required_permission="user",
         ),
         ToolDefinition(
+            name="project_planner.advance_project_workflow",
+            description=(
+                "Atomic phase transition for automated project workflows. "
+                "Completes the current phase (creates PR, marks tasks in_review), "
+                "executes the next phase, and creates a new scheduler job to monitor it. "
+                "Call this tool when the scheduler on_success_message fires after a phase's "
+                "claude_code task finishes. All parameters come from the on_success_message — "
+                "pass them through exactly."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="phase_id",
+                    type="string",
+                    description="UUID of the just-completed phase.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="claude_task_id",
+                    type="string",
+                    description="Claude Code task ID for the completed phase.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="project_id",
+                    type="string",
+                    description="Project UUID (or name).",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="workflow_id",
+                    type="string",
+                    description="Workflow UUID linking all scheduler jobs for this project.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="platform",
+                    type="string",
+                    description="Bot platform (discord | telegram | slack | web).",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="platform_channel_id",
+                    type="string",
+                    description="Channel ID for scheduler notifications.",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="auto_push",
+                    type="boolean",
+                    description="Auto-push branch after next phase completes (default true).",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="timeout",
+                    type="integer",
+                    description="Per-phase task timeout in seconds (default 1800).",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="user_id",
+                    type="string",
+                    description="User ID (injected by orchestrator).",
+                    required=False,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
             name="project_planner.start_project_workflow",
             description=(
                 "Start fully automated sequential phase execution. Launches first phase "
@@ -353,7 +421,7 @@ MANIFEST = ModuleManifest(
                 ToolParameter(
                     name="project_id",
                     type="string",
-                    description="Project ID",
+                    description="Project UUID or name.",
                     required=True,
                 ),
                 ToolParameter(

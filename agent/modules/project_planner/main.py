@@ -40,7 +40,7 @@ _ALLOWED_TOOLS = {
     "bulk_add_tasks", "update_task", "get_task", "get_phase_tasks",
     "get_next_task", "get_execution_plan", "bulk_update_tasks",
     "get_project_status", "execute_next_phase", "complete_phase",
-    "start_project_workflow",
+    "start_project_workflow", "advance_project_workflow",
 }
 
 
