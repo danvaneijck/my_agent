@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle, MessageSquare } from "lucide-react";
+import { CheckCircle, FileText, MessageSquare } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -9,9 +9,10 @@ import type { Task } from "@/types";
 interface PlanReviewPanelProps {
   task: Task;
   onContinued: (newTaskId: string) => void;
+  onViewPlan?: () => void;
 }
 
-export default function PlanReviewPanel({ task, onContinued }: PlanReviewPanelProps) {
+export default function PlanReviewPanel({ task, onContinued, onViewPlan }: PlanReviewPanelProps) {
   const [feedbackMode, setFeedbackMode] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -81,7 +82,7 @@ export default function PlanReviewPanel({ task, onContinued }: PlanReviewPanelPr
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       {!feedbackMode ? (
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
             onClick={handleApprove}
             disabled={submitting}
@@ -97,6 +98,15 @@ export default function PlanReviewPanel({ task, onContinued }: PlanReviewPanelPr
             <MessageSquare size={16} />
             Give Feedback
           </button>
+          {onViewPlan && (
+            <button
+              onClick={onViewPlan}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600/20 text-blue-400 text-sm hover:bg-blue-600/30 transition-colors"
+            >
+              <FileText size={16} />
+              View Full Plan
+            </button>
+          )}
         </div>
       ) : (
         <form onSubmit={handleFeedback} className="space-y-3">

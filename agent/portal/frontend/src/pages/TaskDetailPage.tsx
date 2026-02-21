@@ -82,6 +82,7 @@ export default function TaskDetailPage() {
   const [showCancel, setShowCancel] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [viewMode, setViewMode] = useState<"output" | "logs" | "files">("output");
+  const [initialFilePath, setInitialFilePath] = useState<string | undefined>();
 
   useEffect(() => {
     if (!taskId) return;
@@ -239,6 +240,10 @@ export default function TaskDetailPage() {
             <PlanReviewPanel
               task={task}
               onContinued={(newId) => navigate(`/tasks/${newId}`)}
+              onViewPlan={() => {
+                setInitialFilePath("PLAN.md");
+                setViewMode("files");
+              }}
             />
           )}
 
@@ -298,7 +303,7 @@ export default function TaskDetailPage() {
         {viewMode === "logs" && (
           <TaskLogViewer taskId={task.id} initialStatus={task.status} />
         )}
-        {viewMode === "files" && <WorkspaceBrowser taskId={task.id} />}
+        {viewMode === "files" && <WorkspaceBrowser taskId={task.id} initialFilePath={initialFilePath} />}
       </div>
 
       <ConfirmDialog

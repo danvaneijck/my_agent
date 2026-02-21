@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import { Folder, File, ArrowLeft, ChevronRight, Terminal } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import { api } from "@/api/client";
 import type { WorkspaceEntry, WorkspaceFileContent } from "@/types";
 import TerminalPanel from "@/components/code/TerminalPanel";
 
 interface WorkspaceBrowserProps {
   taskId: string;
+  initialFilePath?: string;
 }
 
 function formatSize(bytes: number | null): string {
@@ -15,7 +19,7 @@ function formatSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
+export default function WorkspaceBrowser({ taskId, initialFilePath }: WorkspaceBrowserProps) {
   const [currentPath, setCurrentPath] = useState("");
   const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +36,15 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
       .catch(() => setEntries([]))
       .finally(() => setLoading(false));
   }, [taskId, currentPath]);
+
+  // Auto-select initialFilePath once root entries have loaded
+  useEffect(() => {
+    if (!initialFilePath || loading || entries.length === 0 || currentPath !== "" || selectedFile) return;
+    const targetName = initialFilePath.split("/").pop() ?? initialFilePath;
+    const entry = entries.find((e) => e.name === targetName && e.type === "file");
+    if (entry) handleEntryClick(entry);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFilePath, loading, entries]);
 
   const handleEntryClick = (entry: WorkspaceEntry) => {
     if (entry.type === "directory") {
@@ -160,6 +173,12 @@ export default function WorkspaceBrowser({ taskId }: WorkspaceBrowserProps) {
               {selectedFile.binary ? (
                 <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
                   {selectedFile.message || "Binary file"}
+                </div>
+              ) : /\.(md|markdown)$/i.test(selectedFile.path ?? "") ? (
+                <div className="flex-1 p-4 overflow-auto prose dark:prose-invert prose-sm max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                    {selectedFile.content ?? ""}
+                  </ReactMarkdown>
                 </div>
               ) : (
                 <pre className="flex-1 p-4 text-sm text-gray-700 dark:text-gray-300 whitespace-pre overflow-auto font-mono leading-relaxed">
