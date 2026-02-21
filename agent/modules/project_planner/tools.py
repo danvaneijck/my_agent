@@ -28,6 +28,35 @@ def _slugify(text: str, max_len: int = 40) -> str:
     return slug[:max_len].rstrip("-")
 
 
+def _build_advance_message(
+    project_id: str,
+    project_name: str,
+    phase_id: str,
+    phase_name: str,
+    claude_task_id: str,
+    workflow_id: str,
+    platform: str,
+    platform_channel_id: str,
+) -> str:
+    """Build the on_success_message for the scheduler to post when a phase task completes.
+
+    The message is designed to be fully self-contained so an agent receiving it in a
+    fresh conversation can call a single tool to advance the workflow.
+    """
+    return (
+        f"[Project Workflow] Project '{project_name}' phase '{phase_name}' "
+        f"(claude_code task `{claude_task_id}`) has finished.\n\n"
+        f"Call `project_planner.advance_project_workflow` with these exact parameters "
+        f"to complete the phase, start the next one, and reschedule monitoring:\n"
+        f"  phase_id: '{phase_id}'\n"
+        f"  claude_task_id: '{claude_task_id}'\n"
+        f"  project_id: '{project_id}'\n"
+        f"  workflow_id: '{workflow_id}'\n"
+        f"  platform: '{platform}'\n"
+        f"  platform_channel_id: '{platform_channel_id}'"
+    )
+
+
 def _task_to_dict(t: ProjectTask) -> dict:
     return {
         "task_id": str(t.id),
@@ -71,6 +100,35 @@ class ProjectPlannerTools:
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
         self.session_factory = session_factory
+
+    async def _resolve_project_id(self, project_id_or_name: str, user_id: str) -> str:
+        """Resolve a project identifier to a canonical UUID string.
+
+        Accepts either a UUID string or a project name (case-insensitive).  LLMs
+        frequently pass the human-readable project name instead of its UUID; this
+        helper handles both forms so every tool that takes project_id benefits.
+        """
+        try:
+            uuid.UUID(project_id_or_name)
+            return project_id_or_name  # Already a valid UUID string
+        except ValueError:
+            pass
+
+        uid = uuid.UUID(user_id)
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(Project.id).where(
+                    Project.user_id == uid,
+                    func.lower(Project.name) == project_id_or_name.lower(),
+                )
+            )
+            project_uuid = result.scalar_one_or_none()
+            if project_uuid is None:
+                raise ValueError(
+                    f"No project found with name or ID: {project_id_or_name!r}. "
+                    f"Use project_planner.list_projects to find the correct project_id."
+                )
+            return str(project_uuid)
 
     # ── Project CRUD ────────────────────────────────────────────────────
 
@@ -196,6 +254,7 @@ class ProjectPlannerTools:
         if not user_id:
             raise ValueError("user_id is required")
 
+        project_id = await self._resolve_project_id(project_id, user_id)
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
 
@@ -245,6 +304,7 @@ class ProjectPlannerTools:
         if not user_id:
             raise ValueError("user_id is required")
 
+        project_id = await self._resolve_project_id(project_id, user_id)
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
 
@@ -365,6 +425,7 @@ class ProjectPlannerTools:
         if not user_id:
             raise ValueError("user_id is required")
 
+        project_id = await self._resolve_project_id(project_id, user_id)
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
 
@@ -395,6 +456,7 @@ class ProjectPlannerTools:
         if not user_id:
             raise ValueError("user_id is required")
 
+        project_id = await self._resolve_project_id(project_id, user_id)
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
         now = datetime.now(timezone.utc)
@@ -719,6 +781,9 @@ class ProjectPlannerTools:
         if not phase_id and not project_id:
             raise ValueError("Either phase_id or project_id is required")
 
+        if project_id:
+            project_id = await self._resolve_project_id(project_id, user_id)
+
         uid = uuid.UUID(user_id)
 
         async with self.session_factory() as session:
@@ -801,8 +866,22 @@ class ProjectPlannerTools:
         project_name: str,
         design_document: str | None,
         phases: list[dict],
+        completed_phases: list[dict] | None = None,
+        branch_name: str | None = None,
+        source_branch: str | None = None,
+        pr_base: str | None = None,
     ) -> str:
-        """Assemble a combined prompt for a single claude_code.run_task call."""
+        """Assemble a combined prompt for a single claude_code.run_task call.
+
+        Args:
+            project_name: Human-readable project name.
+            design_document: Full markdown design doc (used as PLAN.md fallback).
+            phases: List of phase dicts with todo tasks to implement.
+            completed_phases: Optional list of already-completed phase summaries for context.
+            branch_name: The git branch this task will work on.
+            source_branch: The branch this task's branch is based on.
+            pr_base: The branch that the PR will target after completion.
+        """
         lines: list[str] = [
             f'You are implementing a project called "{project_name}".',
             "",
@@ -826,6 +905,22 @@ class ProjectPlannerTools:
 
         lines.append("---")
         lines.append("")
+
+        # Completed phases summary — gives context about prior work
+        if completed_phases:
+            lines.append("# Project Progress")
+            lines.append("")
+            lines.append("The following phases have already been completed and their branches pushed:")
+            lines.append("")
+            for cp in completed_phases:
+                branch_info = f" — branch `{cp['branch_name']}`" if cp.get("branch_name") else ""
+                pr_info = f" (PR #{cp['pr_number']})" if cp.get("pr_number") else ""
+                lines.append(f"## Completed: {cp['name']}{branch_info}{pr_info}")
+                for title in cp.get("task_titles", []):
+                    lines.append(f"- {title}")
+                lines.append("")
+            lines.append("---")
+            lines.append("")
 
         # Current phase tasks to implement
         lines.append("# Your Tasks")
@@ -854,6 +949,33 @@ class ProjectPlannerTools:
         lines.append("- Implement ONLY the tasks listed above under 'Your Tasks'.")
         lines.append("- Within each phase, implement tasks in the order listed.")
         lines.append("- Make sure all tests pass before finishing.")
+
+        # Git workflow section — explicit instructions so the agent knows the branch layout
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        lines.append("IMPORTANT — Git workflow:")
+        lines.append("- Commit your changes with descriptive commit messages as you work.")
+        lines.append("- When you are done, push your branch: `git push -u origin HEAD`")
+        lines.append("- Do NOT leave uncommitted changes.")
+        lines.append(
+            "- When creating a pull request, do NOT include PLAN.md in the PR diff. "
+            "PLAN.md is a planning artifact only. Before opening the PR, remove it "
+            "from the branch with: `git rm --cached PLAN.md && git commit -m 'chore: remove planning artifact'` "
+            "(skip this step if PLAN.md was never committed on this branch)."
+        )
+
+        if branch_name or source_branch or pr_base:
+            lines.append("")
+            lines.append("## Git Context")
+            lines.append("")
+            if branch_name:
+                lines.append(f"- **Your working branch:** `{branch_name}`")
+            if source_branch:
+                lines.append(f"- **Based on:** `{source_branch}` (contains all prior phase work — do NOT delete this branch)")
+            if pr_base:
+                lines.append(f"- **PR will target:** `{pr_base}`")
+
         return "\n".join(lines)
 
     async def get_execution_plan(
@@ -866,6 +988,7 @@ class ProjectPlannerTools:
         if not user_id:
             raise ValueError("user_id is required")
 
+        project_id = await self._resolve_project_id(project_id, user_id)
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
 
@@ -955,9 +1078,38 @@ class ProjectPlannerTools:
                 source_branch = project.project_branch or project.default_branch
 
             branch = first_phase.branch_name or project.project_branch or project.default_branch
+            pr_base = project.project_branch or project.default_branch
+
+            # Collect completed phases for context in the prompt
+            all_phases_result = await session.execute(
+                select(ProjectPhase)
+                .where(ProjectPhase.project_id == pid)
+                .order_by(ProjectPhase.order_index)
+            )
+            all_phases = list(all_phases_result.scalars().all())
+            completed_phases_data: list[dict] = []
+            for p in all_phases:
+                if p.status == "completed":
+                    phase_tasks_result = await session.execute(
+                        select(ProjectTask).where(ProjectTask.phase_id == p.id)
+                    )
+                    phase_tasks = list(phase_tasks_result.scalars().all())
+                    pr_numbers = {t.pr_number for t in phase_tasks if t.pr_number}
+                    completed_phases_data.append({
+                        "name": p.name,
+                        "branch_name": p.branch_name,
+                        "pr_number": next(iter(pr_numbers), None),
+                        "task_titles": [t.title for t in phase_tasks],
+                    })
 
             prompt = self._build_batch_prompt(
-                project.name, project.design_document, phase_dicts,
+                project.name,
+                project.design_document,
+                phase_dicts,
+                completed_phases=completed_phases_data or None,
+                branch_name=branch,
+                source_branch=source_branch,
+                pr_base=pr_base,
             )
 
         return {
@@ -966,6 +1118,7 @@ class ProjectPlannerTools:
             "repo_url": repo_url,
             "branch": branch,
             "source_branch": source_branch,
+            "pr_base": pr_base,
             "design_document": project.design_document,
             "total_tasks": len(all_todo_ids),
             "todo_task_ids": all_todo_ids,
@@ -984,6 +1137,7 @@ class ProjectPlannerTools:
         if not user_id:
             raise ValueError("user_id is required")
 
+        project_id = await self._resolve_project_id(project_id, user_id)
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
 
@@ -1059,6 +1213,31 @@ class ProjectPlannerTools:
                 source_branch = prev_phase.branch_name
             else:
                 source_branch = project.project_branch or project.default_branch
+
+            # Validate that the target phase branch won't conflict with any other branch
+            # stored in this project.  Git cannot have both `a/b` and `a/b/c` as refs
+            # simultaneously (one would need to be a directory node AND a leaf node).
+            if phase_branch:
+                all_project_branches = [
+                    b for b in (
+                        [project.project_branch]
+                        + [p.branch_name for p in phases]
+                    )
+                    if b and b != phase_branch
+                ]
+                for existing in all_project_branches:
+                    if (
+                        phase_branch.startswith(existing + "/")
+                        or existing.startswith(phase_branch + "/")
+                    ):
+                        raise ValueError(
+                            f"Branch naming conflict detected: cannot create branch "
+                            f"'{phase_branch}' because '{existing}' already exists in this "
+                            f"project. Git does not allow a ref to be both a leaf and a "
+                            f"directory node in the same namespace. "
+                            f"Fix: update the branch_name of the conflicting phase in the "
+                            f"database, or rename the conflicting remote ref before continuing."
+                        )
 
             # Determine if we should reuse planning task (phase 0 + planning_task_id exists + awaiting_input)
             use_continue_task = False
@@ -1264,8 +1443,14 @@ class ProjectPlannerTools:
             pr_url = None
 
             if project.repo_owner and project.repo_name and phase.branch_name:
-                # PR always targets the project branch so phases merge in order
-                pr_base = project.project_branch or project.default_branch
+                # PR always targets the project integration branch so phases merge in order.
+                # Fall back to the repo default branch if the integration branch doesn't exist
+                # on the remote (it may never have been pushed).
+                pr_base_primary = project.project_branch or project.default_branch
+                pr_base_fallback = project.default_branch
+                pr_bases_to_try = [pr_base_primary]
+                if pr_base_fallback and pr_base_fallback != pr_base_primary:
+                    pr_bases_to_try.append(pr_base_fallback)
 
                 # Create PR via git_platform
                 pr_title = f"{project.name}: {phase.name}"
@@ -1274,30 +1459,50 @@ class ProjectPlannerTools:
                     pr_body += f"- {task.title}\n"
 
                 async with httpx.AsyncClient(timeout=30.0, headers=get_service_auth_headers()) as client:
-                    resp = await client.post(
-                        f"{settings.module_services['git_platform']}/execute",
-                        json={
-                            "tool_name": "git_platform.create_pull_request",
-                            "arguments": {
-                                "owner": project.repo_owner,
-                                "repo": project.repo_name,
-                                "title": pr_title,
-                                "head": phase.branch_name,
-                                "base": pr_base,
-                                "body": pr_body,
-                                "draft": False,
-                            },
-                            "user_id": user_id,
-                        }
-                    )
-                    if resp.status_code == 200:
-                        pr_data = resp.json()
-                        if pr_data.get("success"):
-                            pr_result = pr_data.get("result", {})
-                            pr_number = pr_result.get("pr_number")
-                            pr_url = pr_result.get("url")
-                    else:
-                        logger.error("pr_creation_failed", status=resp.status_code, response=resp.text)
+                    for pr_base in pr_bases_to_try:
+                        resp = await client.post(
+                            f"{settings.module_services['git_platform']}/execute",
+                            json={
+                                "tool_name": "git_platform.create_pull_request",
+                                "arguments": {
+                                    "owner": project.repo_owner,
+                                    "repo": project.repo_name,
+                                    "title": pr_title,
+                                    "head": phase.branch_name,
+                                    "base": pr_base,
+                                    "body": pr_body,
+                                    "draft": False,
+                                },
+                                "user_id": user_id,
+                            }
+                        )
+                        if resp.status_code == 200:
+                            pr_data = resp.json()
+                            if pr_data.get("success"):
+                                pr_result = pr_data.get("result", {})
+                                pr_number = pr_result.get("pr_number")
+                                pr_url = pr_result.get("url")
+                                break
+                            # Check if this is an "invalid base" error — if so, try the fallback
+                            error_msg = pr_data.get("error", "")
+                            if (
+                                pr_base == pr_base_primary
+                                and pr_base != pr_base_fallback
+                                and ("'base'" in error_msg or '"base"' in error_msg or "base" in error_msg.lower())
+                                and "invalid" in error_msg.lower()
+                            ):
+                                logger.warning(
+                                    "pr_base_invalid_trying_fallback",
+                                    attempted_base=pr_base,
+                                    fallback=pr_base_fallback,
+                                    error=error_msg,
+                                )
+                                continue  # retry with fallback
+                            logger.error("pr_creation_failed", error=error_msg)
+                            break
+                        else:
+                            logger.error("pr_creation_failed", status=resp.status_code, response=resp.text)
+                            break
 
             # Update all tasks to "in_review"
             now = datetime.now(timezone.utc)
@@ -1350,6 +1555,7 @@ class ProjectPlannerTools:
         if not platform or not platform_channel_id:
             raise ValueError("platform and platform_channel_id are required for workflow scheduling")
 
+        project_id = await self._resolve_project_id(project_id, user_id)
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
 
@@ -1390,17 +1596,16 @@ class ProjectPlannerTools:
 
         # Create scheduler job to monitor this phase.
         # Each workflow phase gets a fresh conversation, so the success
-        # message must be self-contained with all IDs and instructions.
-        on_success_message = (
-            f"[Project Workflow] Project '{project.name}' (project_id: {project_id}), "
-            f"phase '{phase_name}' (phase_id: {phase_id}) with claude_code task "
-            f"{claude_task_id} has completed.\n\n"
-            f"Next steps:\n"
-            f"1. Call project_planner.complete_phase(phase_id='{phase_id}', claude_task_id='{claude_task_id}')\n"
-            f"2. Call project_planner.execute_next_phase(project_id='{project_id}')\n"
-            f"3. If a new phase started, create a scheduler.add_job to monitor it with "
-            f"on_complete='resume_conversation' and workflow_id='{workflow_id}'\n"
-            f"4. Repeat until all phases complete."
+        # message must be self-contained with all IDs and a single tool call.
+        on_success_message = _build_advance_message(
+            project_id=project_id,
+            project_name=project.name,
+            phase_id=phase_id,
+            phase_name=phase_name,
+            claude_task_id=claude_task_id,
+            workflow_id=workflow_id,
+            platform=platform,
+            platform_channel_id=platform_channel_id,
         )
 
         async with httpx.AsyncClient(timeout=30.0, headers=get_service_auth_headers()) as client:
@@ -1452,6 +1657,145 @@ class ProjectPlannerTools:
             "first_phase_name": phase_name,
             "claude_task_id": claude_task_id,
             "message": f"Workflow started. Executing first phase '{phase_name}'. Scheduler will auto-progress through remaining phases.",
+        }
+
+    async def advance_project_workflow(
+        self,
+        phase_id: str,
+        claude_task_id: str,
+        project_id: str,
+        workflow_id: str,
+        platform: str,
+        platform_channel_id: str,
+        auto_push: bool = True,
+        timeout: int = 1800,
+        user_id: str | None = None,
+    ) -> dict:
+        """Atomic phase transition for scheduler-driven workflows.
+
+        Designed to be called from a scheduler on_success_message in a fresh conversation.
+        All parameters are self-contained — no prior context is required.
+
+        Steps:
+          1. Complete the current phase (creates PR, marks tasks in_review).
+          2. Execute the next phase (launches a new claude_code task).
+          3. Create a new scheduler job to monitor the next phase.
+
+        If all phases are complete, marks the project as completed and returns
+        ``stage: 'workflow_complete'`` without error.
+        """
+        if not user_id:
+            raise ValueError("user_id is required")
+
+        project_id = await self._resolve_project_id(project_id, user_id)
+
+        # Step 1: Complete the current phase
+        complete_result = await self.complete_phase(
+            phase_id=phase_id,
+            claude_task_id=claude_task_id,
+            user_id=user_id,
+        )
+
+        if not complete_result.get("success"):
+            return {
+                "success": False,
+                "stage": "complete_phase",
+                "message": complete_result.get("message"),
+            }
+
+        # Step 2: Execute the next phase
+        next_result = await self.execute_next_phase(
+            project_id=project_id,
+            auto_push=auto_push,
+            timeout=timeout,
+            user_id=user_id,
+        )
+
+        # No more phases — workflow is done
+        if "claude_task_id" not in next_result:
+            logger.info(
+                "project_workflow_complete",
+                project_id=project_id,
+                workflow_id=workflow_id,
+                last_phase_id=phase_id,
+            )
+            return {
+                "success": True,
+                "stage": "workflow_complete",
+                "phase_completed": complete_result,
+                "message": next_result.get("message", "All phases complete. Workflow finished."),
+            }
+
+        new_claude_task_id = next_result["claude_task_id"]
+        new_phase_id = next_result["phase_id"]
+        new_phase_name = next_result["phase_name"]
+
+        # Step 3: Fetch project name for the scheduler message
+        async with self.session_factory() as session:
+            project_obj = await session.get(Project, uuid.UUID(project_id))
+            project_name = project_obj.name if project_obj else project_id
+
+        on_success_message = _build_advance_message(
+            project_id=project_id,
+            project_name=project_name,
+            phase_id=new_phase_id,
+            phase_name=new_phase_name,
+            claude_task_id=new_claude_task_id,
+            workflow_id=workflow_id,
+            platform=platform,
+            platform_channel_id=platform_channel_id,
+        )
+
+        # Step 4: Create a new scheduler job for the new phase
+        async with httpx.AsyncClient(timeout=30.0, headers=get_service_auth_headers()) as client:
+            resp = await client.post(
+                f"{settings.module_services['scheduler']}/execute",
+                json={
+                    "tool_name": "scheduler.add_job",
+                    "arguments": {
+                        "job_type": "poll_module",
+                        "check_config": {
+                            "module": "claude_code",
+                            "tool": "claude_code.task_status",
+                            "args": {"task_id": new_claude_task_id},
+                            "success_field": "status",
+                            "success_values": ["completed", "failed", "timed_out", "cancelled"],
+                        },
+                        "interval_seconds": 30,
+                        "max_attempts": 240,  # 2 hours max per phase
+                        "on_success_message": on_success_message,
+                        "on_complete": "resume_conversation",
+                        "workflow_id": workflow_id,
+                        "platform": platform,
+                        "platform_channel_id": platform_channel_id,
+                    },
+                    "user_id": user_id,
+                }
+            )
+            if resp.status_code != 200 or not resp.json().get("success"):
+                raise ValueError(
+                    f"Phase advanced but failed to create scheduler job for next phase: {resp.text}"
+                )
+
+        logger.info(
+            "workflow_advanced",
+            project_id=project_id,
+            completed_phase_id=phase_id,
+            next_phase_id=new_phase_id,
+            next_phase_name=new_phase_name,
+            new_claude_task_id=new_claude_task_id,
+        )
+
+        completed_phase_name = complete_result.get("phase_name", phase_id)
+        return {
+            "success": True,
+            "stage": "next_phase_started",
+            "phase_completed": complete_result,
+            "next_phase": next_result,
+            "message": (
+                f"Phase '{completed_phase_name}' completed. "
+                f"Started next phase '{new_phase_name}'. Scheduler job created."
+            ),
         }
 
     async def bulk_update_tasks(
@@ -1518,6 +1862,7 @@ class ProjectPlannerTools:
         if not user_id:
             raise ValueError("user_id is required")
 
+        project_id = await self._resolve_project_id(project_id, user_id)
         uid = uuid.UUID(user_id)
         pid = uuid.UUID(project_id)
 
