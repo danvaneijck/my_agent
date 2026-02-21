@@ -17,6 +17,7 @@ import {
   X,
   Lightbulb,
   Brain,
+  AlertTriangle,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -33,6 +34,7 @@ const NAV_ITEMS = [
   { to: "/files", icon: FolderOpen, label: "Files" },
   { to: "/schedule", icon: Clock, label: "Schedule" },
   { to: "/usage", icon: BarChart3, label: "Usage" },
+  { to: "/errors", icon: AlertTriangle, label: "Errors", badgeKey: "errors" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
@@ -42,9 +44,10 @@ interface SidebarProps {
   chatUnreadCount?: number;
   openPrCount?: number;
   activeTaskCount?: number;
+  openErrorCount?: number;
 }
 
-export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCount = 0, activeTaskCount = 0 }: SidebarProps) {
+export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCount = 0, activeTaskCount = 0, openErrorCount = 0 }: SidebarProps) {
   // Check if we're on desktop (md breakpoint and above)
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -160,6 +163,11 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
                 {badgeKey === "pulls" && openPrCount > 0 && (
                   <span className="bg-accent text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
                     {openPrCount > 99 ? "99+" : openPrCount}
+                  </span>
+                )}
+                {badgeKey === "errors" && openErrorCount > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5">
+                    {openErrorCount > 99 ? "99+" : openErrorCount}
                   </span>
                 )}
               </NavLink>

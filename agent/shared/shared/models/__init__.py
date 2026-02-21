@@ -2,6 +2,7 @@
 
 from shared.models.base import Base
 from shared.models.conversation import Conversation, Message
+from shared.models.error_log import ErrorLog
 from shared.models.file import FileRecord
 from shared.models.location_reminder import LocationReminder
 from shared.models.memory import MemorySummary
@@ -25,6 +26,7 @@ from shared.models.user_skill import UserSkill
 __all__ = [
     "Base",
     "Conversation",
+    "ErrorLog",
     "FileRecord",
     "LocationReminder",
     "MemorySummary",

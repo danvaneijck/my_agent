@@ -73,7 +73,7 @@ async def execute(call: ToolCall, _=Depends(require_service_auth)):
         return ToolResult(tool_name=call.tool_name, success=True, result=result)
     except Exception as e:
         logger.error("tool_execution_error", tool=call.tool_name, error=str(e), exc_info=True)
-        return ToolResult(tool_name=call.tool_name, success=False, error="Internal error processing request")
+        return ToolResult(tool_name=call.tool_name, success=False, error=str(e))
 
 
 @app.get("/health", response_model=HealthResponse)

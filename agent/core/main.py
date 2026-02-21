@@ -21,6 +21,7 @@ from core.orchestrator.tool_registry import ToolRegistry
 from shared.config import get_settings
 from shared.credential_store import CredentialStore
 from shared.database import get_engine, get_session_factory
+from shared.error_capture import capture_error
 from shared.models.persona import Persona
 from shared.redis import close_redis
 from shared.schemas.common import HealthResponse
@@ -46,7 +47,7 @@ summarizer: ConversationSummarizer | None = None
 _summarizer_task: asyncio.Task | None = None
 
 
-async def _delayed_discovery(registry: ToolRegistry, expected_modules: set[str]):
+async def _delayed_discovery(registry: ToolRegistry, expected_modules: set[str], session_factory):
     """Retry module discovery until all configured modules are found."""
     for delay in (5, 10, 20, 30):
         missing = expected_modules - set(registry.manifests.keys())
@@ -67,6 +68,15 @@ async def _delayed_discovery(registry: ToolRegistry, expected_modules: set[str])
             missing=list(missing),
             msg="Use POST /refresh-tools to retry manually",
         )
+        for module_name in missing:
+            asyncio.create_task(
+                capture_error(
+                    session_factory,
+                    service=module_name,
+                    error_type="module_startup",
+                    error_message=f"Module '{module_name}' unreachable after all discovery retries. Use POST /refresh-tools to retry.",
+                )
+            )
     else:
         logger.info("all_modules_discovered", modules=list(registry.manifests.keys()))
 
@@ -94,11 +104,14 @@ async def startup():
 
     logger.info("starting_orchestrator")
 
+    # Initialize session factory early so it can be passed to tool_registry and agent_loop
+    session_factory = get_session_factory()
+
     # Initialize LLM router
     llm_router = LLMRouter(settings)
 
     # Initialize tool registry and discover modules
-    tool_registry = ToolRegistry(settings)
+    tool_registry = ToolRegistry(settings, session_factory=session_factory)
     await tool_registry.load_from_cache()
     # Try to discover modules (some may not be ready yet)
     try:
@@ -115,10 +128,9 @@ async def startup():
             discovered=list(discovered),
             missing=list(expected_modules - discovered),
         )
-        asyncio.create_task(_delayed_discovery(tool_registry, expected_modules))
+        asyncio.create_task(_delayed_discovery(tool_registry, expected_modules, session_factory))
 
     # Ensure a default persona exists
-    session_factory = get_session_factory()
     async with session_factory() as session:
         result = await session.execute(select(Persona).where(Persona.is_default.is_(True)))
         default_persona = result.scalar_one_or_none()
