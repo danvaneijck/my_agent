@@ -229,5 +229,5 @@ jobs:
           script: |
             cd /var/lib/deploy/my_agent_deploy
             git pull
-            make migrate
             make up
+            make migrate
