@@ -836,6 +836,15 @@ function utilizationTextColor(pct: number): string {
   return "text-green-400";
 }
 
+const FIVE_HOUR_MS = 5 * 60 * 60 * 1000;
+const SEVEN_DAY_MS = 7 * 24 * 60 * 60 * 1000;
+
+function computeIdealPct(resetTimestamp: number, windowDurationMs: number): number {
+  const windowStart = resetTimestamp - windowDurationMs;
+  const elapsed = Date.now() - windowStart;
+  return Math.min(100, Math.max(0, (elapsed / windowDurationMs) * 100));
+}
+
 function formatResetTime(resetTimestamp: number): string {
   const now = Date.now();
   const diffMs = resetTimestamp - now;
@@ -857,6 +866,13 @@ function ClaudeCodeUsageCard({
   error?: string;
 }) {
   const navigate = useNavigate();
+
+  const fiveHourIdealPct = data?.five_hour
+    ? computeIdealPct(data.five_hour.reset_timestamp, FIVE_HOUR_MS)
+    : 0;
+  const sevenDayIdealPct = data?.seven_day
+    ? computeIdealPct(data.seven_day.reset_timestamp, SEVEN_DAY_MS)
+    : 0;
 
   if (!data && !loading && !error) return null;
 
@@ -895,10 +911,15 @@ function ClaudeCodeUsageCard({
                   {Math.round(data.five_hour.utilization_percent)}%
                 </span>
               </div>
-              <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-2.5">
+              <div className="relative w-full bg-gray-200 dark:bg-surface rounded-full h-2.5 overflow-hidden">
                 <div
                   className={`h-2.5 rounded-full transition-all ${utilizationColor(data.five_hour.utilization_percent)}`}
                   style={{ width: `${Math.min(100, data.five_hour.utilization_percent)}%` }}
+                />
+                <div
+                  className="absolute top-0 h-full w-0.5 bg-white opacity-90 z-10"
+                  style={{ left: `${fiveHourIdealPct}%` }}
+                  title={`Ideal pace: ${Math.round(fiveHourIdealPct)}%`}
                 />
               </div>
               <p className="text-xs text-gray-500 mt-1">
@@ -914,10 +935,15 @@ function ClaudeCodeUsageCard({
                   {Math.round(data.seven_day.utilization_percent)}%
                 </span>
               </div>
-              <div className="w-full bg-gray-200 dark:bg-surface rounded-full h-2.5">
+              <div className="relative w-full bg-gray-200 dark:bg-surface rounded-full h-2.5 overflow-hidden">
                 <div
                   className={`h-2.5 rounded-full transition-all ${utilizationColor(data.seven_day.utilization_percent)}`}
                   style={{ width: `${Math.min(100, data.seven_day.utilization_percent)}%` }}
+                />
+                <div
+                  className="absolute top-0 h-full w-0.5 bg-white opacity-90 z-10"
+                  style={{ left: `${sevenDayIdealPct}%` }}
+                  title={`Ideal pace: ${Math.round(sevenDayIdealPct)}%`}
                 />
               </div>
               <p className="text-xs text-gray-500 mt-1">
