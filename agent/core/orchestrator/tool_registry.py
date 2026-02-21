@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -9,6 +10,7 @@ import structlog
 
 from shared.auth import get_service_auth_headers
 from shared.config import Settings, parse_list
+from shared.error_capture import capture_error
 from shared.redis import get_redis
 from shared.schemas.tools import ModuleManifest, ToolCall, ToolDefinition, ToolResult
 
@@ -21,8 +23,9 @@ PERMISSION_LEVELS = ["guest", "user", "admin", "owner"]
 class ToolRegistry:
     """Discovers, caches, and routes tool calls to modules."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, session_factory=None):
         self.settings = settings
+        self.session_factory = session_factory
         self.manifests: dict[str, ModuleManifest] = {}
 
     async def discover_all(self) -> None:
@@ -150,6 +153,29 @@ class ToolRegistry:
                 return None
         return None
 
+    def _fire_capture(
+        self,
+        *,
+        service: str,
+        error_type: str,
+        error_message: str,
+        tool_call: ToolCall | None = None,
+    ) -> None:
+        """Fire-and-forget error capture. Skips if no session_factory is configured."""
+        if not self.session_factory:
+            return
+        asyncio.create_task(
+            capture_error(
+                self.session_factory,
+                service=service,
+                error_type=error_type,
+                error_message=error_message,
+                tool_name=tool_call.tool_name if tool_call else None,
+                tool_arguments=dict(tool_call.arguments) if tool_call else None,
+                user_id=tool_call.user_id if tool_call else None,
+            )
+        )
+
     async def execute_tool(
         self, tool_call: ToolCall, user_permission: str | None = None,
     ) -> ToolResult:
@@ -176,6 +202,12 @@ class ToolRegistry:
         # Extract module name from tool name (e.g. "file_manager.create_document" -> "file_manager")
         parts = tool_call.tool_name.split(".", 1)
         if len(parts) != 2:
+            self._fire_capture(
+                service="core",
+                error_type="invalid_tool",
+                error_message=f"Invalid tool name format: {tool_call.tool_name}. Expected 'module.tool_name'.",
+                tool_call=tool_call,
+            )
             return ToolResult(
                 tool_name=tool_call.tool_name,
                 success=False,
@@ -184,6 +216,12 @@ class ToolRegistry:
 
         module_name = parts[0]
         if module_name not in self.settings.module_services:
+            self._fire_capture(
+                service="core",
+                error_type="invalid_tool",
+                error_message=f"Unknown module: {module_name}",
+                tool_call=tool_call,
+            )
             return ToolResult(
                 tool_name=tool_call.tool_name,
                 success=False,
@@ -204,22 +242,51 @@ class ToolRegistry:
                     payload["user_id"] = tool_call.user_id
                 resp = await client.post(f"{url}/execute", json=payload)
                 if resp.status_code == 200:
-                    return ToolResult(**resp.json())
+                    result = ToolResult(**resp.json())
+                    if not result.success:
+                        self._fire_capture(
+                            service=module_name,
+                            error_type="tool_execution",
+                            error_message=result.error or "Tool returned success=False with no error message",
+                            tool_call=tool_call,
+                        )
+                    return result
                 else:
+                    error_msg = f"Module returned status {resp.status_code}: {resp.text}"
+                    self._fire_capture(
+                        service=module_name,
+                        error_type="tool_execution",
+                        error_message=error_msg,
+                        tool_call=tool_call,
+                    )
                     return ToolResult(
                         tool_name=tool_call.tool_name,
                         success=False,
-                        error=f"Module returned status {resp.status_code}: {resp.text}",
+                        error=error_msg,
                     )
             except httpx.TimeoutException:
+                error_msg = f"Tool execution timed out ({timeout:.0f}s)."
+                self._fire_capture(
+                    service=module_name,
+                    error_type="tool_execution",
+                    error_message=error_msg,
+                    tool_call=tool_call,
+                )
                 return ToolResult(
                     tool_name=tool_call.tool_name,
                     success=False,
-                    error=f"Tool execution timed out ({timeout:.0f}s).",
+                    error=error_msg,
                 )
             except Exception as e:
+                error_msg = f"Tool execution error: {str(e)}"
+                self._fire_capture(
+                    service=module_name,
+                    error_type="tool_execution",
+                    error_message=error_msg,
+                    tool_call=tool_call,
+                )
                 return ToolResult(
                     tool_name=tool_call.tool_name,
                     success=False,
-                    error=f"Tool execution error: {str(e)}",
+                    error=error_msg,
                 )

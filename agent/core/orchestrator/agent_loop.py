@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -16,6 +18,7 @@ from core.llm_router.token_counter import estimate_cost
 from core.orchestrator.context_builder import ContextBuilder
 from core.orchestrator.tool_registry import ToolRegistry
 from shared.config import Settings, parse_list
+from shared.error_capture import capture_error
 from shared.utils.tokens import count_tokens, count_messages_tokens
 from shared.llm_settings_resolver import get_user_llm_overrides
 from shared.models.conversation import Conversation, Message
@@ -59,6 +62,15 @@ class AgentLoop:
                 return await self._run_inner(session, incoming)
             except Exception as e:
                 logger.error("agent_loop_error", error=str(e), exc_info=True)
+                asyncio.create_task(
+                    capture_error(
+                        self.session_factory,
+                        service="core",
+                        error_type="agent_loop",
+                        error_message=str(e),
+                        stack_trace=traceback.format_exc(),
+                    )
+                )
                 return AgentResponse(
                     content="I encountered an internal error. Please try again.",
                     error=str(e),
