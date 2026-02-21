@@ -98,12 +98,13 @@ class KnowledgeTools:
             {
                 "memory_id": str(m.id),
                 "content": m.summary,
+                "conversation_id": str(m.conversation_id) if m.conversation_id else None,
                 "created_at": m.created_at.isoformat() if m.created_at else None,
             }
             for m in memories
         ]
 
-    async def list_memories(self, limit: int = 20, user_id: str | None = None) -> list[dict]:
+    async def list_memories(self, limit: int = 50, offset: int = 0, user_id: str | None = None) -> list[dict]:
         """List all stored memories for the user."""
         if not user_id:
             raise ValueError("user_id is required")
@@ -115,6 +116,7 @@ class KnowledgeTools:
                 select(MemorySummary)
                 .where(MemorySummary.user_id == uid)
                 .order_by(MemorySummary.created_at.desc())
+                .offset(offset)
                 .limit(limit)
             )
             memories = list(result.scalars().all())
@@ -123,6 +125,7 @@ class KnowledgeTools:
             {
                 "memory_id": str(m.id),
                 "content": m.summary,
+                "conversation_id": str(m.conversation_id) if m.conversation_id else None,
                 "created_at": m.created_at.isoformat() if m.created_at else None,
             }
             for m in memories
