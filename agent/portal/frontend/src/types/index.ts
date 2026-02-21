@@ -335,6 +335,7 @@ export interface ProjectDetail {
   repo_owner: string | null;
   repo_name: string | null;
   default_branch: string;
+  project_branch: string | null;
   auto_merge: boolean;
   planning_task_id: string | null;
   status: string;
