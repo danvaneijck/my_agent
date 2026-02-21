@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, GitBranch, Upload, Search, Plus, Shield } from "lucide-react";
+import { X, GitBranch, Upload, Search, Plus, Shield, BookOpen, ChevronDown, Check } from "lucide-react";
 import { api } from "@/api/client";
 import { useRepos } from "@/hooks/useRepos";
 import { useBranches } from "@/hooks/useBranches";
+import { useSkills } from "@/hooks/useSkills";
 import type { GitRepo, GitBranch as GitBranchType } from "@/types";
 
 interface NewTaskModalProps {
@@ -49,6 +50,11 @@ export default function NewTaskModal({
   const [error, setError] = useState("");
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
+  // Skills state
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [skillsExpanded, setSkillsExpanded] = useState(false);
+  const [skillSearch, setSkillSearch] = useState("");
+
   // Repository selection state
   const [selectedRepo, setSelectedRepo] = useState<GitRepo | null>(null);
   const [repoSearch, setRepoSearch] = useState("");
@@ -68,6 +74,9 @@ export default function NewTaskModal({
     !!selectedRepo // only fetch when repo is selected
   );
 
+  // Fetch user skills for the skills selector
+  const { skills, loading: skillsLoading } = useSkills();
+
   // Filter repos by search
   const filteredRepos = useMemo(() => {
     if (!repoSearch.trim()) return [];
@@ -86,6 +95,18 @@ export default function NewTaskModal({
     return branches.filter((b) => b.name.toLowerCase().includes(q));
   }, [branches, branchSearch]);
 
+  // Filter skills by search
+  const filteredSkills = useMemo(() => {
+    if (!skillSearch.trim()) return skills;
+    const q = skillSearch.toLowerCase();
+    return skills.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.description || "").toLowerCase().includes(q) ||
+        (s.category || "").toLowerCase().includes(q)
+    );
+  }, [skills, skillSearch]);
+
   // The branch actually sent to the API: new branch overrides source branch
   const effectiveBranch = newBranch.trim() || branch.trim();
 
@@ -102,6 +123,9 @@ export default function NewTaskModal({
       setRepoSearch("");
       setBranchSearch("");
       setCreatingNewBranch(false);
+      setSelectedSkillIds([]);
+      setSkillsExpanded(false);
+      setSkillSearch("");
 
       // If defaultRepoUrl is provided, parse it to populate selectedRepo
       if (defaultRepoUrl) {
@@ -144,6 +168,12 @@ export default function NewTaskModal({
 
   if (!open) return null;
 
+  const toggleSkill = (skillId: string) => {
+    setSelectedSkillIds((prev) =>
+      prev.includes(skillId) ? prev.filter((id) => id !== skillId) : [...prev, skillId]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
@@ -175,6 +205,9 @@ export default function NewTaskModal({
       }
 
       if (autoPush) body.auto_push = true;
+      if (selectedSkillIds.length > 0) {
+        (body as Record<string, unknown>).skill_ids = selectedSkillIds;
+      }
 
       const result = await api<{ task_id: string }>("/api/tasks", {
         method: "POST",
@@ -461,6 +494,86 @@ export default function NewTaskModal({
               <span className="text-xs text-gray-500">
                 Claude will create a plan for your review before implementing
               </span>
+            )}
+          </div>
+
+          {/* Skills selector */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setSkillsExpanded(!skillsExpanded)}
+              className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors w-full"
+            >
+              <BookOpen size={14} />
+              <span>Include Skills</span>
+              {selectedSkillIds.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-accent/20 text-accent text-xs font-medium">
+                  {selectedSkillIds.length}
+                </span>
+              )}
+              <ChevronDown
+                size={14}
+                className={`ml-auto transition-transform ${skillsExpanded ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {skillsExpanded && (
+              <div className="mt-2 space-y-2">
+                {/* Skill search */}
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    value={skillSearch}
+                    onChange={(e) => setSkillSearch(e.target.value)}
+                    placeholder="Search skills..."
+                    className="w-full pl-9 pr-3 py-2 rounded-lg bg-white dark:bg-surface border border-light-border dark:border-border text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-accent"
+                  />
+                </div>
+
+                {/* Skill list */}
+                <div className="max-h-48 overflow-y-auto border border-light-border dark:border-border rounded-lg divide-y divide-light-border dark:divide-border bg-white dark:bg-surface">
+                  {skillsLoading ? (
+                    <div className="px-3 py-4 text-sm text-center text-gray-500">Loading skills...</div>
+                  ) : filteredSkills.length === 0 ? (
+                    <div className="px-3 py-4 text-sm text-center text-gray-500">
+                      {skills.length === 0 ? "No skills saved yet." : "No matching skills."}
+                    </div>
+                  ) : (
+                    filteredSkills.map((skill) => {
+                      const selected = selectedSkillIds.includes(skill.skill_id);
+                      return (
+                        <button
+                          key={skill.skill_id}
+                          type="button"
+                          onClick={() => toggleSkill(skill.skill_id)}
+                          className={`w-full text-left px-3 py-2.5 transition-colors ${
+                            selected
+                              ? "bg-accent/10"
+                              : "hover:bg-gray-100 dark:hover:bg-surface-lighter"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              {skill.name}
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {skill.category && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-surface-lighter text-gray-500 dark:text-gray-400">
+                                  {skill.category}
+                                </span>
+                              )}
+                              {selected && <Check size={14} className="text-accent" />}
+                            </div>
+                          </div>
+                          {skill.description && (
+                            <p className="text-xs text-gray-500 mt-0.5 truncate">{skill.description}</p>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             )}
           </div>
 

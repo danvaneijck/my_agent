@@ -52,6 +52,33 @@ async def tasks_health(user: PortalUser = Depends(require_auth)) -> dict:
 # --------------- Request schemas ---------------
 
 
+def _format_skill_block(skill: dict) -> str:
+    """Format a skill dict into a readable Markdown block for prompt injection."""
+    name = skill.get("name", "Unnamed Skill")
+    category = skill.get("category") or ""
+    language = skill.get("language") or ""
+    description = skill.get("description") or ""
+    content = skill.get("content", "")
+
+    meta_parts = []
+    if category:
+        meta_parts.append(f"Category: {category}")
+    if language:
+        meta_parts.append(f"Language: {language}")
+
+    lines = [f"### {name}"]
+    if meta_parts:
+        lines.append(f"*{' | '.join(meta_parts)}*")
+    if description:
+        lines.append(f"> {description}")
+    lines.append("")
+
+    fence = f"```{language}" if language else "```"
+    lines.append(f"{fence}\n{content}\n```")
+    lines.append("")
+    return "\n".join(lines)
+
+
 class NewTaskRequest(BaseModel):
     prompt: str
     repo_url: str | None = None
@@ -60,6 +87,7 @@ class NewTaskRequest(BaseModel):
     timeout: int | None = None
     mode: str = "execute"  # "execute" or "plan"
     auto_push: bool = False  # automatically push branch after task completes
+    skill_ids: list[str] | None = None  # skill IDs whose content will be injected into the prompt
 
 
 class ContinueTaskRequest(BaseModel):
@@ -99,7 +127,32 @@ async def create_task(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Start a new Claude Code task."""
-    args: dict = {"prompt": body.prompt}
+    prompt = body.prompt
+
+    # Fetch selected skills and inject their content into the prompt
+    if body.skill_ids:
+        skill_blocks: list[str] = []
+        for skill_id in body.skill_ids:
+            try:
+                result = await call_tool(
+                    module="skills_modules",
+                    tool_name="skills_modules.get_skill",
+                    arguments={"skill_id": skill_id},
+                    user_id=str(user.user_id),
+                    timeout=10.0,
+                )
+                skill = result.get("result", {})
+                if skill:
+                    skill_blocks.append(_format_skill_block(skill))
+            except Exception as e:
+                logger.warning("skill_fetch_failed_for_task", skill_id=skill_id, error=str(e))
+
+        if skill_blocks:
+            header = "## Skills Context\n\nThe following skills are included as context for this task:\n\n---\n"
+            skills_section = header + "\n---\n".join(skill_blocks)
+            prompt = f"{skills_section}\n---\n\n## Task\n\n{body.prompt}"
+
+    args: dict = {"prompt": prompt}
     if body.repo_url:
         args["repo_url"] = body.repo_url
     if body.branch:
