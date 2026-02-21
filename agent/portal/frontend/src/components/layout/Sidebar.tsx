@@ -18,6 +18,7 @@ import {
   Lightbulb,
   Brain,
   AlertTriangle,
+  Activity,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { to: "/schedule", icon: Clock, label: "Schedule" },
   { to: "/usage", icon: BarChart3, label: "Usage" },
   { to: "/errors", icon: AlertTriangle, label: "Errors", badgeKey: "errors" },
+  { to: "/health-status", icon: Activity, label: "Health" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
