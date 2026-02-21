@@ -106,6 +106,13 @@ def _build_planning_prompt(project_data: dict, description: str | None) -> str:
         "   This file will be used as context for all subsequent implementation phases.",
         "",
         "Focus on creating an actionable, well-structured plan that can be executed incrementally.",
+        "",
+        "## Git Workflow",
+        "",
+        "- Commit PLAN.md with the message: `docs: add project plan`",
+        "- Push your branch: `git push -u origin HEAD`",
+        "- **Do NOT start implementing.** Stop immediately after pushing PLAN.md.",
+        "  Implementation will be requested as a separate step.",
     ])
     return "\n".join(lines)
 
@@ -345,14 +352,23 @@ async def kickoff_project(
                 # No tasks to execute — fall back to planning
                 prompt = _build_planning_prompt(project_data, body.description)
                 mode = "plan"
-                branch = f"project/{_slugify(project_data.get('name', 'new'))}"
+                branch = (
+                    project_data.get("project_branch")
+                    or f"project/{_slugify(project_data.get('name', 'new'))}/integration"
+                )
         except Exception:
             prompt = _build_planning_prompt(project_data, body.description)
             mode = "plan"
-            branch = f"project/{_slugify(project_data.get('name', 'new'))}"
+            branch = (
+                project_data.get("project_branch")
+                or f"project/{_slugify(project_data.get('name', 'new'))}/integration"
+            )
     else:
         prompt = _build_planning_prompt(project_data, body.description)
-        branch = f"project/{_slugify(project_data.get('name', 'new'))}"
+        branch = (
+            project_data.get("project_branch")
+            or f"project/{_slugify(project_data.get('name', 'new'))}/integration"
+        )
 
     # 3. Fire claude_code task
     task_args: dict = {
