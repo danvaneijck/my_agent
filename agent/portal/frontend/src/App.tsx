@@ -30,6 +30,7 @@ const SkillsPage = lazy(() => import("@/pages/SkillsPage"));
 const SkillDetailPage = lazy(() => import("@/pages/SkillDetailPage"));
 const KnowledgePage = lazy(() => import("@/pages/KnowledgePage"));
 const ErrorsPage = lazy(() => import("@/pages/ErrorsPage"));
+const HealthStatusPage = lazy(() => import("@/pages/HealthStatusPage"));
 const ShowcasePage = lazy(() => import("@/pages/ShowcasePage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
@@ -351,6 +352,7 @@ export default function App() {
               <Route path="/skills/:skillId" element={<SkillDetailPage />} />
               <Route path="/knowledge" element={<KnowledgePage />} />
               <Route path="/errors" element={<ErrorsPage />} />
+              <Route path="/health-status" element={<HealthStatusPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/showcase" element={<ShowcasePage />} />
               <Route path="*" element={<NotFoundPage />} />

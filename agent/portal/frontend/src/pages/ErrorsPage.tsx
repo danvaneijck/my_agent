@@ -283,7 +283,11 @@ export default function ErrorsPage() {
     try {
       const [errData, sumData] = await Promise.all([
         api<ErrorsResponse>(
-          `/api/errors${filter !== "all" ? `?status=${filter}` : ""}?limit=100`
+          `/api/errors?${new URLSearchParams(
+            filter !== "all"
+              ? { status: filter, limit: "100" }
+              : { limit: "100" }
+          ).toString()}`
         ),
         api<SummaryResponse>("/api/errors/summary"),
       ]);
