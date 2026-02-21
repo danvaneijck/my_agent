@@ -63,7 +63,13 @@ MANIFEST = ModuleManifest(
                 ToolParameter(
                     name="limit",
                     type="integer",
-                    description="Maximum number of memories to return (default 20)",
+                    description="Maximum number of memories to return (default 50)",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="offset",
+                    type="integer",
+                    description="Number of memories to skip for pagination (default 0)",
                     required=False,
                 ),
                 ToolParameter(

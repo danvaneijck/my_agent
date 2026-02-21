@@ -353,6 +353,24 @@ export interface ProjectTask {
   created_at: string;
 }
 
+// Knowledge / memory types
+export interface Memory {
+  memory_id: string;
+  content: string;
+  conversation_id: string | null;
+  created_at: string;
+}
+
+export interface MemoryListResponse {
+  memories: Memory[];
+  count: number;
+}
+
+export interface RecallResponse {
+  memories: Memory[];
+  count: number;
+}
+
 // Module health
 export interface ModuleHealth {
   module: string;

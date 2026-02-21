@@ -16,6 +16,7 @@ import {
   Settings,
   X,
   Lightbulb,
+  Brain,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { to: "/tasks", icon: LayoutDashboard, label: "Tasks", badgeKey: "tasks" },
   { to: "/projects", icon: FolderKanban, label: "Projects" },
   { to: "/skills", icon: Lightbulb, label: "Skills" },
+  { to: "/knowledge", icon: Brain, label: "Knowledge" },
   { to: "/repos", icon: GitBranch, label: "Repos" },
   { to: "/pulls", icon: GitPullRequest, label: "Pull Requests", badgeKey: "pulls" },
   { to: "/code", icon: Code2, label: "Code" },
