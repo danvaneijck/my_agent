@@ -90,7 +90,7 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
           damping: 30,
           stiffness: 300,
         }}
-        className={`fixed left-0 z-40 w-56 bg-white dark:bg-surface-light border-r border-light-border dark:border-border md:static${bannerVisible ? " top-9 bottom-0" : " inset-y-0"}`}
+        className={`fixed left-0 z-40 w-56 flex flex-col bg-white dark:bg-surface-light border-r border-light-border dark:border-border md:static${bannerVisible ? " top-9 bottom-0" : " inset-y-0"}`}
       >
         <div className="flex items-center justify-between h-14 px-4 border-b border-light-border dark:border-border">
           <NavLink
@@ -117,7 +117,7 @@ export default function Sidebar({ open, onClose, chatUnreadCount = 0, openPrCoun
         </div>
 
         <motion.nav
-          className="p-3 space-y-1"
+          className="p-3 space-y-1 flex-1 overflow-y-auto"
           initial={false}
           animate={open || isDesktop ? "open" : "closed"}
           variants={{
