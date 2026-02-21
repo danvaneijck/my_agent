@@ -497,18 +497,40 @@ export default function TaskOutputViewer({ taskId, initialStatus }: Props) {
             pendingIds.push(block.id as string);
           }
         }
+      } else if (event.type === "user") {
+        // The CLI emits tool results inside type:"user" events.
+        // message.content is an array where each item with type:"tool_result"
+        // carries the tool_use_id and content for a completed tool call.
+        const message = event.data.message as Record<string, unknown>;
+        const blocks = Array.isArray(message?.content)
+          ? (message.content as Record<string, unknown>[])
+          : [];
+        for (const block of blocks) {
+          if (block.type === "tool_result" && block.tool_use_id) {
+            const toolUseId = block.tool_use_id as string;
+            map.set(toolUseId, {
+              id: event.id,
+              timestamp: event.timestamp,
+              type: "tool_result",
+              data: {
+                tool_use_id: toolUseId,
+                content: block.content,
+                is_error: block.is_error ?? false,
+              },
+            });
+            const idx = pendingIds.indexOf(toolUseId);
+            if (idx !== -1) pendingIds.splice(idx, 1);
+          }
+        }
       } else if (event.type === "tool_result") {
-        // Explicit tool_result events emitted by the CLI
+        // Fallback: standalone tool_result events (not currently emitted by
+        // the CLI but handled defensively)
         const toolUseId = event.data.tool_use_id as string;
         if (toolUseId) {
-          // Preferred: match by ID — exact and always correct
           map.set(toolUseId, event);
-          // Remove from pending so flushPending won't overwrite with a synthetic
           const idx = pendingIds.indexOf(toolUseId);
           if (idx !== -1) pendingIds.splice(idx, 1);
         } else if (pendingIds.length === 1) {
-          // Positional fallback is safe only when there is exactly one pending
-          // tool — batched calls can't be matched positionally without IDs
           map.set(pendingIds.shift()!, event);
         }
       } else if (event.type === "result") {
