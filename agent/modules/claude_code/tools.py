@@ -90,6 +90,38 @@ wget, tree, zip/unzip, htop, lsof, less
 cannot build or run Docker containers. If the task requires Docker, \
 let the user know.
 
+## Deployment Guidelines
+
+When building projects that will be deployed via the deployer module, follow \
+these rules for compose and multi-service projects:
+
+**URL pattern:** Deployments get live HTTPS URLs at `*.apps.danvan.xyz`. \
+The subdomain is the slugified project name (lowercase, special chars → hyphens). \
+Example: project name "My Todo App" → `https://my-todo-app.apps.danvan.xyz`.
+
+**Compose service ordering matters:** The **first service** listed in \
+`docker-compose.yml` gets the primary subdomain (`{slug}.apps.danvan.xyz`). \
+Additional services get `{slug}-{service}.apps.danvan.xyz`. \
+**Always list the frontend/user-facing service first** in the compose file.
+
+**Cross-service URLs — never use localhost:** Browsers cannot reach \
+`localhost` inside Docker. When a frontend needs to call a backend API, \
+use the backend's public subdomain URL. For a project named "todo" with \
+services `frontend` (first) and `backend` (second):
+- Frontend URL: `https://todo.apps.danvan.xyz`
+- Backend URL: `https://todo-backend.apps.danvan.xyz`
+- In the frontend code, API calls should go to `https://todo-backend.apps.danvan.xyz`
+
+**Use environment variables for API URLs:** Prefer reading the backend URL \
+from an env var (e.g. `VITE_API_URL`, `NEXT_PUBLIC_API_URL`, \
+`REACT_APP_API_URL`) rather than hardcoding it. Pass the value via the \
+deployer's `env_vars` parameter or the compose `.env` file. This makes the \
+project portable and redeploy-friendly.
+
+**Backend CORS:** When a frontend on one subdomain calls a backend on \
+another, the backend must allow cross-origin requests from the frontend's \
+subdomain. Configure CORS to allow `https://{slug}.apps.danvan.xyz`.
+
 ---
 
 """

@@ -19,7 +19,16 @@ MANIFEST = ModuleManifest(
                 "is auto-detected. If a docker-compose.yml is present, the project is "
                 "automatically deployed as a compose stack. "
                 "Pass env_vars to inject environment variables (e.g. API URLs for "
-                "frontend-backend linking)."
+                "frontend-backend linking).\n\n"
+                "URL PATTERN: The deployed URL is https://{slug}.apps.danvan.xyz where "
+                "{slug} is the slugified project_name (lowercase, special chars → hyphens). "
+                "For compose stacks with multiple exposed services, the first service gets "
+                "the primary slug and additional services get https://{slug}-{service}.apps.danvan.xyz. "
+                "IMPORTANT: When building projects with a frontend that calls a backend API, "
+                "use these predictable URLs in the code or via environment variables — "
+                "never use localhost. For example, if project_name is 'My Todo App' and "
+                "the compose backend service is named 'backend', the frontend should call "
+                "https://my-todo-app-backend.apps.danvan.xyz instead of http://localhost:8000."
             ),
             parameters=[
                 ToolParameter(
@@ -35,7 +44,11 @@ MANIFEST = ModuleManifest(
                 ToolParameter(
                     name="project_name",
                     type="string",
-                    description="Human-readable name for the deployment.",
+                    description=(
+                        "Human-readable name for the deployment. This determines the "
+                        "subdomain: slugified to lowercase with hyphens "
+                        "(e.g. 'My Todo App' → my-todo-app → https://my-todo-app.apps.danvan.xyz)."
+                    ),
                     required=True,
                 ),
                 ToolParameter(
@@ -65,7 +78,7 @@ MANIFEST = ModuleManifest(
                         'Environment variables to inject. For compose projects, '
                         'these are written to a .env file next to docker-compose.yml. '
                         'For single containers, injected as -e flags. '
-                        'Example: {"REACT_APP_API_URL": "http://localhost:4001"}.'
+                        'Example: {"VITE_API_URL": "https://my-app-backend.apps.danvan.xyz"}.'
                     ),
                     required=False,
                 ),
