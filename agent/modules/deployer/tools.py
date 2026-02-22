@@ -829,6 +829,9 @@ class DeployerTools:
         deployment = self._get_deployment(deploy_id, user_id)
 
         if deployment.project_type == "compose":
+            # Remove all proxy bridge containers BEFORE compose down
+            # (they're attached to the compose network, blocking removal)
+            await self._remove_compose_proxies(deploy_id, deployment.all_ports)
             await self._compose_down(
                 deploy_id, deployment.compose_project_dir,
                 deployment.deploy_compose_file,
@@ -1123,6 +1126,133 @@ class DeployerTools:
             ))
         return services
 
+    async def _create_compose_proxies(
+        self,
+        deploy_id: str,
+        allocated_ports: list[dict],
+    ) -> list[str]:
+        """Create lightweight nginx proxies bridging compose network to deploy-net.
+
+        One proxy per unique service.  The first service gets the plain
+        ``deploy-{deploy_id}`` name (→ ``{deploy_id}.apps.…``), additional
+        services get ``deploy-{deploy_id}-{service}`` (→ ``{deploy_id}-{service}.apps.…``).
+
+        Each proxy container:
+        * Joins the compose default network (to reach compose services)
+        * Joins deploy-net (so the outer nginx can reach it)
+        * Listens on port 3000 and reverse-proxies to the target service
+        """
+        compose_network = f"deploy-{deploy_id}_default"
+
+        # Deduplicate: one proxy per unique service (use first port for that service)
+        seen_services: dict[str, dict] = {}
+        for port_info in allocated_ports:
+            svc = port_info["service"]
+            if svc not in seen_services:
+                seen_services[svc] = port_info
+
+        created: list[str] = []
+        for idx, (service_name, port_info) in enumerate(seen_services.items()):
+            internal_port = port_info["container"]
+
+            # First service = primary, rest get -{service} suffix
+            if idx == 0:
+                proxy_name = f"deploy-{deploy_id}"
+            else:
+                proxy_name = f"deploy-{deploy_id}-{self._slugify(service_name)}"
+
+            nginx_conf = (
+                f"server {{ listen 3000; "
+                f"location / {{ "
+                f"proxy_pass http://{service_name}:{internal_port}; "
+                f"proxy_set_header Host $host; "
+                f"proxy_set_header X-Real-IP $remote_addr; "
+                f"proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; "
+                f"proxy_set_header X-Forwarded-Proto $scheme; "
+                f"proxy_http_version 1.1; "
+                f"proxy_set_header Upgrade $http_upgrade; "
+                f'proxy_set_header Connection "upgrade"; '
+                f"}} }}"
+            )
+
+            try:
+                cmd: list[str] = [
+                    "docker", "run", "-d",
+                    "--name", proxy_name,
+                    f"--network={compose_network}",
+                    "--restart=unless-stopped",
+                    "nginx:alpine",
+                    "sh", "-c",
+                    f"echo '{nginx_conf}' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'",
+                ]
+
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate()
+
+                if proc.returncode != 0:
+                    logger.warning(
+                        "compose_proxy_run_failed",
+                        deploy_id=deploy_id,
+                        service=service_name,
+                        error=stderr.decode("utf-8", errors="replace")[:500],
+                    )
+                    continue
+
+                # Connect the proxy to deploy-net so the outer nginx can reach it
+                proc2 = await asyncio.create_subprocess_exec(
+                    "docker", "network", "connect", self._network, proxy_name,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr2 = await proc2.communicate()
+
+                if proc2.returncode != 0:
+                    logger.warning(
+                        "compose_proxy_network_connect_failed",
+                        deploy_id=deploy_id,
+                        service=service_name,
+                        error=stderr2.decode("utf-8", errors="replace")[:500],
+                    )
+
+                created.append(proxy_name)
+                logger.info(
+                    "compose_proxy_created",
+                    deploy_id=deploy_id,
+                    proxy=proxy_name,
+                    target=f"{service_name}:{internal_port}",
+                )
+
+            except Exception as exc:
+                logger.warning(
+                    "compose_proxy_failed",
+                    deploy_id=deploy_id,
+                    service=service_name,
+                    error=str(exc),
+                )
+
+        return created
+
+    async def _remove_compose_proxies(
+        self, deploy_id: str, all_ports: list[dict]
+    ) -> None:
+        """Remove all proxy bridge containers for a compose deployment."""
+        # Always remove the primary proxy
+        await self._remove_container(f"deploy-{deploy_id}")
+
+        # Remove per-service proxies (for services beyond the first)
+        seen_services: list[str] = []
+        for port_info in all_ports:
+            svc = port_info.get("service", "")
+            if svc and svc not in seen_services:
+                seen_services.append(svc)
+                if len(seen_services) > 1:
+                    slug = self._slugify(svc)
+                    await self._remove_container(f"deploy-{deploy_id}-{slug}")
+
     async def deploy_compose(
         self,
         project_path: str,
@@ -1223,6 +1353,33 @@ class DeployerTools:
             deployment.services = services
             deployment.status = "running"
 
+            # Create proxy containers to bridge compose network → deploy-net
+            # One proxy per exposed service so each gets its own subdomain
+            if allocated_ports:
+                await self._create_compose_proxies(deploy_id, allocated_ports)
+
+                # Add subdomain URLs to each port entry
+                seen_services: list[str] = []
+                for port_info in allocated_ports:
+                    svc = port_info["service"]
+                    if svc not in seen_services:
+                        seen_services.append(svc)
+                        idx = len(seen_services) - 1
+                        if idx == 0:
+                            port_info["url"] = f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
+                        else:
+                            slug = self._slugify(svc)
+                            port_info["url"] = f"https://{deploy_id}-{slug}.{DEPLOY_BASE_DOMAIN}"
+                    # Additional ports for the same service share that service's URL
+                    elif "url" not in port_info:
+                        # Find the URL already assigned to this service
+                        for prev in allocated_ports:
+                            if prev["service"] == svc and "url" in prev:
+                                port_info["url"] = prev["url"]
+                                break
+
+                deployment.all_ports = allocated_ports
+
             logger.info(
                 "compose_deploy_success",
                 deploy_id=deploy_id,
@@ -1246,6 +1403,8 @@ class DeployerTools:
             # Free allocated ports
             for port_info in allocated_ports:
                 self._free_port(port_info["host"])
+            # Remove all proxy bridge containers before compose down
+            await self._remove_compose_proxies(deploy_id, allocated_ports)
             # Try to clean up containers
             await self._compose_down(deploy_id, project_path, deploy_compose_file)
             # Clean up generated file

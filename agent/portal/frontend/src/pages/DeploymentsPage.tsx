@@ -151,11 +151,29 @@ function LogViewer({ deployId, serviceName }: { deployId: string; serviceName?: 
 
 // ---- Service list (for compose) ----
 
-function ServiceList({ deployId, services }: { deployId: string; services: DeploymentService[] }) {
+function ServiceList({
+  deployId,
+  services,
+  allPorts,
+}: {
+  deployId: string;
+  services: DeploymentService[];
+  allPorts?: { service?: string; url?: string }[];
+}) {
   const [selectedService, setSelectedService] = useState<string | null>(null);
 
   if (services.length === 0) {
     return <div className="text-xs text-gray-500 py-2">No services found</div>;
+  }
+
+  // Build a lookup of service name → subdomain URL from all_ports
+  const serviceUrls: Record<string, string> = {};
+  if (allPorts) {
+    for (const p of allPorts) {
+      if (p.service && p.url && !serviceUrls[p.service]) {
+        serviceUrls[p.service] = p.url;
+      }
+    }
   }
 
   return (
@@ -169,7 +187,7 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
             <tr className="border-b border-light-border dark:border-border text-gray-500">
               <th className="text-left px-3 py-2 font-medium">Service</th>
               <th className="text-left px-3 py-2 font-medium">Status</th>
-              <th className="text-left px-3 py-2 font-medium">Ports</th>
+              <th className="text-left px-3 py-2 font-medium">URL</th>
               <th className="text-left px-3 py-2 font-medium">Image</th>
               <th className="text-right px-3 py-2 font-medium">Logs</th>
             </tr>
@@ -192,18 +210,19 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
                   <StatusBadge status={svc.status} />
                 </td>
                 <td className="px-3 py-2">
-                  {svc.ports.length > 0 ? (
-                    <div className="flex flex-wrap gap-1 text-gray-400">
-                      {svc.ports.map((p, i) => (
-                        <span
-                          key={i}
-                          className="font-mono"
-                          title={`host ${p.host} → container ${p.container}`}
-                        >
-                          :{p.container}
-                        </span>
-                      ))}
-                    </div>
+                  {serviceUrls[svc.name] ? (
+                    <a
+                      href={serviceUrls[svc.name]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-accent hover:text-accent-hover transition-colors truncate max-w-[220px]"
+                      title={serviceUrls[svc.name]}
+                    >
+                      <span className="truncate">
+                        {serviceUrls[svc.name].replace(/^https?:\/\//, "")}
+                      </span>
+                      <ExternalLink size={10} className="flex-shrink-0" />
+                    </a>
                   ) : (
                     <span className="text-gray-600">-</span>
                   )}
@@ -481,6 +500,7 @@ function DeploymentRow({
               <ServiceList
                 deployId={deployment.deploy_id}
                 services={deployment.services || []}
+                allPorts={deployment.all_ports}
               />
             ) : (
               <LogViewer deployId={deployment.deploy_id} />
@@ -565,6 +585,7 @@ function DeploymentCard({
           <ServiceList
             deployId={deployment.deploy_id}
             services={deployment.services || []}
+            allPorts={deployment.all_ports}
           />
         ) : (
           <LogViewer deployId={deployment.deploy_id} />

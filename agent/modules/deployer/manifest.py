@@ -54,7 +54,7 @@ MANIFEST = ModuleManifest(
                     description=(
                         "Internal port the app listens on (single-container only). "
                         "Auto-detected by default: "
-                        "80 for react/static, 3000 for nextjs/node, 8000 for docker."
+                        "3000 for react/nextjs/static/node, 8000 for docker."
                     ),
                     required=False,
                 ),

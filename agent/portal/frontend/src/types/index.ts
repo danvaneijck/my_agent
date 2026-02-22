@@ -270,6 +270,7 @@ export interface ServicePort {
   container: number;
   protocol: string;
   service?: string;
+  url?: string;
 }
 
 export interface DeploymentService {
