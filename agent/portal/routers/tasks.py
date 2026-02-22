@@ -7,9 +7,10 @@ import json
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi.responses import StreamingResponse
 
-from portal.auth import PortalUser, require_auth, verify_ws_auth
+from portal.auth import PortalUser, require_auth, verify_ws_auth, _decode_token
 from portal.services.log_streamer import stream_task_logs
 from portal.services.module_client import call_tool, check_module_health
 from portal.services.terminal_service import get_terminal_service
@@ -279,6 +280,75 @@ async def read_workspace_file(
         timeout=15.0,
     )
     return result.get("result", {})
+
+
+@router.get("/{task_id}/workspace/download")
+async def download_workspace(
+    task_id: str,
+    token: str | None = Query(None),
+    authorization: str | None = Header(None),
+) -> StreamingResponse:
+    """Download a task's workspace as a ZIP archive.
+
+    Supports auth via Authorization header or ?token=<jwt> query param
+    so the browser can trigger a direct download.
+    """
+    import io
+    import os
+    import zipfile
+
+    # Accept auth via header or query param (needed for direct browser GETs)
+    jwt_token = None
+    if authorization and authorization.startswith("Bearer "):
+        jwt_token = authorization[7:]
+    elif token:
+        jwt_token = token
+    if not jwt_token:
+        raise HTTPException(status_code=401, detail="Missing authentication")
+    user = _decode_token(jwt_token)
+
+    # Resolve workspace via task_status (also verifies user ownership)
+    result = await call_tool(
+        module="claude_code",
+        tool_name="claude_code.task_status",
+        arguments={"task_id": task_id},
+        user_id=str(user.user_id),
+        timeout=15.0,
+    )
+    task_info = result.get("result", {})
+    workspace = task_info.get("workspace")
+
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Security: resolve symlinks and ensure path is under the expected base dir
+    task_base = os.path.realpath("/tmp/claude_tasks")
+    workspace_real = os.path.realpath(workspace)
+    if not workspace_real.startswith(task_base + os.sep) and workspace_real != task_base:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not os.path.isdir(workspace_real):
+        raise HTTPException(status_code=404, detail="Workspace directory not found")
+
+    # Build ZIP in memory
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+        for root, _dirs, files in os.walk(workspace_real):
+            for filename in files:
+                file_path = os.path.join(root, filename)
+                arcname = os.path.relpath(file_path, workspace_real)
+                try:
+                    zf.write(file_path, arcname)
+                except (OSError, PermissionError):
+                    pass  # skip unreadable files
+
+    zip_buffer.seek(0)
+    zip_filename = f"workspace-{task_id[:8]}.zip"
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )
 
 
 @router.post("/{task_id}/workspace/upload")
