@@ -14,13 +14,26 @@ MODEL_COSTS: dict[str, tuple[float, float]] = {
     "text-embedding-3-small": (0.02, 0.0),
 }
 
+# Anthropic prompt caching multipliers relative to the base input price.
+# Cache write tokens are billed at 1.25x; cache read tokens at 0.10x.
+_CACHE_WRITE_MULTIPLIER = 1.25
+_CACHE_READ_MULTIPLIER = 0.10
+
 
 def estimate_cost(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    cache_creation_input_tokens: int = 0,
+    cache_read_input_tokens: int = 0,
 ) -> float:
-    """Estimate the cost of an LLM call in USD."""
+    """Estimate the cost of an LLM call in USD.
+
+    For Anthropic models that use prompt caching, pass the cache token
+    counts so they are priced correctly:
+      - cache_creation_input_tokens are billed at 1.25× the base input rate
+      - cache_read_input_tokens are billed at 0.10× the base input rate
+    """
     # Direct lookup first
     if model in MODEL_COSTS:
         costs = MODEL_COSTS[model]
@@ -39,6 +52,9 @@ def estimate_cost(
             # Default to a mid-range estimate
             costs = (3.0, 15.0)
 
-    input_cost = (input_tokens / 1_000_000) * costs[0]
-    output_cost = (output_tokens / 1_000_000) * costs[1]
-    return input_cost + output_cost
+    input_rate, output_rate = costs
+    input_cost = (input_tokens / 1_000_000) * input_rate
+    output_cost = (output_tokens / 1_000_000) * output_rate
+    cache_write_cost = (cache_creation_input_tokens / 1_000_000) * input_rate * _CACHE_WRITE_MULTIPLIER
+    cache_read_cost = (cache_read_input_tokens / 1_000_000) * input_rate * _CACHE_READ_MULTIPLIER
+    return input_cost + output_cost + cache_write_cost + cache_read_cost

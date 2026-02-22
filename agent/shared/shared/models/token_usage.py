@@ -22,6 +22,8 @@ class TokenLog(Base):
     model: Mapped[str]
     input_tokens: Mapped[int]
     output_tokens: Mapped[int]
+    cache_creation_input_tokens: Mapped[int] = mapped_column(default=0)
+    cache_read_input_tokens: Mapped[int] = mapped_column(default=0)
     cost_estimate: Mapped[float | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
