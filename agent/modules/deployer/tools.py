@@ -139,7 +139,7 @@ RUN mkdir -p /output && \\
 
 FROM nginx:alpine
 COPY --from=build /output/ /usr/share/nginx/html/
-RUN printf 'server {\\n  listen 3000;\\n  root /usr/share/nginx/html;\\n  location / {\\n    try_files \\$uri \\$uri/ /index.html;\\n  }\\n}\\n' > /etc/nginx/conf.d/default.conf
+RUN echo 'server { listen 3000; root /usr/share/nginx/html; location / { try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
 EXPOSE 3000
 """
 
@@ -155,10 +155,25 @@ EXPOSE 3000
 CMD ["npm", "start"]
 """
 
+# Next.js with output: "export" produces static HTML — serve with nginx
+DOCKERFILE_NEXTJS_EXPORT = """\
+FROM node:20-slim AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci 2>/dev/null || npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/out/ /usr/share/nginx/html/
+RUN echo 'server { listen 3000; root /usr/share/nginx/html; location / { try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
+EXPOSE 3000
+"""
+
 DOCKERFILE_STATIC = """\
 FROM nginx:alpine
 COPY . /usr/share/nginx/html/
-RUN printf 'server {\\n  listen 3000;\\n  root /usr/share/nginx/html;\\n  location / {\\n    try_files \\$uri \\$uri/ /index.html;\\n  }\\n}\\n' > /etc/nginx/conf.d/default.conf
+RUN echo 'server { listen 3000; root /usr/share/nginx/html; location / { try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
 EXPOSE 3000
 """
 
@@ -449,6 +464,26 @@ class DeployerTools:
         return "docker"
 
     # ------------------------------------------------------------------
+    # Next.js static export detection
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_nextjs_export(project_path: str) -> bool:
+        """Check if a Next.js project uses output: 'export' (static HTML)."""
+        for config_name in ("next.config.js", "next.config.mjs", "next.config.ts"):
+            config_path = os.path.join(project_path, config_name)
+            if os.path.isfile(config_path):
+                try:
+                    with open(config_path) as f:
+                        content = f.read()
+                    # Match output: "export" or output: 'export'
+                    if re.search(r"""output\s*:\s*['"]export['"]""", content):
+                        return True
+                except OSError:
+                    pass
+        return False
+
+    # ------------------------------------------------------------------
     # Deploy ID generation
     # ------------------------------------------------------------------
 
@@ -700,6 +735,11 @@ class DeployerTools:
                 template = _TEMPLATES.get(project_type)
                 if not template:
                     raise ValueError(f"Unknown project type: {project_type}")
+                # Next.js static export needs nginx instead of next start
+                if project_type == "nextjs" and self._is_nextjs_export(project_path):
+                    template = DOCKERFILE_NEXTJS_EXPORT
+                    internal_port = DEPLOY_INTERNAL_PORT
+                    logger.info("nextjs_static_export_detected", deploy_id=deploy_id)
                 dockerfile_path = os.path.join(project_path, "Dockerfile.deploy")
                 with open(dockerfile_path, "w") as fh:
                     fh.write(template)

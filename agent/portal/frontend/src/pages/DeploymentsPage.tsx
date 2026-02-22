@@ -21,7 +21,7 @@ import {
 import { api } from "@/api/client";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import NewDeploymentModal from "@/components/deployments/NewDeploymentModal";
-import type { Deployment, DeploymentService, ServicePort } from "@/types";
+import type { Deployment, DeploymentService } from "@/types";
 
 const STATUS_STYLES: Record<string, string> = {
   running: "bg-green-500/20 text-green-400",
@@ -79,43 +79,27 @@ function formatDate(dateStr: string | null): string {
   });
 }
 
-// ---- Ports display ----
+// ---- URL display ----
 
-function PortsList({ deployment }: { deployment: Deployment }) {
-  const ports =
-    deployment.all_ports && deployment.all_ports.length > 0
-      ? deployment.all_ports
-      : deployment.port
-        ? [{ host: deployment.port, container: 0, protocol: "tcp" } as ServicePort]
-        : [];
-
-  if (ports.length === 0) {
+function DeploymentUrl({ deployment }: { deployment: Deployment }) {
+  if (!deployment.url || deployment.status !== "running") {
     return <span className="text-gray-500">-</span>;
   }
 
+  // Extract display label from URL (strip protocol)
+  const label = deployment.url.replace(/^https?:\/\//, "");
+
   return (
-    <div className="flex flex-wrap gap-1">
-      {ports.map((p, i) => (
-        <a
-          key={i}
-          href={`http://localhost:${p.host}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-0.5 text-accent hover:text-accent-hover transition-colors"
-          title={
-            p.service
-              ? `${p.service}: host ${p.host} → container ${p.container}`
-              : `host ${p.host} → container ${p.container}`
-          }
-        >
-          {p.service && (
-            <span className="text-gray-500 text-[10px]">{p.service}</span>
-          )}
-          :{p.host}
-          <ExternalLink size={10} />
-        </a>
-      ))}
-    </div>
+    <a
+      href={deployment.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-accent hover:text-accent-hover transition-colors truncate max-w-[250px]"
+      title={deployment.url}
+    >
+      <span className="truncate">{label}</span>
+      <ExternalLink size={10} className="flex-shrink-0" />
+    </a>
   );
 }
 
@@ -209,17 +193,15 @@ function ServiceList({ deployId, services }: { deployId: string; services: Deplo
                 </td>
                 <td className="px-3 py-2">
                   {svc.ports.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1 text-gray-400">
                       {svc.ports.map((p, i) => (
-                        <a
+                        <span
                           key={i}
-                          href={`http://localhost:${p.host}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-accent hover:text-accent-hover"
+                          className="font-mono"
+                          title={`host ${p.host} → container ${p.container}`}
                         >
-                          :{p.host}
-                        </a>
+                          :{p.container}
+                        </span>
                       ))}
                     </div>
                   ) : (
@@ -448,7 +430,7 @@ function DeploymentRow({
           <StatusBadge status={deployment.status} />
         </td>
         <td className="px-4 py-3 text-xs">
-          <PortsList deployment={deployment} />
+          <DeploymentUrl deployment={deployment} />
         </td>
         <td className="px-4 py-3 text-gray-400 text-xs">
           {formatDate(deployment.created_at)}
@@ -542,7 +524,7 @@ function DeploymentCard({
       </div>
       <div className="flex items-center gap-3 text-xs text-gray-400">
         <span className="font-mono">{deployment.deploy_id.slice(0, 8)}</span>
-        <PortsList deployment={deployment} />
+        <DeploymentUrl deployment={deployment} />
       </div>
       <div className="flex items-center justify-between text-xs text-gray-500">
         <span>Created {formatDate(deployment.created_at)}</span>
@@ -771,7 +753,7 @@ export default function DeploymentsPage() {
                     <th className="text-left px-4 py-3 font-medium">Name</th>
                     <th className="text-left px-4 py-3 font-medium">Type</th>
                     <th className="text-left px-4 py-3 font-medium">Status</th>
-                    <th className="text-left px-4 py-3 font-medium">Ports</th>
+                    <th className="text-left px-4 py-3 font-medium">URL</th>
                     <th className="text-left px-4 py-3 font-medium">Created</th>
                     <th className="text-right px-4 py-3 font-medium">Actions</th>
                   </tr>
