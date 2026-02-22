@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shlex
 import uuid
 from dataclasses import dataclass, field
@@ -138,7 +139,8 @@ RUN mkdir -p /output && \\
 
 FROM nginx:alpine
 COPY --from=build /output/ /usr/share/nginx/html/
-EXPOSE 80
+RUN printf 'server {\\n  listen 3000;\\n  root /usr/share/nginx/html;\\n  location / {\\n    try_files \\$uri \\$uri/ /index.html;\\n  }\\n}\\n' > /etc/nginx/conf.d/default.conf
+EXPOSE 3000
 """
 
 DOCKERFILE_NEXTJS = """\
@@ -148,6 +150,7 @@ COPY package*.json ./
 RUN npm ci 2>/dev/null || npm install
 COPY . .
 RUN npm run build
+ENV PORT=3000
 EXPOSE 3000
 CMD ["npm", "start"]
 """
@@ -155,7 +158,8 @@ CMD ["npm", "start"]
 DOCKERFILE_STATIC = """\
 FROM nginx:alpine
 COPY . /usr/share/nginx/html/
-EXPOSE 80
+RUN printf 'server {\\n  listen 3000;\\n  root /usr/share/nginx/html;\\n  location / {\\n    try_files \\$uri \\$uri/ /index.html;\\n  }\\n}\\n' > /etc/nginx/conf.d/default.conf
+EXPOSE 3000
 """
 
 DOCKERFILE_NODE = """\
@@ -164,9 +168,13 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci 2>/dev/null || npm install
 COPY . .
+ENV PORT=3000
 EXPOSE 3000
 CMD ["npm", "start"]
 """
+
+# Internal port all deployed containers listen on (standardized for nginx routing)
+DEPLOY_INTERNAL_PORT = 3000
 
 _TEMPLATES: dict[str, str] = {
     "react": DOCKERFILE_REACT,
@@ -176,10 +184,10 @@ _TEMPLATES: dict[str, str] = {
 }
 
 _DEFAULT_PORTS: dict[str, int] = {
-    "react": 80,
-    "static": 80,
-    "nextjs": 3000,
-    "node": 3000,
+    "react": DEPLOY_INTERNAL_PORT,
+    "static": DEPLOY_INTERNAL_PORT,
+    "nextjs": DEPLOY_INTERNAL_PORT,
+    "node": DEPLOY_INTERNAL_PORT,
     "docker": 8000,
 }
 
@@ -283,7 +291,7 @@ class DeployerTools:
                     project_type=self._guess_project_type(labels, image),
                     port=port,
                     container_id=container_id,
-                    url=f"http://localhost:{port}",
+                    url=f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}",
                     status=status,
                     created_at=created_at,
                 )
@@ -365,7 +373,7 @@ class DeployerTools:
                 primary_url = ""
                 if all_ports:
                     primary_port = all_ports[0]["host"]
-                    primary_url = f"http://localhost:{primary_port}"
+                    primary_url = f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
 
                 deployment = Deployment(
                     id=deploy_id,
@@ -439,6 +447,32 @@ class DeployerTools:
         if "node" in image:
             return "node"
         return "docker"
+
+    # ------------------------------------------------------------------
+    # Deploy ID generation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _slugify(name: str) -> str:
+        """Convert a project name to a DNS-safe slug for use as subdomain."""
+        slug = name.lower().strip()
+        slug = re.sub(r"[^a-z0-9-]", "-", slug)
+        slug = re.sub(r"-+", "-", slug)
+        slug = slug.strip("-")
+        return slug[:63] or "app"  # DNS label max 63 chars
+
+    def _generate_deploy_id(self, project_name: str) -> str:
+        """Generate a deploy ID from the project name, handling collisions."""
+        slug = self._slugify(project_name)
+        if slug not in self.deployments:
+            return slug
+        # Collision — append short random suffix
+        for _ in range(10):
+            candidate = f"{slug[:55]}-{uuid.uuid4().hex[:6]}"
+            if candidate not in self.deployments:
+                return candidate
+        # Fallback to pure random
+        return uuid.uuid4().hex[:8]
 
     # ------------------------------------------------------------------
     # Port management
@@ -642,9 +676,9 @@ class DeployerTools:
                 user_id=user_id,
             )
 
-        deploy_id = uuid.uuid4().hex[:8]
+        deploy_id = self._generate_deploy_id(project_name)
         port = self._allocate_port()
-        internal_port = container_port or _DEFAULT_PORTS.get(project_type, 8000)
+        internal_port = container_port or _DEFAULT_PORTS.get(project_type, DEPLOY_INTERNAL_PORT)
         env_vars = env_vars or {}
 
         deployment = Deployment(
@@ -697,8 +731,9 @@ class DeployerTools:
             deployment.container_id = cid
 
             # --- Step 4: resolve URL ---
+            subdomain_url = f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
             direct_url = f"http://localhost:{port}"
-            deployment.url = direct_url
+            deployment.url = subdomain_url
 
             # --- Step 5: health check ---
             healthy = await self._health_check(container_name, internal_port)
@@ -707,12 +742,13 @@ class DeployerTools:
             if not healthy:
                 logger.warning("deploy_health_check_failed", deploy_id=deploy_id)
 
-            logger.info("deploy_success", deploy_id=deploy_id, url=direct_url)
+            logger.info("deploy_success", deploy_id=deploy_id, url=subdomain_url)
             return {
                 "deploy_id": deploy_id,
                 "project_name": project_name,
                 "project_type": project_type,
-                "url": direct_url,
+                "url": subdomain_url,
+                "direct_url": direct_url,
                 "port": port,
                 "container_id": cid,
                 "status": "running",
@@ -1072,7 +1108,7 @@ class DeployerTools:
         # Validate compose file for dangerous options
         self._validate_compose_file(compose_file)
 
-        deploy_id = uuid.uuid4().hex[:8]
+        deploy_id = self._generate_deploy_id(project_name)
         env_vars = env_vars or {}
 
         deployment = Deployment(
@@ -1114,7 +1150,7 @@ class DeployerTools:
             # Set primary URL from first allocated port
             if allocated_ports:
                 deployment.port = allocated_ports[0]["host"]
-                deployment.url = f"http://localhost:{deployment.port}"
+                deployment.url = f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
 
             # Build and start services
             logger.info("compose_build_starting", deploy_id=deploy_id)
