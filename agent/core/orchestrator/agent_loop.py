@@ -234,11 +234,15 @@ class AgentLoop:
                     max_tokens=max_tokens,
                 )
 
-            # Log token usage
+            # Log token usage (including Anthropic prompt cache tokens)
+            cache_write = llm_response.cache_creation_input_tokens
+            cache_read = llm_response.cache_read_input_tokens
             cost = estimate_cost(
                 llm_response.model or model,
                 llm_response.input_tokens,
                 llm_response.output_tokens,
+                cache_creation_input_tokens=cache_write,
+                cache_read_input_tokens=cache_read,
             )
             token_log = TokenLog(
                 id=uuid.uuid4(),
@@ -247,14 +251,20 @@ class AgentLoop:
                 model=llm_response.model or model,
                 input_tokens=llm_response.input_tokens,
                 output_tokens=llm_response.output_tokens,
+                cache_creation_input_tokens=cache_write,
+                cache_read_input_tokens=cache_read,
                 cost_estimate=cost,
                 created_at=datetime.now(timezone.utc),
             )
             session.add(token_log)
 
-            # Update user token usage
+            # Update user token usage — include cache tokens so the budget
+            # counter reflects real API consumption.
             user.tokens_used_this_month += (
-                llm_response.input_tokens + llm_response.output_tokens
+                llm_response.input_tokens
+                + llm_response.output_tokens
+                + cache_write
+                + cache_read
             )
 
             # If LLM returns final text

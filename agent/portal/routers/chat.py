@@ -105,11 +105,19 @@ async def _generate_title(conversation_id: str, user_id: uuid.UUID | None = None
             )
             title = resp.content[0].text.strip().strip('"').strip("'")
 
-            # Log token usage
+            # Log token usage (including any cache tokens)
             if user_id:
                 _input = resp.usage.input_tokens
                 _output = resp.usage.output_tokens
-                cost = (_input / 1_000_000) * 1.0 + (_output / 1_000_000) * 5.0  # haiku pricing
+                _cache_write = getattr(resp.usage, "cache_creation_input_tokens", 0) or 0
+                _cache_read = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
+                # Haiku pricing: $1/1M input, $5/1M output, cache write 1.25×, cache read 0.10×
+                cost = (
+                    (_input / 1_000_000) * 1.0
+                    + (_output / 1_000_000) * 5.0
+                    + (_cache_write / 1_000_000) * 1.25
+                    + (_cache_read / 1_000_000) * 0.10
+                )
                 from shared.models.user import User
                 session.add(TokenLog(
                     id=uuid.uuid4(),
@@ -118,6 +126,8 @@ async def _generate_title(conversation_id: str, user_id: uuid.UUID | None = None
                     model=model,
                     input_tokens=_input,
                     output_tokens=_output,
+                    cache_creation_input_tokens=_cache_write,
+                    cache_read_input_tokens=_cache_read,
                     cost_estimate=cost,
                     created_at=datetime.now(timezone.utc),
                 ))
@@ -125,7 +135,9 @@ async def _generate_title(conversation_id: str, user_id: uuid.UUID | None = None
                     select(User).where(User.id == user_id)
                 )).scalar_one_or_none()
                 if user_record:
-                    user_record.tokens_used_this_month += _input + _output
+                    user_record.tokens_used_this_month += (
+                        _input + _output + _cache_write + _cache_read
+                    )
 
             # Update the conversation title
             conv_result = await session.execute(

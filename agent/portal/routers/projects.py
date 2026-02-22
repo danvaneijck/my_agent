@@ -40,12 +40,20 @@ async def _log_portal_tokens(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    cache_creation_input_tokens: int = 0,
+    cache_read_input_tokens: int = 0,
     conversation_id: uuid.UUID | None = None,
 ) -> None:
     """Log token usage for direct Anthropic API calls made by the portal."""
     try:
         costs = _MODEL_COSTS.get(model, (3.0, 15.0))
-        cost = (input_tokens / 1_000_000) * costs[0] + (output_tokens / 1_000_000) * costs[1]
+        input_rate, output_rate = costs
+        cost = (
+            (input_tokens / 1_000_000) * input_rate
+            + (output_tokens / 1_000_000) * output_rate
+            + (cache_creation_input_tokens / 1_000_000) * input_rate * 1.25
+            + (cache_read_input_tokens / 1_000_000) * input_rate * 0.10
+        )
 
         factory = get_session_factory()
         async with factory() as session:
@@ -56,6 +64,8 @@ async def _log_portal_tokens(
                 model=model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                cache_creation_input_tokens=cache_creation_input_tokens,
+                cache_read_input_tokens=cache_read_input_tokens,
                 cost_estimate=cost,
                 created_at=datetime.now(timezone.utc),
             ))
@@ -65,11 +75,17 @@ async def _log_portal_tokens(
             result = await session.execute(select(User).where(User.id == user_id))
             user_record = result.scalar_one_or_none()
             if user_record:
-                user_record.tokens_used_this_month += input_tokens + output_tokens
+                user_record.tokens_used_this_month += (
+                    input_tokens
+                    + output_tokens
+                    + cache_creation_input_tokens
+                    + cache_read_input_tokens
+                )
             await session.commit()
 
         logger.info("portal_token_usage", model=model, input_tokens=input_tokens,
-                     output_tokens=output_tokens, cost=round(cost, 6))
+                     output_tokens=output_tokens, cache_creation=cache_creation_input_tokens,
+                     cache_read=cache_read_input_tokens, cost=round(cost, 6))
     except Exception as e:
         logger.error("portal_token_log_failed", error=str(e))
 
@@ -547,14 +563,18 @@ Rules:
                 messages=[{"role": "user", "content": user_message}],
             )
 
-            # Log token usage
+            # Log token usage (including cache tokens from prompt caching)
             _input = response.usage.input_tokens
             _output = response.usage.output_tokens
+            _cache_write = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+            _cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
             await _log_portal_tokens(
                 user_id=user_uuid,
                 model="claude-sonnet-4-20250514",
                 input_tokens=_input,
                 output_tokens=_output,
+                cache_creation_input_tokens=_cache_write,
+                cache_read_input_tokens=_cache_read,
             )
 
             # Check if response was truncated

@@ -15,6 +15,7 @@ from shared.config import Settings
 from shared.models.conversation import Conversation, Message
 from shared.models.memory import MemorySummary
 from shared.models.token_usage import TokenLog
+from shared.models.user import User
 
 logger = structlog.get_logger()
 
@@ -123,10 +124,14 @@ class ConversationSummarizer:
 
         # Track token usage for the summarization call
         model_used = llm_response.model or "unknown"
+        cache_write = llm_response.cache_creation_input_tokens
+        cache_read = llm_response.cache_read_input_tokens
         cost = estimate_cost(
             model_used,
             llm_response.input_tokens,
             llm_response.output_tokens,
+            cache_creation_input_tokens=cache_write,
+            cache_read_input_tokens=cache_read,
         )
         token_log = TokenLog(
             id=uuid.uuid4(),
@@ -135,10 +140,26 @@ class ConversationSummarizer:
             model=model_used,
             input_tokens=llm_response.input_tokens,
             output_tokens=llm_response.output_tokens,
+            cache_creation_input_tokens=cache_write,
+            cache_read_input_tokens=cache_read,
             cost_estimate=cost,
             created_at=datetime.now(timezone.utc),
         )
         session.add(token_log)
+
+        # Update the user's monthly token counter so budget checks account
+        # for summarization costs too.
+        user_result = await session.execute(
+            select(User).where(User.id == conversation.user_id)
+        )
+        user_record = user_result.scalar_one_or_none()
+        if user_record:
+            user_record.tokens_used_this_month += (
+                llm_response.input_tokens
+                + llm_response.output_tokens
+                + cache_write
+                + cache_read
+            )
 
         # Generate embedding for the summary
         embedding = None
