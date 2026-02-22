@@ -158,7 +158,7 @@ function ServiceList({
 }: {
   deployId: string;
   services: DeploymentService[];
-  allPorts?: { service?: string; url?: string }[];
+  allPorts?: { service?: string; url?: string; host?: number; container?: number }[];
 }) {
   const [selectedService, setSelectedService] = useState<string | null>(null);
 
@@ -166,12 +166,18 @@ function ServiceList({
     return <div className="text-xs text-gray-500 py-2">No services found</div>;
   }
 
-  // Build a lookup of service name → subdomain URL from all_ports
+  // Build lookups per service from all_ports
   const serviceUrls: Record<string, string> = {};
+  const servicePorts: Record<string, { host: number; container: number }[]> = {};
   if (allPorts) {
     for (const p of allPorts) {
-      if (p.service && p.url && !serviceUrls[p.service]) {
+      if (!p.service) continue;
+      if (p.url && !serviceUrls[p.service]) {
         serviceUrls[p.service] = p.url;
+      }
+      if (p.host && p.container) {
+        if (!servicePorts[p.service]) servicePorts[p.service] = [];
+        servicePorts[p.service].push({ host: p.host, container: p.container });
       }
     }
   }
@@ -187,7 +193,7 @@ function ServiceList({
             <tr className="border-b border-light-border dark:border-border text-gray-500">
               <th className="text-left px-3 py-2 font-medium">Service</th>
               <th className="text-left px-3 py-2 font-medium">Status</th>
-              <th className="text-left px-3 py-2 font-medium">URL</th>
+              <th className="text-left px-3 py-2 font-medium">Access</th>
               <th className="text-left px-3 py-2 font-medium">Image</th>
               <th className="text-right px-3 py-2 font-medium">Logs</th>
             </tr>
@@ -210,22 +216,36 @@ function ServiceList({
                   <StatusBadge status={svc.status} />
                 </td>
                 <td className="px-3 py-2">
-                  {serviceUrls[svc.name] ? (
-                    <a
-                      href={serviceUrls[svc.name]}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-accent hover:text-accent-hover transition-colors truncate max-w-[220px]"
-                      title={serviceUrls[svc.name]}
-                    >
-                      <span className="truncate">
-                        {serviceUrls[svc.name].replace(/^https?:\/\//, "")}
-                      </span>
-                      <ExternalLink size={10} className="flex-shrink-0" />
-                    </a>
-                  ) : (
-                    <span className="text-gray-600">-</span>
-                  )}
+                  <div className="flex flex-col gap-0.5">
+                    {serviceUrls[svc.name] ? (
+                      <a
+                        href={serviceUrls[svc.name]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-accent hover:text-accent-hover transition-colors truncate max-w-[220px]"
+                        title={serviceUrls[svc.name]}
+                      >
+                        <span className="truncate">
+                          {serviceUrls[svc.name].replace(/^https?:\/\//, "")}
+                        </span>
+                        <ExternalLink size={10} className="flex-shrink-0" />
+                      </a>
+                    ) : servicePorts[svc.name] ? (
+                      <div className="flex flex-wrap gap-1">
+                        {servicePorts[svc.name].map((p, i) => (
+                          <span
+                            key={i}
+                            className="font-mono text-gray-400"
+                            title={`container :${p.container} → host :${p.host}`}
+                          >
+                            :{p.host}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-600">-</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-3 py-2 text-gray-400 truncate max-w-[200px]">
                   {svc.image || "-"}

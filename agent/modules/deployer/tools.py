@@ -206,6 +206,23 @@ _DEFAULT_PORTS: dict[str, int] = {
     "docker": 8000,
 }
 
+# Container ports that are known TCP-only (non-HTTP) protocols.
+# Services on these ports won't get subdomain proxy routing — only direct host:port access.
+_TCP_ONLY_PORTS: set[int] = {
+    5432,   # PostgreSQL
+    3306,   # MySQL
+    6379,   # Redis
+    27017,  # MongoDB
+    5672,   # RabbitMQ AMQP
+    9092,   # Kafka
+    2181,   # ZooKeeper
+    1433,   # MSSQL
+    1521,   # Oracle
+    11211,  # Memcached
+    9042,   # Cassandra
+    26379,  # Redis Sentinel
+}
+
 
 # ---------------------------------------------------------------------------
 # Tool class
@@ -1144,15 +1161,16 @@ class DeployerTools:
         """
         compose_network = f"deploy-{deploy_id}_default"
 
-        # Deduplicate: one proxy per unique service (use first port for that service)
-        seen_services: dict[str, dict] = {}
+        # Deduplicate: one proxy per unique HTTP service (skip TCP-only ports)
+        http_services: dict[str, dict] = {}
         for port_info in allocated_ports:
             svc = port_info["service"]
-            if svc not in seen_services:
-                seen_services[svc] = port_info
+            container_port = port_info["container"]
+            if svc not in http_services and container_port not in _TCP_ONLY_PORTS:
+                http_services[svc] = port_info
 
         created: list[str] = []
-        for idx, (service_name, port_info) in enumerate(seen_services.items()):
+        for idx, (service_name, port_info) in enumerate(http_services.items()):
             internal_port = port_info["container"]
 
             # First service = primary, rest get -{service} suffix
@@ -1317,10 +1335,15 @@ class DeployerTools:
             for port_info in allocated_ports:
                 self._used_ports.add(port_info["host"])
 
-            # Set primary URL from first allocated port
+            # Set primary URL from first HTTP-capable port
             if allocated_ports:
                 deployment.port = allocated_ports[0]["host"]
-                deployment.url = f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
+                first_http = next(
+                    (p for p in allocated_ports if p["container"] not in _TCP_ONLY_PORTS),
+                    None,
+                )
+                if first_http:
+                    deployment.url = f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
 
             # Build and start services
             logger.info("compose_build_starting", deploy_id=deploy_id)
@@ -1354,25 +1377,34 @@ class DeployerTools:
             deployment.status = "running"
 
             # Create proxy containers to bridge compose network → deploy-net
-            # One proxy per exposed service so each gets its own subdomain
+            # One proxy per HTTP service so each gets its own subdomain
             if allocated_ports:
                 await self._create_compose_proxies(deploy_id, allocated_ports)
 
-                # Add subdomain URLs to each port entry
-                seen_services: list[str] = []
+                # Add URLs to each port entry:
+                # - HTTP services get subdomain URLs (via proxy)
+                # - TCP-only services get direct host:port access only
+                http_idx = 0
+                http_seen: set[str] = set()
                 for port_info in allocated_ports:
                     svc = port_info["service"]
-                    if svc not in seen_services:
-                        seen_services.append(svc)
-                        idx = len(seen_services) - 1
-                        if idx == 0:
+                    container_port = port_info["container"]
+                    # Always include the direct port for all services
+                    port_info["direct"] = f":{port_info['host']}"
+
+                    if container_port in _TCP_ONLY_PORTS:
+                        # TCP-only — no subdomain, only direct port access
+                        continue
+
+                    if svc not in http_seen:
+                        http_seen.add(svc)
+                        if http_idx == 0:
                             port_info["url"] = f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
                         else:
                             slug = self._slugify(svc)
                             port_info["url"] = f"https://{deploy_id}-{slug}.{DEPLOY_BASE_DOMAIN}"
-                    # Additional ports for the same service share that service's URL
+                        http_idx += 1
                     elif "url" not in port_info:
-                        # Find the URL already assigned to this service
                         for prev in allocated_ports:
                             if prev["service"] == svc and "url" in prev:
                                 port_info["url"] = prev["url"]

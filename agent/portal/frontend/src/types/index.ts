@@ -271,6 +271,7 @@ export interface ServicePort {
   protocol: string;
   service?: string;
   url?: string;
+  direct?: string;
 }
 
 export interface DeploymentService {
