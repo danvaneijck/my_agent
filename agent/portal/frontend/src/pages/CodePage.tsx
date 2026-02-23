@@ -15,12 +15,13 @@ import {
   Check,
   Trash2,
   Terminal,
+  Download,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { api } from "@/api/client";
+import { api, apiFetchBlobUrl } from "@/api/client";
 import StatusBadge from "@/components/common/StatusBadge";
 import RepoLabel from "@/components/common/RepoLabel";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
@@ -162,6 +163,19 @@ export default function CodePage() {
     setSelectedFile(null);
     setEntries([]);
     setTerminalOpen(false); // Close terminal when switching workspaces
+  };
+
+  const handleDownloadWorkspace = async (taskId: string) => {
+    try {
+      const blobUrl = await apiFetchBlobUrl(`/api/tasks/${taskId}/workspace/download`);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `workspace-${taskId.slice(0, 8)}.zip`;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // ignore
+    }
   };
 
   const handleDeleteWorkspace = async (taskId: string) => {
@@ -349,6 +363,14 @@ export default function CodePage() {
               >
                 <Terminal size={12} />
                 Terminal
+              </button>
+              <button
+                onClick={() => handleDownloadWorkspace(selectedTask.id)}
+                className="flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
+                title="Download workspace as ZIP"
+              >
+                <Download size={12} />
+                Download
               </button>
               <button
                 onClick={() => navigate(`/tasks/${selectedTask.id}`)}
