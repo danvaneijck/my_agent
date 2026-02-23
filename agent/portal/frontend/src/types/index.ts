@@ -432,3 +432,79 @@ export interface KickoffResult {
   mode: string;
   workspace: string;
 }
+
+// Crew types
+export interface CrewMember {
+  id: string;
+  session_id: string;
+  role: string | null;
+  branch_name: string;
+  claude_task_id: string | null;
+  task_id: string | null;
+  task_title: string | null;
+  status: "idle" | "working" | "merging" | "completed" | "failed";
+  wave_number: number;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface CrewContextEntry {
+  id: string;
+  session_id: string;
+  member_id: string | null;
+  entry_type: string;
+  title: string;
+  content: string;
+  created_at: string;
+}
+
+export interface CrewSessionSummary {
+  session_id: string;
+  name: string;
+  status: string;
+  project_id: string | null;
+  max_agents: number;
+  current_wave: number;
+  total_waves: number;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrewSessionDetail {
+  session_id: string;
+  name: string;
+  status: string;
+  project_id: string | null;
+  project_name?: string;
+  max_agents: number;
+  repo_url: string | null;
+  integration_branch: string;
+  source_branch: string;
+  current_wave: number;
+  total_waves: number;
+  workflow_id: string | null;
+  config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  members: CrewMember[];
+  context_entries: CrewContextEntry[];
+  summary?: {
+    total_tasks: number;
+    completed_tasks: number;
+    failed_tasks: number;
+    active_agents: number;
+  };
+}
+
+export interface CrewEvent {
+  event: string;
+  member_id?: string;
+  task_title?: string;
+  role?: string;
+  wave?: number;
+  timestamp: string;
+  [key: string]: unknown;
+}

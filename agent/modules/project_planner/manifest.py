@@ -127,6 +127,11 @@ MANIFEST = ModuleManifest(
                 ToolParameter(name="title", type="string", description="Short task title."),
                 ToolParameter(name="description", type="string", description="What to implement.", required=False),
                 ToolParameter(name="acceptance_criteria", type="string", description="How to verify it's done.", required=False),
+                ToolParameter(
+                    name="depends_on", type="array",
+                    description="List of task UUID strings that must complete before this task can start. Used for crew parallel execution.",
+                    required=False,
+                ),
                 ToolParameter(name="user_id", type="string", description="User ID (injected by orchestrator).", required=False),
             ],
             required_permission="user",
@@ -142,7 +147,9 @@ MANIFEST = ModuleManifest(
                     name="tasks", type="array",
                     description=(
                         'List of tasks: [{"title": "...", "description": "...", '
-                        '"acceptance_criteria": "..."}]'
+                        '"acceptance_criteria": "...", "depends_on": ["task-uuid-1"]}]. '
+                        "The depends_on field is optional and lists task UUIDs that must "
+                        "complete before this task starts (for crew parallel execution)."
                     ),
                 ),
                 ToolParameter(name="user_id", type="string", description="User ID (injected by orchestrator).", required=False),

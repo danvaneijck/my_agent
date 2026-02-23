@@ -1286,3 +1286,80 @@ async def sync_phase_status(
                 synced += 1
 
     return {"synced": synced}
+
+
+# ── Start Crew ───────────────────────────────────────────────────
+
+
+class StartCrewRequest(BaseModel):
+    max_agents: int = 4
+    source_branch: str | None = None
+
+
+@router.post("/{project_id}/start-crew")
+async def start_crew_from_project(
+    project_id: str,
+    body: StartCrewRequest,
+    user: PortalUser = Depends(require_auth),
+) -> dict:
+    """Create and start a crew session linked to a project."""
+    uid = str(user.user_id)
+    pid = uuid.UUID(project_id)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        result = await session.execute(
+            select(Project).where(Project.id == pid, Project.user_id == uuid.UUID(uid))
+        )
+        project = result.scalar_one_or_none()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+    # Build repo_url if project has repo info
+    repo_url = None
+    if project.repo_owner and project.repo_name:
+        repo_url = f"https://github.com/{project.repo_owner}/{project.repo_name}"
+
+    # Create crew session via the crew module
+    try:
+        create_result = await call_tool(
+            module="crew",
+            tool_name="crew.create_session",
+            arguments={
+                "name": f"Crew: {project.name}",
+                "project_id": project_id,
+                "max_agents": body.max_agents,
+                "repo_url": repo_url,
+                "source_branch": body.source_branch or project.default_branch,
+            },
+            user_id=uid,
+            timeout=30.0,
+        )
+        session_result = create_result.get("result", {})
+        session_id = session_result.get("session_id")
+        if not session_id:
+            raise HTTPException(status_code=500, detail="Failed to create crew session")
+
+        # Start the session
+        await call_tool(
+            module="crew",
+            tool_name="crew.start_session",
+            arguments={
+                "session_id": session_id,
+                "platform": "web",
+                "platform_channel_id": uid,
+            },
+            user_id=uid,
+            timeout=30.0,
+        )
+
+        return {
+            "session_id": session_id,
+            "project_id": project_id,
+            "message": f"Crew session started for project '{project.name}'",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("start_crew_failed", project_id=project_id, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

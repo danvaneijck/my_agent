@@ -193,6 +193,7 @@ class Settings(BaseSettings):
         "git_platform": "http://git-platform:8000",
         "project_planner": "http://project-planner:8000",
         "skills_modules": "http://skills-modules:8000",
+        "crew": "http://crew:8000",
         "weather": "http://weather:8000",
         "benchmarker": "http://benchmarker:8000",
     }

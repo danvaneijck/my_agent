@@ -65,6 +65,7 @@ def _task_to_dict(t: ProjectTask) -> dict:
         "title": t.title,
         "description": t.description,
         "acceptance_criteria": t.acceptance_criteria,
+        "depends_on": t.depends_on,
         "order_index": t.order_index,
         "status": t.status,
         "branch_name": t.branch_name,
@@ -554,6 +555,7 @@ class ProjectPlannerTools:
         title: str,
         description: str | None = None,
         acceptance_criteria: str | None = None,
+        depends_on: list[str] | None = None,
         user_id: str | None = None,
     ) -> dict:
         if not user_id:
@@ -591,6 +593,7 @@ class ProjectPlannerTools:
                 title=title,
                 description=description,
                 acceptance_criteria=acceptance_criteria,
+                depends_on=depends_on,
                 order_index=max_idx + 1,
                 status="todo",
                 created_at=now,
@@ -644,6 +647,7 @@ class ProjectPlannerTools:
                     title=task_data["title"],
                     description=task_data.get("description"),
                     acceptance_criteria=task_data.get("acceptance_criteria"),
+                    depends_on=task_data.get("depends_on"),
                     order_index=max_idx + 1 + idx,
                     status="todo",
                     created_at=now,

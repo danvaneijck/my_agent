@@ -310,7 +310,7 @@ class AgentLoop:
 
                 # Inject conversation context for modules that send
                 # proactive notifications (scheduler, location reminders)
-                if tool_call.tool_name.startswith(("scheduler.", "location.")):
+                if tool_call.tool_name.startswith(("scheduler.", "location.", "crew.")):
                     tool_call.arguments["platform"] = conversation.platform
                     tool_call.arguments["platform_channel_id"] = conversation.platform_channel_id
                     tool_call.arguments["platform_thread_id"] = conversation.platform_thread_id

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from portal.auth import verify_ws_auth
-from portal.routers import auth, chat, deployments, errors, files, health, knowledge, projects, repos, schedule, settings, skills, system, tasks, usage
+from portal.routers import auth, chat, crews, deployments, errors, files, health, knowledge, projects, repos, schedule, settings, skills, system, tasks, usage
 from portal.services.terminal_service import get_terminal_service
 from shared.config import get_settings
 from shared.database import get_session_factory
@@ -40,6 +40,7 @@ app.include_router(usage.router)
 app.include_router(projects.router)
 app.include_router(skills.router)
 app.include_router(knowledge.router)
+app.include_router(crews.router)
 app.include_router(errors.router)
 
 # --------------- Notification WebSocket ---------------
@@ -161,6 +162,36 @@ async def ws_notifications(websocket: WebSocket) -> None:
         if not clients:
             _notification_clients.pop(user_key, None)
         logger.info("notification_ws_disconnected", user_id=user_key)
+
+# --------------- Crew Session WebSocket ---------------
+
+
+@app.websocket("/ws/crews/{session_id}")
+async def ws_crew_events(websocket: WebSocket, session_id: str) -> None:
+    """Real-time crew session events via Redis pub/sub."""
+    user = await verify_ws_auth(websocket)
+    await websocket.accept()
+
+    settings = get_settings()
+    r = aioredis.from_url(settings.redis_url, decode_responses=True)
+    pubsub = r.pubsub()
+    channel = f"crew:{session_id}:events"
+    await pubsub.subscribe(channel)
+    logger.info("crew_ws_connected", session_id=session_id, user_id=str(user.user_id))
+
+    try:
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                await websocket.send_text(message["data"])
+    except WebSocketDisconnect:
+        pass
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await pubsub.unsubscribe(channel)
+        await r.aclose()
+        logger.info("crew_ws_disconnected", session_id=session_id)
+
 
 # --------------- Static files (React SPA) ---------------
 

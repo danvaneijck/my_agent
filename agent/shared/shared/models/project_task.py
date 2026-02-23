@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.models.base import Base
@@ -34,6 +34,9 @@ class ProjectTask(Base):
 
     # Claude Code integration
     claude_task_id: Mapped[str | None] = mapped_column(String, default=None)
+
+    # Task dependency graph — list of task UUID strings that must complete first
+    depends_on: Mapped[list | None] = mapped_column(JSON, default=None)
 
     # Error tracking
     error_message: Mapped[str | None] = mapped_column(Text, default=None)

@@ -2,6 +2,9 @@
 
 from shared.models.base import Base
 from shared.models.conversation import Conversation, Message
+from shared.models.crew_context_entry import CrewContextEntry
+from shared.models.crew_member import CrewMember
+from shared.models.crew_session import CrewSession
 from shared.models.error_log import ErrorLog
 from shared.models.file import FileRecord
 from shared.models.location_reminder import LocationReminder
@@ -26,6 +29,9 @@ from shared.models.user_skill import UserSkill
 __all__ = [
     "Base",
     "Conversation",
+    "CrewContextEntry",
+    "CrewMember",
+    "CrewSession",
     "ErrorLog",
     "FileRecord",
     "LocationReminder",

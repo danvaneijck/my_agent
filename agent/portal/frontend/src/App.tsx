@@ -29,6 +29,8 @@ const ProjectTaskDetailPage = lazy(() => import("@/pages/ProjectTaskDetailPage")
 const SkillsPage = lazy(() => import("@/pages/SkillsPage"));
 const SkillDetailPage = lazy(() => import("@/pages/SkillDetailPage"));
 const KnowledgePage = lazy(() => import("@/pages/KnowledgePage"));
+const CrewsPage = lazy(() => import("@/pages/CrewsPage"));
+const CrewDetailPage = lazy(() => import("@/pages/CrewDetailPage"));
 const ErrorsPage = lazy(() => import("@/pages/ErrorsPage"));
 const HealthStatusPage = lazy(() => import("@/pages/HealthStatusPage"));
 const ShowcasePage = lazy(() => import("@/pages/ShowcasePage"));
@@ -348,6 +350,8 @@ export default function App() {
               <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
               <Route path="/projects/:projectId/phases/:phaseId" element={<PhaseDetailPage />} />
               <Route path="/projects/:projectId/tasks/:taskId" element={<ProjectTaskDetailPage />} />
+              <Route path="/crews" element={<CrewsPage />} />
+              <Route path="/crews/:sessionId" element={<CrewDetailPage />} />
               <Route path="/skills" element={<SkillsPage />} />
               <Route path="/skills/:skillId" element={<SkillDetailPage />} />
               <Route path="/knowledge" element={<KnowledgePage />} />
