@@ -24,7 +24,9 @@ async def manifest():
 @app.post("/execute", response_model=ToolResult)
 async def execute(call: ToolCall):
     if tools is None:
-        return ToolResult(tool_name=call.tool_name, success=False, error="Module not ready")
+        return ToolResult(
+            tool_name=call.tool_name, success=False, error="Module not ready"
+        )
     try:
         tool_name = call.tool_name.split(".")[-1]
         args = dict(call.arguments)
@@ -64,7 +66,11 @@ async def execute(call: ToolCall):
         elif tool_name == "advance_session":
             result = await tools.advance_session(**args)
         else:
-            return ToolResult(tool_name=call.tool_name, success=False, error=f"Unknown tool: {call.tool_name}")
+            return ToolResult(
+                tool_name=call.tool_name,
+                success=False,
+                error=f"Unknown tool: {call.tool_name}",
+            )
 
         return ToolResult(tool_name=call.tool_name, success=True, result=result)
     except Exception as e:
