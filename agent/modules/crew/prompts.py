@@ -71,6 +71,39 @@ COORDINATION_INSTRUCTIONS = (
 )
 
 
+def _render_skills_section(
+    project_skills: list[dict],
+    task_skills: list[dict],
+) -> str | None:
+    """Render project and task skills into a prompt section."""
+    if not project_skills and not task_skills:
+        return None
+
+    lines = ["## Skills & Guidelines", ""]
+
+    if project_skills:
+        lines.append("The following project-wide skills apply to all work:")
+        for skill in project_skills:
+            name = skill.get("name", "Untitled")
+            category = skill.get("category")
+            content = skill.get("content", "")
+            label = f"**{name}**" + (f" ({category})" if category else "")
+            lines.append(f"\n### {label}\n{content}")
+
+    if task_skills:
+        if project_skills:
+            lines.append("")
+        lines.append("The following skills apply specifically to your task:")
+        for skill in task_skills:
+            name = skill.get("name", "Untitled")
+            category = skill.get("category")
+            content = skill.get("content", "")
+            label = f"**{name}**" + (f" ({category})" if category else "")
+            lines.append(f"\n### {label}\n{content}")
+
+    return "\n".join(lines)
+
+
 def build_agent_prompt(
     *,
     task_title: str,
@@ -83,6 +116,8 @@ def build_agent_prompt(
     branch_name: str,
     wave_number: int,
     total_waves: int,
+    project_skills: list[dict] | None = None,
+    task_skills: list[dict] | None = None,
 ) -> str:
     """Assemble the full prompt for a crew agent."""
     sections: list[str] = []
@@ -102,7 +137,14 @@ def build_agent_prompt(
             header += f"\n\n{doc}"
         sections.append(header)
 
-    # 3. Shared context board
+    # 3. Skills (project-wide + task-specific)
+    skills_section = _render_skills_section(
+        project_skills or [], task_skills or [],
+    )
+    if skills_section:
+        sections.append(skills_section)
+
+    # 4. Shared context board
     if context_entries:
         lines = ["## Shared Context Board", "", "Other agents have posted the following:"]
         for entry in context_entries:
@@ -112,7 +154,7 @@ def build_agent_prompt(
             lines.append(f"\n### [{entry_type.upper()}] {title}\n{content}")
         sections.append("\n".join(lines))
 
-    # 4. Task assignment
+    # 5. Task assignment
     task_lines = [f"## Your Task: {task_title}"]
     if task_description:
         task_lines.append(f"\n{task_description}")
@@ -120,10 +162,10 @@ def build_agent_prompt(
         task_lines.append(f"\n### Acceptance Criteria\n{acceptance_criteria}")
     sections.append("\n".join(task_lines))
 
-    # 5. Coordination instructions
+    # 6. Coordination instructions
     sections.append(COORDINATION_INSTRUCTIONS)
 
-    # 6. Wave info
+    # 7. Wave info
     sections.append(
         f"## Execution Context\n\n"
         f"- You are in **wave {wave_number + 1} of {total_waves}**\n"

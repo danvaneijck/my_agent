@@ -362,6 +362,7 @@ export interface ProjectTask {
   acceptance_criteria: string | null;
   order_index: number;
   status: "todo" | "doing" | "in_review" | "done" | "failed";
+  depends_on: string[] | null;
   branch_name: string | null;
   pr_number: number | null;
   issue_number: number | null;

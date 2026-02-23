@@ -19,7 +19,10 @@ from shared.models.crew_context_entry import CrewContextEntry
 from shared.models.crew_member import CrewMember
 from shared.models.crew_session import CrewSession
 from shared.models.project import Project
+from shared.models.project_skill import ProjectSkill
 from shared.models.project_task import ProjectTask
+from shared.models.task_skill import TaskSkill
+from shared.models.user_skill import UserSkill
 from modules.crew.prompts import build_agent_prompt
 from modules.crew.waves import compute_waves
 
@@ -164,6 +167,20 @@ async def dispatch_wave(
             for e in ctx_result.scalars().all()
         ]
 
+        # Fetch project-level skills (apply to all agents)
+        project_skills: list[dict] = []
+        if session.project_id:
+            ps_result = await db.execute(
+                select(UserSkill)
+                .join(ProjectSkill, ProjectSkill.skill_id == UserSkill.id)
+                .where(ProjectSkill.project_id == session.project_id)
+                .order_by(ProjectSkill.order_index)
+            )
+            project_skills = [
+                {"name": s.name, "category": s.category, "content": s.content}
+                for s in ps_result.scalars().all()
+            ]
+
         dispatched_members = []
 
         for i, task in enumerate(wave_tasks):
@@ -172,6 +189,18 @@ async def dispatch_wave(
             # Determine role from config
             role_assignments = session.config.get("role_assignments", {})
             role = role_assignments.get(str(task.id))
+
+            # Fetch task-level skills (specific to this task)
+            ts_result = await db.execute(
+                select(UserSkill)
+                .join(TaskSkill, TaskSkill.skill_id == UserSkill.id)
+                .where(TaskSkill.task_id == task.id)
+                .order_by(TaskSkill.order_index)
+            )
+            task_skills = [
+                {"name": s.name, "category": s.category, "content": s.content}
+                for s in ts_result.scalars().all()
+            ]
 
             # Build prompt
             prompt = build_agent_prompt(
@@ -185,6 +214,8 @@ async def dispatch_wave(
                 branch_name=branch,
                 wave_number=wave_number,
                 total_waves=session.total_waves,
+                project_skills=project_skills,
+                task_skills=task_skills,
             )
 
             # Launch claude_code task

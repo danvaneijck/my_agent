@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, GitMerge, RotateCcw, CheckCircle, Archive, Lightbulb, Plus, X } from "lucide-react";
+import { ArrowLeft, RefreshCw, ChevronRight, FileText, Trash2, Play, Zap, GitPullRequest, GitMerge, RotateCcw, CheckCircle, Archive, Lightbulb, Plus, X, Users } from "lucide-react";
 import { useProjectDetail, executePhase, startWorkflow, syncPrStatus, syncPhaseStatus, retryPhase, createProjectPr } from "@/hooks/useProjects";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { api } from "@/api/client";
@@ -10,6 +10,7 @@ import ProjectExecutionPanel from "@/components/projects/ProjectExecutionPanel";
 import MultiStateProgressBar from "@/components/projects/MultiStateProgressBar";
 import { useProjectSkills, attachSkillToProject, detachSkillFromProject } from "@/hooks/useProjectSkills";
 import SkillPicker from "@/components/skills/SkillPicker";
+import NewCrewModal from "@/components/crews/NewCrewModal";
 import type { ProjectPhase } from "@/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -117,6 +118,7 @@ export default function ProjectDetailPage() {
   const [removingSkillId, setRemovingSkillId] = useState<string | null>(null);
   const [creatingProjectPr, setCreatingProjectPr] = useState(false);
   const [projectPrUrl, setProjectPrUrl] = useState<string | null>(null);
+  const [showCrewModal, setShowCrewModal] = useState(false);
   const syncedRef = useRef(false);
 
   // Fetch project skills
@@ -483,6 +485,14 @@ export default function ProjectDetailPage() {
                   {starting ? "Starting..." : "Start Automated Workflow"}
                 </button>
                 <button
+                  onClick={() => setShowCrewModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-green-500 to-teal-500 text-white text-sm font-medium hover:from-green-600 hover:to-teal-600 transition-colors shadow-lg shadow-green-500/20"
+                  title="Run tasks in parallel with multiple agents"
+                >
+                  <Users size={16} />
+                  Run with Crew
+                </button>
+                <button
                   onClick={handleStartExecution}
                   disabled={starting}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-surface-lighter border border-light-border dark:border-border text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-100 dark:hover:bg-surface hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
@@ -748,6 +758,17 @@ export default function ProjectDetailPage() {
         onAttach={handleAttachSkill}
         attachedSkillIds={projectSkills.map((s) => s.skill_id)}
         title="Attach Skill to Project"
+      />
+
+      {/* Crew Launch Modal */}
+      <NewCrewModal
+        open={showCrewModal}
+        onClose={() => setShowCrewModal(false)}
+        initialProjectId={project.project_id}
+        onCreated={(sessionId) => {
+          setShowCrewModal(false);
+          navigate(`/crews/${sessionId}`);
+        }}
       />
     </div>
   );

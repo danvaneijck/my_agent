@@ -59,6 +59,7 @@ Makefile:       Makefile (top-level, wraps docker compose)
     ├── renpho_biometrics — Renpho smart scale body composition
     ├── location          — OwnTracks geofence reminders + tracking
     ├── project_planner   — project planning, tracking + autonomous execution
+    ├── crew              — multi-agent parallel execution with shared context
     ├── skills_modules    — reusable skill definitions with project/task attachment
     └── injective         — blockchain trading (scaffold)
 
@@ -87,6 +88,7 @@ Detailed per-module docs live in `agent/docs/modules/`:
 - [location](agent/docs/modules/location.md) — OwnTracks geofence reminders + tracking
 - [git_platform](agent/docs/modules/git_platform.md) — GitHub/Bitbucket repos, issues, PRs, CI
 - [project_planner](agent/docs/modules/project_planner.md) — project planning, tracking + autonomous execution
+- [crew](agent/docs/modules/crews.md) — multi-agent parallel execution with shared context + merge integration
 - [skills_modules](agent/docs/modules/skills_modules.md) — reusable skill definitions with project/task attachment
 - [injective](agent/docs/modules/injective.md) — blockchain spot and perpetual trading
 
@@ -296,6 +298,7 @@ project_tasks
   acceptance_criteria   text | null
   order_index           int               — sort order within phase
   status                str               — "todo" | "doing" | "in_review" | "done" | "failed"
+  depends_on            JSON | null       — list of task UUID strings for dependency graph
   branch_name           str | null
   pr_number             int | null
   issue_number          int | null
@@ -305,6 +308,47 @@ project_tasks
   completed_at          datetime(tz) | null
   created_at            datetime(tz)
   updated_at            datetime(tz)
+
+crew_sessions
+  id                    UUID PK
+  user_id               UUID FK → users.id
+  project_id            UUID FK → projects.id (nullable)
+  name                  str
+  status                str               — "configuring" | "running" | "paused" | "completed" | "failed"
+  max_agents            int               — default 4
+  repo_url              str | null
+  integration_branch    str               — default "crew/integration"
+  source_branch         str               — default "main"
+  current_wave          int               — default 0
+  total_waves           int               — default 0
+  workflow_id           UUID | null
+  config                JSON              — {auto_push, timeout, role_assignments}
+  created_at            datetime(tz)
+  updated_at            datetime(tz)
+
+crew_members
+  id                    UUID PK
+  session_id            UUID FK → crew_sessions.id (CASCADE)
+  role                  str | null        — architect|backend|frontend|tester|reviewer
+  branch_name           str
+  claude_task_id        str | null
+  task_id               UUID FK → project_tasks.id (nullable)
+  task_title            str | null
+  status                str               — "idle" | "working" | "merging" | "completed" | "failed"
+  wave_number           int               — default 0
+  error_message         text | null
+  started_at            datetime(tz) | null
+  completed_at          datetime(tz) | null
+  created_at            datetime(tz)
+
+crew_context_entries
+  id                    UUID PK
+  session_id            UUID FK → crew_sessions.id (CASCADE)
+  member_id             UUID FK → crew_members.id (nullable)
+  entry_type            str               — decision|api_contract|interface|note|blocker|merge_result
+  title                 str
+  content               text
+  created_at            datetime(tz)
 
 user_skills
   id                    UUID PK
@@ -739,5 +783,6 @@ Use `session.commit()` (not `session.flush()`) when another container needs to s
 | `renpho_biometrics` | `get_measurements`, `get_latest`, `get_trend` | None (external API) | user |
 | `location` | `create_reminder`, `list_reminders`, `cancel_reminder`, `get_location`, `set_named_place`, `generate_pairing_credentials` | PostgreSQL, Redis | user |
 | `project_planner` | `create_project`, `update_project`, `get_project`, `list_projects`, `delete_project`, `add_phase`, `update_phase`, `add_task`, `bulk_add_tasks`, `update_task`, `get_task`, `get_phase_tasks`, `get_next_task`, `get_project_status` | PostgreSQL | user/admin |
+| `crew` | `create_session`, `start_session`, `get_session`, `list_sessions`, `pause_session`, `resume_session`, `cancel_session`, `post_context`, `get_context_board`, `advance_session` | PostgreSQL, Redis | user/admin |
 | `skills_modules` | `create_skill`, `list_skills`, `get_skill`, `update_skill`, `delete_skill`, `attach_skill_to_project`, `detach_skill_from_project`, `attach_skill_to_task`, `detach_skill_from_task`, `get_project_skills`, `get_task_skills`, `render_skill` | PostgreSQL | user |
 | `injective` | `get_portfolio`, `get_market_price`, `place_order`, `cancel_order`, `get_positions` | None (scaffold) | owner |

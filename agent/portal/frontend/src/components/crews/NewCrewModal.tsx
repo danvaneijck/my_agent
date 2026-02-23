@@ -8,9 +8,10 @@ interface NewCrewModalProps {
   open: boolean;
   onClose: () => void;
   onCreated?: (sessionId: string) => void;
+  initialProjectId?: string;
 }
 
-export default function NewCrewModal({ open, onClose, onCreated }: NewCrewModalProps) {
+export default function NewCrewModal({ open, onClose, onCreated, initialProjectId }: NewCrewModalProps) {
   const [name, setName] = useState("");
   const [projectId, setProjectId] = useState("");
   const [maxAgents, setMaxAgents] = useState(4);
@@ -23,22 +24,31 @@ export default function NewCrewModal({ open, onClose, onCreated }: NewCrewModalP
   useEffect(() => {
     if (open) {
       api<ProjectSummary[]>("/api/projects")
-        .then((data) => setProjects(data || []))
+        .then((data) => {
+          setProjects(data || []);
+          // Auto-fill name from pre-selected project
+          if (initialProjectId) {
+            const match = (data || []).find((p) => p.project_id === initialProjectId);
+            if (match && !name) {
+              setName(`Crew: ${match.name}`);
+            }
+          }
+        })
         .catch(() => {});
     }
-  }, [open]);
+  }, [open, initialProjectId]);
 
   // Reset on open
   useEffect(() => {
     if (open) {
       setName("");
-      setProjectId("");
+      setProjectId(initialProjectId || "");
       setMaxAgents(4);
       setError("");
       setSubmitting(false);
       setTimeout(() => nameRef.current?.focus(), 50);
     }
-  }, [open]);
+  }, [open, initialProjectId]);
 
   // Close on Escape
   useEffect(() => {
