@@ -65,6 +65,7 @@ jobs:
             "skills-modules|agent/modules/skills_modules/Dockerfile|./agent|agent/modules/skills_modules/"
             "weather|agent/modules/weather/Dockerfile|./agent|agent/modules/weather/"
             "benchmarker|agent/modules/benchmarker/Dockerfile|./agent|agent/modules/benchmarker/"
+            "crew|agent/modules/crew/Dockerfile|./agent|agent/modules/crew/"
             "injective|agent/modules/injective/Dockerfile|./agent|agent/modules/injective/"
             "nginx|agent/nginx/Dockerfile|./agent/nginx|agent/nginx/"
           )
