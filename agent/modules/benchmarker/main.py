@@ -133,6 +133,14 @@ async def execute(call: ToolCall, _=Depends(require_service_auth)):
             result = await client.org_issues_summary(**args)
         elif tool_name == "provision_organisation":
             result = await client.provision_organisation(**args)
+        elif tool_name == "latest_downlink":
+            result = await client.latest_downlink(**args)
+        elif tool_name == "user_lookup":
+            result = await client.user_lookup(**args)
+        elif tool_name == "user_permissions":
+            result = await client.user_permissions(**args)
+        elif tool_name == "decode_payload":
+            result = await client.decode_payload(**args)
         else:
             return ToolResult(
                 tool_name=call.tool_name,

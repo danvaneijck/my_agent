@@ -4,14 +4,16 @@ from shared.schemas.tools import ModuleManifest, ToolDefinition, ToolParameter
 
 MANIFEST = ModuleManifest(
     module_name="benchmarker",
-    description="Interact with the Benchmarker IoT monitoring platform to look up LoRa devices, check sensor health, manage issues, send downlink commands, and provision organisations.",
+    description="Interact with the Benchmarker IoT monitoring platform to look up LoRa devices, check sensor health, manage issues, send downlink commands, provision organisations, look up users and permissions, and decode payloads.",
     tools=[
         ToolDefinition(
             name="benchmarker.device_lookup",
             description=(
                 "Look up an IoT device by serial number on the Benchmarker platform. "
                 "Returns device info, location in the organisation hierarchy (org/site/zone), "
-                "latest sensor readings (temperature, humidity, battery), and linked assets. "
+                "latest sensor readings (temperature, humidity, battery), linked assets, "
+                "and device-type-specific decoded data in the latest_data field "
+                "(currently supports Celsor and HVAC devices; null for other types). "
                 "Serial prefixes indicate device type: CEL=Celsor (temperature), MRP=MeterReader, "
                 "DOR=DoorInformer, SPC/PEP=SpaceMon, HVN=HVAC, HTL=HeadTeller, WMN=WaterMon, "
                 "PUK=TemperatureBeacon, OCT=MagBeacon, WWH=WashWatch, VAC=VAC, PWR=PowerReader, SOL=Spectra."
@@ -237,6 +239,80 @@ MANIFEST = ModuleManifest(
                 ),
             ],
             required_permission="admin",
+        ),
+        ToolDefinition(
+            name="benchmarker.latest_downlink",
+            description=(
+                "Get the most recent downlink (command/response) for a device on the "
+                "Benchmarker platform. Returns the CLI command sent, the device response, "
+                "and current status (e.g. Pending, Queued, SUCCESS: Completed, "
+                "FAIL: Device command timeout)."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="serial_number",
+                    type="string",
+                    description="Device serial number, e.g. CEL-12345",
+                ),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
+            name="benchmarker.user_lookup",
+            description=(
+                "Look up a user on the Benchmarker platform by email address. "
+                "Returns user profile info (name, active status, last login), "
+                "their organisation, and notification settings."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="email",
+                    type="string",
+                    description="User's email address",
+                ),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
+            name="benchmarker.user_permissions",
+            description=(
+                "Get a user's groups and access policies on the Benchmarker platform. "
+                "Returns both directly assigned policies and policies inherited via groups. "
+                "Each policy includes role (View, Edit, Admin), owner organisation, and "
+                "assigned sites/zones."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="email",
+                    type="string",
+                    description="User's email address",
+                ),
+            ],
+            required_permission="user",
+        ),
+        ToolDefinition(
+            name="benchmarker.decode_payload",
+            description=(
+                "Decode a raw hex payload from a LoRa IoT device into structured field data. "
+                "Returns header info and parsed fields with raw hex values. When device_type "
+                "is provided, performs semantic decoding to produce human-readable field names, "
+                "values, and units (e.g. temperature in °C, humidity in %RH). "
+                "Device type codes: CEL=Celsor, HVN=HVAC, DOR=DoorInformer, etc."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="payload",
+                    type="string",
+                    description="Raw hex payload string, e.g. 'C020180500020A01E8030206'",
+                ),
+                ToolParameter(
+                    name="device_type",
+                    type="string",
+                    description="Device type code for semantic decoding (e.g. 'CEL', 'HVN', 'DOR')",
+                    required=False,
+                ),
+            ],
+            required_permission="user",
         ),
     ],
 )

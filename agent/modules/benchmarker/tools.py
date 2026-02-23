@@ -46,8 +46,13 @@ class BenchmarkerClient:
         envelope = resp.json()
         if not envelope.get("ok"):
             error = envelope.get("error", {})
-            message = error.get("message", "Unknown API error") if isinstance(error, dict) else str(error)
-            raise RuntimeError(f"Benchmarker API error: {message}")
+            if isinstance(error, dict):
+                message = error.get("message", "Unknown API error")
+                details = error.get("details")
+                if details:
+                    raise RuntimeError(f"Benchmarker API error: {message} Details: {details}")
+                raise RuntimeError(f"Benchmarker API error: {message}")
+            raise RuntimeError(f"Benchmarker API error: {error}")
 
         return envelope.get("data", {})
 
@@ -163,4 +168,41 @@ class BenchmarkerClient:
             "/api/agent/v1/actions/provision-organisation",
             params={"dry_run": dry_run, "no_geocode": no_geocode},
             json_body=organisations,
+        )
+
+    async def latest_downlink(self, serial_number: str) -> dict:
+        """Get the most recent downlink for a device."""
+        return await self._request(
+            "GET",
+            "/api/agent/v1/device/latest-downlink",
+            params={"serial_number": serial_number},
+        )
+
+    async def user_lookup(self, email: str) -> dict:
+        """Look up a user by email address."""
+        return await self._request(
+            "GET",
+            "/api/agent/v1/user/lookup",
+            params={"email": email},
+        )
+
+    async def user_permissions(self, email: str) -> dict:
+        """Get a user's groups and access policies."""
+        return await self._request(
+            "GET",
+            "/api/agent/v1/user/permissions",
+            params={"email": email},
+        )
+
+    async def decode_payload(
+        self, payload: str, device_type: str | None = None
+    ) -> dict:
+        """Decode a raw hex payload into structured field data."""
+        body: dict = {"payload": payload}
+        if device_type is not None:
+            body["device_type"] = device_type
+        return await self._request(
+            "POST",
+            "/api/agent/v1/payload/decode",
+            json_body=body,
         )
