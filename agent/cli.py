@@ -545,11 +545,13 @@ def refresh_modules():
 async def _refresh_modules():
     import httpx
 
+    from shared.auth import get_service_auth_headers
     from shared.config import get_settings
 
     settings = get_settings()
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        headers = get_service_auth_headers()
+        async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
             resp = await client.post(f"{settings.orchestrator_url}/refresh-tools")
             if resp.status_code == 200:
                 click.echo("Module manifests refreshed.")
