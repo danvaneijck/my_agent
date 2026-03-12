@@ -168,14 +168,7 @@ list-modules: ## Show all modules and health status
 	$(CLI) modules list
 
 refresh-tools: ## Re-discover all module manifests
-	$(COMPOSE) exec core python -c "\
-import httpx, asyncio, os;\
-async def _r():\
-    t = os.environ.get('SERVICE_AUTH_TOKEN', '');\
-    r = await httpx.AsyncClient().post('http://localhost:8000/refresh-tools', headers={'Authorization': f'Bearer {t}'});\
-    r.raise_for_status();\
-    print('Module manifests refreshed.');\
-asyncio.run(_r())"
+	$(COMPOSE) exec core python -c "import httpx,asyncio,os;asyncio.run(httpx.AsyncClient().post('http://localhost:8000/refresh-tools',headers={'Authorization':'Bearer '+os.environ.get('SERVICE_AUTH_TOKEN','')}))" && echo "Module manifests refreshed."
 
 # ──────────────────────────────────────────────
 # Debug / shell access

@@ -16,7 +16,11 @@ class SlackNormalizer:
         if bot_user_id:
             text = text.replace(f"<@{bot_user_id}>", "").strip()
 
-        thread_id = event.get("thread_ts")
+        # Always resolve a thread identifier so each Slack thread gets
+        # its own conversation.  For threaded replies thread_ts is the
+        # parent message's ts; for the first message in a thread (or a
+        # plain DM) we fall back to the message's own ts.
+        thread_id = event.get("thread_ts") or event.get("ts")
         channel_id = event.get("channel", "")
 
         # Slack doesn't have a direct "server" concept, but team_id is similar
