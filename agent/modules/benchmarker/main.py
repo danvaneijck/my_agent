@@ -139,6 +139,8 @@ async def execute(call: ToolCall, _=Depends(require_service_auth)):
             result = await client.user_lookup(**args)
         elif tool_name == "user_permissions":
             result = await client.user_permissions(**args)
+        elif tool_name == "assign_device_organisation":
+            result = await client.assign_device_organisation(**args)
         elif tool_name == "decode_payload":
             result = await client.decode_payload(**args)
         else:

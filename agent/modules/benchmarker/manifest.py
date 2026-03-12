@@ -291,6 +291,47 @@ MANIFEST = ModuleManifest(
             required_permission="user",
         ),
         ToolDefinition(
+            name="benchmarker.assign_device_organisation",
+            description=(
+                "Assign one or more IoT devices to an organisation on the Benchmarker platform. "
+                "Identify the organisation by ID, name, or short_name. Supports dry_run mode to "
+                "preview changes without applying them. Returns per-device results showing "
+                "previous and new organisation assignments."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="serial_numbers",
+                    type="array",
+                    description="List of device serial numbers to assign, e.g. ['CEL-12345', 'CEL-12346']",
+                ),
+                ToolParameter(
+                    name="organisation_id",
+                    type="integer",
+                    description="Organisation ID to assign devices to",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="organisation_name",
+                    type="string",
+                    description="Organisation name to assign devices to",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="organisation_short_name",
+                    type="string",
+                    description="Organisation short_name to assign devices to",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="dry_run",
+                    type="boolean",
+                    description="Preview changes without applying them (default false)",
+                    required=False,
+                ),
+            ],
+            required_permission="admin",
+        ),
+        ToolDefinition(
             name="benchmarker.decode_payload",
             description=(
                 "Decode a raw hex payload from a LoRa IoT device into structured field data. "

@@ -194,6 +194,33 @@ class BenchmarkerClient:
             params={"email": email},
         )
 
+    async def assign_device_organisation(
+        self,
+        serial_numbers: list[str],
+        organisation_id: int | None = None,
+        organisation_name: str | None = None,
+        organisation_short_name: str | None = None,
+        dry_run: bool | None = None,
+    ) -> dict:
+        """Assign devices to an organisation."""
+        if not organisation_id and not organisation_name and not organisation_short_name:
+            raise RuntimeError(
+                "At least one of 'organisation_id', 'organisation_name', or 'organisation_short_name' is required"
+            )
+        body: dict = {"serial_numbers": serial_numbers}
+        if organisation_id is not None:
+            body["organisation_id"] = organisation_id
+        if organisation_name is not None:
+            body["organisation_name"] = organisation_name
+        if organisation_short_name is not None:
+            body["organisation_short_name"] = organisation_short_name
+        return await self._request(
+            "POST",
+            "/api/agent/v1/device/assign-organisation",
+            params={"dry_run": dry_run},
+            json_body=body,
+        )
+
     async def decode_payload(
         self, payload: str, device_type: str | None = None
     ) -> dict:
