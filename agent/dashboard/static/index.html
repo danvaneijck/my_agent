@@ -193,6 +193,24 @@
   html.light .tag-google   { color: #1557b0; }
 
   /* Theme toggle */
+  /* Tool call detail cells */
+  .tool-json {
+    max-width: 320px; overflow: hidden;
+  }
+  .tool-json summary {
+    cursor: pointer; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px; color: var(--text-dim); max-width: 320px;
+  }
+  .tool-json summary:hover { color: var(--text); }
+  .tool-json pre {
+    margin-top: 6px; padding: 8px; background: var(--surface2); border-radius: 6px;
+    font-size: 11px; white-space: pre-wrap; word-break: break-all;
+    max-height: 300px; overflow-y: auto; color: var(--text);
+  }
+  .tag-success { background: #4ade8022; color: var(--green); }
+  .tag-error { background: #f8717122; color: var(--red); }
+
   .theme-toggle {
     background: var(--surface2); border: 1px solid var(--border);
     color: var(--text); padding: 6px 10px; border-radius: 6px;
@@ -304,6 +322,26 @@
         <th>User</th><th>Platform</th><th class="text-right">Messages</th>
         <th class="text-right">Tool Calls</th><th>Started</th><th>Last Active</th><th>Summarized</th>
       </tr></thead><tbody id="convs-body"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- Recent Tool Calls -->
+  <div class="section">
+    <div class="section-header">
+      <h2>Recent Tool Calls</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="tool-calls-limit" onchange="loadRecentToolCalls()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;font-family:inherit">
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="250">250</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr>
+        <th>Time</th><th>User</th><th>Tool</th><th>Input</th><th>Output</th><th>Status</th>
+      </tr></thead><tbody id="tool-calls-body"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -575,6 +613,41 @@ async function loadConversations() {
   } catch(e) { console.error('convos', e); }
 }
 
+function truncateJson(jsonStr, maxLen = 80) {
+  if (!jsonStr || jsonStr === 'null') return '-';
+  try {
+    const parsed = JSON.parse(jsonStr);
+    const pretty = JSON.stringify(parsed, null, 2);
+    const oneLine = JSON.stringify(parsed);
+    const summary = oneLine.length > maxLen ? oneLine.slice(0, maxLen) + '...' : oneLine;
+    return `<details class="tool-json"><summary>${summary.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</summary><pre>${pretty.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>`;
+  } catch {
+    const s = String(jsonStr);
+    const summary = s.length > maxLen ? s.slice(0, maxLen) + '...' : s;
+    return `<details class="tool-json"><summary>${summary.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</summary><pre>${s.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>`;
+  }
+}
+
+async function loadRecentToolCalls() {
+  try {
+    const limit = document.getElementById('tool-calls-limit').value;
+    const data = await (await fetch(`/api/recent-tool-calls?limit=${limit}`, {headers: authHeaders()})).json();
+    const body = document.getElementById('tool-calls-body');
+    if (!data.length) { body.innerHTML = '<tr><td colspan="6" class="loading">No tool calls yet</td></tr>'; return; }
+    body.innerHTML = data.map(t => {
+      const output = t.success ? t.result : t.error;
+      return `<tr>
+        <td class="text-dim" style="white-space:nowrap">${fmtDate(t.timestamp)}</td>
+        <td><strong>${t.username || (t.user_id ? t.user_id.slice(0,8) : '-')}</strong>${t.platform ? ' ' + platformTag(t.platform) : ''}</td>
+        <td class="mono">${t.tool_name || '-'}</td>
+        <td>${truncateJson(t.arguments)}</td>
+        <td>${truncateJson(output)}</td>
+        <td>${t.success ? '<span class="tag tag-success">ok</span>' : '<span class="tag tag-error">error</span>'}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) { console.error('tool-calls', e); }
+}
+
 function loadAll() {
   loadOverview();
   loadHealth();
@@ -584,6 +657,7 @@ function loadAll() {
   loadPersonas();
   loadUsers();
   loadConversations();
+  loadRecentToolCalls();
 }
 
 // Auto-login if key exists in session

@@ -370,6 +370,61 @@ async def tool_usage():
         ]
 
 
+@app.get("/api/recent-tool-calls", dependencies=[Depends(require_admin)])
+async def recent_tool_calls(limit: int = 100):
+    """Recent tool calls with user info, input arguments, and results."""
+    factory = get_session_factory()
+    async with factory() as s:
+        result = await s.execute(
+            text("""
+                SELECT
+                    tc.created_at,
+                    tc.conversation_id,
+                    c.user_id,
+                    COALESCE(upl.platform_username, upl.platform_user_id, LEFT(c.user_id::text, 8)) AS username,
+                    upl.platform,
+                    tc.content::json->>'name' AS tool_name,
+                    tc.content::json->>'arguments' AS arguments,
+                    tc.content::json->>'tool_use_id' AS tool_use_id,
+                    tr.content::json->>'result' AS result,
+                    tr.content::json->>'error' AS error
+                FROM messages tc
+                JOIN conversations c ON c.id = tc.conversation_id
+                LEFT JOIN user_platform_links upl ON upl.user_id = c.user_id
+                    AND upl.id = (
+                        SELECT id FROM user_platform_links
+                        WHERE user_id = c.user_id
+                        ORDER BY platform LIMIT 1
+                    )
+                LEFT JOIN messages tr ON tr.conversation_id = tc.conversation_id
+                    AND tr.role = 'tool_result'
+                    AND tr.content::json->>'tool_use_id' = tc.content::json->>'tool_use_id'
+                WHERE tc.role = 'tool_call'
+                  AND tc.content IS NOT NULL
+                ORDER BY tc.created_at DESC
+                LIMIT :lim
+            """),
+            {"lim": min(limit, 500)},
+        )
+        rows = result.all()
+
+        return [
+            {
+                "timestamp": row[0].isoformat() if row[0] else None,
+                "conversation_id": str(row[1]) if row[1] else None,
+                "user_id": str(row[2]) if row[2] else None,
+                "username": row[3],
+                "platform": row[4],
+                "tool_name": row[5],
+                "arguments": row[6],
+                "result": row[8],
+                "error": row[9],
+                "success": row[9] is None or row[9] == "null",
+            }
+            for row in rows
+        ]
+
+
 @app.get("/api/platform-stats", dependencies=[Depends(require_admin)])
 async def platform_stats():
     """Breakdown of usage by platform."""
