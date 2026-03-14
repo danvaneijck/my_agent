@@ -1199,6 +1199,15 @@ class DeployerTools:
                     "--name", proxy_name,
                     f"--network={compose_network}",
                     "--restart=unless-stopped",
+                    # Traefik labels for subdomain routing
+                    "-l", "traefik.enable=true",
+                    "-l", f"traefik.http.routers.{proxy_name}.rule=Host(`{proxy_name.removeprefix('deploy-')}.{DEPLOY_BASE_DOMAIN}`)",
+                    "-l", f"traefik.http.routers.{proxy_name}.entrypoints=websecure",
+                    "-l", f"traefik.http.routers.{proxy_name}.tls.certresolver=letsencrypt-dns",
+                    "-l", f"traefik.http.routers.{proxy_name}.tls.domains[0].main={DEPLOY_BASE_DOMAIN}",
+                    "-l", f"traefik.http.routers.{proxy_name}.tls.domains[0].sans=*.{DEPLOY_BASE_DOMAIN}",
+                    "-l", f"traefik.http.routers.{proxy_name}.middlewares=security-headers@file",
+                    "-l", f"traefik.http.services.{proxy_name}.loadbalancer.server.port=3000",
                     "nginx:alpine",
                     "sh", "-c",
                     f"echo '{nginx_conf}' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'",
@@ -1220,7 +1229,7 @@ class DeployerTools:
                     )
                     continue
 
-                # Connect the proxy to deploy-net so the outer nginx can reach it
+                # Connect the proxy to deploy-net
                 proc2 = await asyncio.create_subprocess_exec(
                     "docker", "network", "connect", self._network, proxy_name,
                     stdout=asyncio.subprocess.DEVNULL,
@@ -1235,6 +1244,15 @@ class DeployerTools:
                         service=service_name,
                         error=stderr2.decode("utf-8", errors="replace")[:500],
                     )
+
+                # Connect to the proxy network so Traefik can reach it
+                proxy_net_proc = await asyncio.create_subprocess_exec(
+                    "docker", "network", "connect", "proxy", proxy_name,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proxy_net_proc.communicate()
+
 
                 created.append(proxy_name)
                 logger.info(
@@ -1719,6 +1737,11 @@ class DeployerTools:
             # Traefik labels
             "-l", "traefik.enable=true",
             "-l", f"traefik.http.routers.{deploy_id}.rule=Host(`{deploy_id}.{DEPLOY_BASE_DOMAIN}`)",
+            "-l", f"traefik.http.routers.{deploy_id}.entrypoints=websecure",
+            "-l", f"traefik.http.routers.{deploy_id}.tls.certresolver=letsencrypt-dns",
+            "-l", f"traefik.http.routers.{deploy_id}.tls.domains[0].main={DEPLOY_BASE_DOMAIN}",
+            "-l", f"traefik.http.routers.{deploy_id}.tls.domains[0].sans=*.{DEPLOY_BASE_DOMAIN}",
+            "-l", f"traefik.http.routers.{deploy_id}.middlewares=security-headers@file",
             "-l", f"traefik.http.services.{deploy_id}.loadbalancer.server.port={internal_port}",
         ]
 
@@ -1738,7 +1761,17 @@ class DeployerTools:
             err = stderr.decode("utf-8", errors="replace")
             raise RuntimeError(f"Failed to start container: {err}")
 
-        return stdout.decode().strip()[:12]
+        container_id = stdout.decode().strip()[:12]
+
+        # Also connect to the proxy network so Traefik can reach the container
+        proxy_proc = await asyncio.create_subprocess_exec(
+            "docker", "network", "connect", "proxy", container_name,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proxy_proc.communicate()
+
+        return container_id
 
     async def _health_check(
         self, container_name: str, internal_port: int
