@@ -1,3 +1,0 @@
-[submodule "deploy"]
-	path = deploy
-	url = git@github.com:danvaneijck/my_agent_deploy.git
