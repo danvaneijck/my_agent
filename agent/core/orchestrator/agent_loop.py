@@ -459,6 +459,16 @@ class AgentLoop:
                     "iteration": iteration,
                 })
 
+            # Insert an assistant turn into context so the CLI model understands
+            # that IT made the tool calls (not the user).  Without this, the
+            # serialized context shows tool_call/tool_result blocks with no
+            # attribution, confusing the model on subsequent iterations.
+            assistant_text = llm_response.content or ""
+            if llm_response.tool_calls:
+                tool_names = ", ".join(tc.tool_name for tc in llm_response.tool_calls)
+                assistant_text += f"\n[Calling tools: {tool_names}]"
+            context.append({"role": "assistant", "content": assistant_text.strip()})
+
             for tool_call in llm_response.tool_calls:
                 tool_use_id = f"tool_{uuid.uuid4().hex[:12]}"
 

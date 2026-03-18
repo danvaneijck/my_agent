@@ -125,6 +125,21 @@ class ClaudeCodeCLIProvider(LLMProvider):
                     f"</tool_result>"
                 )
 
+        # If the conversation has tool results, add a clear instruction
+        # for the model to continue acting on them.
+        has_tool_results = any(
+            msg.get("role") == "tool_result" for msg in messages
+        )
+        if has_tool_results and tools:
+            parts.append(
+                "<system>\n"
+                "The tool results above are from YOUR previous tool calls. "
+                "Based on these results, either call more tools to complete "
+                "the task, or provide your final text response to the user. "
+                "Do NOT re-describe what the tools returned — act on the results.\n"
+                "</system>"
+            )
+
         # Append tool definitions if present
         if tools:
             tool_section = "\n<available_tools>\n"
