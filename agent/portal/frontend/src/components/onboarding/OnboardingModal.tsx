@@ -42,7 +42,7 @@ export default function OnboardingModal({ status, onClose }: OnboardingModalProp
     { id: "welcome", title: "Welcome to Nexus" },
     ...(!status.has_claude_oauth ? [{ id: "claude", title: "Connect Claude" }] : []),
     ...(!status.has_github_oauth ? [{ id: "github", title: "Connect GitHub" }] : []),
-    ...(!status.has_llm_key ? [{ id: "llm", title: "LLM API Keys" }] : []),
+    ...(!status.has_llm_key && !status.has_claude_oauth ? [{ id: "llm", title: "LLM API Keys" }] : []),
     { id: "complete", title: "All done" },
   ];
 

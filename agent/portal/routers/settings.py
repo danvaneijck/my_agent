@@ -479,7 +479,8 @@ async def get_onboarding_status(user: PortalUser = Depends(require_auth)) -> dic
         "has_claude_oauth": has_claude,
         "has_github_oauth": has_github,
         "has_llm_key": has_llm,
-        "needs_onboarding": not (has_llm and has_claude and has_github),
+        # Claude OAuth covers the LLM requirement — no API key needed
+        "needs_onboarding": not ((has_llm or has_claude) and has_github),
         "token_budget_monthly": db_user.token_budget_monthly if db_user else None,
         "tokens_used_this_month": db_user.tokens_used_this_month if db_user else 0,
     }
