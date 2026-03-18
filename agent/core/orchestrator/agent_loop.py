@@ -170,7 +170,11 @@ class AgentLoop:
         )
 
         # 6. Determine model (None lets the router pick its effective default)
-        model = persona.default_model if persona and persona.default_model else None
+        # When using CLI provider, use its default (Opus) rather than persona model
+        if using_claude_oauth:
+            model = None  # CLI provider defaults to claude-opus-4-6
+        else:
+            model = persona.default_model if persona and persona.default_model else None
         max_tokens = persona.max_tokens_per_request if persona else 4000
 
         # 5b. Measure actual tool definition token overhead
