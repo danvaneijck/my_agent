@@ -285,10 +285,12 @@ class ClaudeCodeCLIProvider(LLMProvider):
                                     })
                             elif block.get("type") == "tool_use":
                                 tool_name = block.get("name", "")
-                                # MCP tools use mcp__server__name format — convert back
-                                if tool_name.startswith("mcp__agent-tools__"):
-                                    tool_name = tool_name[len("mcp__agent-tools__"):]
-                                # Convert underscore back to dot for display
+                                # Only stream MCP tool calls — skip built-in
+                                # tools (Read, Glob, Bash, Edit, etc.) which
+                                # are internal CLI operations.
+                                if not tool_name.startswith("mcp__agent-tools__"):
+                                    continue
+                                tool_name = tool_name[len("mcp__agent-tools__"):]
                                 display_name = tool_name.replace("_", ".", 1)
                                 yield StreamEvent(event="tool_call", data={
                                     "tool": display_name,
@@ -296,10 +298,11 @@ class ClaudeCodeCLIProvider(LLMProvider):
                                 })
 
                     elif msg_type == "tool_result":
-                        # Tool execution result
+                        # Tool execution result — only for MCP tools
                         tool_name = obj.get("tool_name", "")
-                        if tool_name.startswith("mcp__agent-tools__"):
-                            tool_name = tool_name[len("mcp__agent-tools__"):]
+                        if not tool_name.startswith("mcp__agent-tools__"):
+                            continue
+                        tool_name = tool_name[len("mcp__agent-tools__"):]
                         display_name = tool_name.replace("_", ".", 1)
                         is_error = obj.get("is_error", False)
                         yield StreamEvent(event="tool_result", data={
