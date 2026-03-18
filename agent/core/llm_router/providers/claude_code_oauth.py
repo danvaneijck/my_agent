@@ -230,6 +230,8 @@ class ClaudeCodeCLIProvider(LLMProvider):
                 "--model", cli_model,
                 # Disable built-in tools (Bash, Edit, etc.) — we only want MCP tools
                 "--tools", "",
+                # Auto-approve all MCP tools from our agent-tools server
+                "--allowedTools", "mcp__agent-tools__*",
             ]
 
             # Add MCP config if tools are available
