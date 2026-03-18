@@ -266,8 +266,6 @@ class ClaudeCodeCLIProvider(LLMProvider):
                 "-p", prompt,
                 "--output-format", "json",
                 "--model", model,
-                "--max-tokens", str(max_tokens),
-                "--no-input",
             ]
 
             logger.info(
