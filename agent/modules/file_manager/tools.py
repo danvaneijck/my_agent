@@ -98,8 +98,10 @@ class FileManagerTools:
 
         public_url = f"{self.settings.minio_public_url}/{minio_key}"
 
-        # Resolve user_id
-        uid = uuid.UUID(user_id) if user_id else uuid.UUID("00000000-0000-0000-0000-000000000000")
+        # Resolve user_id — require it for ownership tracking
+        if not user_id:
+            raise ValueError("user_id is required to create documents")
+        uid = uuid.UUID(user_id)
 
         # Save record in database
         file_id = uuid.uuid4()
@@ -151,7 +153,9 @@ class FileManagerTools:
         )
 
         public_url = f"{self.settings.minio_public_url}/{minio_key}"
-        uid = uuid.UUID(user_id) if user_id else uuid.UUID("00000000-0000-0000-0000-000000000000")
+        if not user_id:
+            raise ValueError("user_id is required to upload files")
+        uid = uuid.UUID(user_id)
 
         file_id = uuid.uuid4()
         async with self.session_factory() as session:
@@ -179,12 +183,13 @@ class FileManagerTools:
 
     async def read_document(self, file_id: str, user_id: str | None = None) -> dict:
         """Read the contents of a stored document."""
+        if not user_id:
+            raise ValueError("user_id is required to read documents")
         async with self.session_factory() as session:
-            query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
-            if user_id:
-                query = query.where(FileRecord.user_id == uuid.UUID(user_id))
-            else:
-                logger.warning("read_document_called_without_user_id", file_id=file_id)
+            query = select(FileRecord).where(
+                FileRecord.id == uuid.UUID(file_id),
+                FileRecord.user_id == uuid.UUID(user_id),
+            )
             result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
@@ -237,12 +242,13 @@ class FileManagerTools:
 
     async def get_file_link(self, file_id: str, user_id: str | None = None) -> dict:
         """Get the public URL for a file."""
+        if not user_id:
+            raise ValueError("user_id is required to get file links")
         async with self.session_factory() as session:
-            query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
-            if user_id:
-                query = query.where(FileRecord.user_id == uuid.UUID(user_id))
-            else:
-                logger.warning("get_file_link_called_without_user_id", file_id=file_id)
+            query = select(FileRecord).where(
+                FileRecord.id == uuid.UUID(file_id),
+                FileRecord.user_id == uuid.UUID(user_id),
+            )
             result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
@@ -256,12 +262,13 @@ class FileManagerTools:
 
     async def delete_file(self, file_id: str, user_id: str | None = None) -> dict:
         """Delete a file from MinIO and its database record."""
+        if not user_id:
+            raise ValueError("user_id is required to delete files")
         async with self.session_factory() as session:
-            query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
-            if user_id:
-                query = query.where(FileRecord.user_id == uuid.UUID(user_id))
-            else:
-                logger.warning("delete_file_called_without_user_id", file_id=file_id)
+            query = select(FileRecord).where(
+                FileRecord.id == uuid.UUID(file_id),
+                FileRecord.user_id == uuid.UUID(user_id),
+            )
             result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:

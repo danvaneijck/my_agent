@@ -225,10 +225,13 @@ class CodeExecutorTools:
 
     async def load_file(self, file_id: str, user_id: str | None = None) -> dict:
         """Download a file from the file manager into /tmp so Python code can use it."""
+        if not user_id:
+            raise ValueError("user_id is required to load files")
         async with self.session_factory() as session:
-            query = select(FileRecord).where(FileRecord.id == uuid.UUID(file_id))
-            if user_id:
-                query = query.where(FileRecord.user_id == uuid.UUID(user_id))
+            query = select(FileRecord).where(
+                FileRecord.id == uuid.UUID(file_id),
+                FileRecord.user_id == uuid.UUID(user_id),
+            )
             result = await session.execute(query)
             record = result.scalar_one_or_none()
             if not record:
