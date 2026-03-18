@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import httpx
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -164,7 +166,7 @@ class AgentLoop:
             tool_overhead = 0
 
         # 7. Register attachments as FileRecords and enrich content
-        message_content = incoming.content
+        message_content: str | list = incoming.content
         if incoming.attachments:
             # Create FileRecord for each attachment now that we have the real user_id
             for att in incoming.attachments:
@@ -183,20 +185,99 @@ class AgentLoop:
                 att["file_id"] = str(file_id)
             await session.commit()  # commit so other containers (code_executor) can see them
 
-            file_context = "\n\n[Attached files:]\n"
-            for att in incoming.attachments:
-                fname = att.get("filename", "file")
-                fid = att.get("file_id", "")
-                fsize = att.get("size_bytes", 0)
-                fmime = att.get("mime_type", "")
+            # Separate images (for vision) from other files (for tool hints)
+            _IMAGE_MIMES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+            image_atts = [a for a in incoming.attachments if a.get("mime_type") in _IMAGE_MIMES]
+            other_atts = [a for a in incoming.attachments if a.get("mime_type") not in _IMAGE_MIMES]
+
+            # Download images and build vision content blocks
+            image_blocks: list[dict] = []
+            for att in image_atts:
+                try:
+                    url = att.get("url", "")
+                    if not url:
+                        continue
+                    # Download from MinIO internal URL (rewrite public URL to internal)
+                    internal_url = url
+                    if self.settings.minio_public_url:
+                        internal_url = url.replace(
+                            self.settings.minio_public_url.rstrip("/"),
+                            f"http://{self.settings.minio_endpoint}",
+                        )
+                    async with httpx.AsyncClient(timeout=15.0) as http:
+                        resp = await http.get(internal_url)
+                        if resp.status_code != 200:
+                            logger.warning(
+                                "image_download_failed",
+                                url=url, status=resp.status_code,
+                            )
+                            # Fall back to treating as a regular file
+                            other_atts.append(att)
+                            continue
+                        img_bytes = resp.content
+
+                    # Cap at 5 MB for vision (base64 inflates ~33%)
+                    if len(img_bytes) > 5 * 1024 * 1024:
+                        logger.info("image_too_large_for_vision", size=len(img_bytes))
+                        other_atts.append(att)
+                        continue
+
+                    b64 = base64.standard_b64encode(img_bytes).decode("ascii")
+                    image_blocks.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": att["mime_type"],
+                            "data": b64,
+                        },
+                    })
+                    logger.info(
+                        "image_attached_for_vision",
+                        filename=att.get("filename"),
+                        size=len(img_bytes),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "image_vision_prep_failed",
+                        filename=att.get("filename"),
+                        error=str(e),
+                    )
+                    other_atts.append(att)
+
+            # Build file context hint for non-image attachments
+            file_context = ""
+            if other_atts:
+                file_context = "\n\n[Attached files:]\n"
+                for att in other_atts:
+                    fname = att.get("filename", "file")
+                    fid = att.get("file_id", "")
+                    fsize = att.get("size_bytes", 0)
+                    fmime = att.get("mime_type", "")
+                    file_context += (
+                        f"- {fname} (file_id: {fid}, {fsize} bytes, {fmime})\n"
+                    )
                 file_context += (
-                    f"- {fname} (file_id: {fid}, {fsize} bytes, {fmime})\n"
+                    "Use file_manager.read_document(file_id) to read text files, "
+                    "or code_executor.load_file(file_id) then run_python to process them."
                 )
-            file_context += (
-                "Use file_manager.read_document(file_id) to read text files, "
-                "or code_executor.load_file(file_id) then run_python to process them."
-            )
-            message_content += file_context
+
+            # Build the message content — use content blocks if we have images
+            if image_blocks:
+                content_blocks: list[dict] = []
+                text_content = incoming.content + file_context
+                if text_content.strip():
+                    content_blocks.append({"type": "text", "text": text_content})
+                content_blocks.extend(image_blocks)
+                # Also note the image file_ids for reference
+                for att in image_atts:
+                    if att.get("file_id"):
+                        content_blocks.append({
+                            "type": "text",
+                            "text": f"[Image: {att.get('filename', 'image')} (file_id: {att['file_id']})]",
+                        })
+                message_content = content_blocks
+            else:
+                message_content = incoming.content + file_context
 
         # 8. Build context — pass the active router so semantic memory embeddings
         # also use the user's own keys when configured.
@@ -212,12 +293,18 @@ class AgentLoop:
             tool_overhead_tokens=tool_overhead,
         )
 
-        # Save the incoming user message
+        # Save the incoming user message (text only — images are ephemeral)
+        stored_content = (
+            message_content if isinstance(message_content, str)
+            else " ".join(
+                b.get("text", "") for b in message_content if b.get("type") == "text"
+            )
+        )
         user_msg = Message(
             id=uuid.uuid4(),
             conversation_id=conversation.id,
             role="user",
-            content=message_content,
+            content=stored_content,
             created_at=datetime.now(timezone.utc),
         )
         session.add(user_msg)

@@ -138,10 +138,17 @@ class GoogleProvider(LLMProvider):
                     )
                 )
             else:
+                content = msg["content"]
+                # Extract text from vision content blocks (Gemini vision
+                # uses a different format — fall back to text-only)
+                if isinstance(content, list):
+                    content = " ".join(
+                        b.get("text", "") for b in content if b.get("type") == "text"
+                    ) or "(image attachment)"
                 contents.append(
                     types.Content(
                         role="user",
-                        parts=[types.Part(text=msg["content"])],
+                        parts=[types.Part(text=content)],
                     )
                 )
         system = "\n\n".join(system_parts) if system_parts else None

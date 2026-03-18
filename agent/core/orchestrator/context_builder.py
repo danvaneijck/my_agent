@@ -86,7 +86,7 @@ class ContextBuilder:
         user: User,
         conversation: Conversation,
         persona: Persona | None,
-        incoming_message: str,
+        incoming_message: str | list,
         model: str | None = None,
         tool_count: int = 0,
         llm_router=None,
@@ -131,8 +131,15 @@ class ContextBuilder:
 
         # 3. Semantic memories (if embedding/llm_router is available)
         # Use the per-request router override when the user has personal API keys.
+        # Extract text for embedding query (content blocks may contain images)
+        _message_text = (
+            incoming_message if isinstance(incoming_message, str)
+            else " ".join(
+                b.get("text", "") for b in incoming_message if b.get("type") == "text"
+            )
+        )
         _router = llm_router or self.llm_router
-        memories = await self._get_semantic_memories(session, user, incoming_message, router=_router)
+        memories = await self._get_semantic_memories(session, user, _message_text, router=_router)
         if memories:
             memory_text = "Relevant context from past conversations:\n"
             for mem in memories:
@@ -149,7 +156,7 @@ class ContextBuilder:
                 })
 
         # 5. Working memory — load adaptively based on message content
-        needs_full = self._needs_full_context(incoming_message)
+        needs_full = self._needs_full_context(_message_text)
         recent_messages = await self._get_recent_messages(
             session, conversation, full=needs_full,
         )

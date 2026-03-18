@@ -132,10 +132,26 @@ class OpenAIProvider(LLMProvider):
                     }
                 )
             else:
+                content = msg["content"]
+                # Convert Anthropic-style vision blocks to OpenAI format
+                if isinstance(content, list):
+                    oai_blocks = []
+                    for block in content:
+                        if block.get("type") == "text":
+                            oai_blocks.append({"type": "text", "text": block["text"]})
+                        elif block.get("type") == "image":
+                            src = block.get("source", {})
+                            media = src.get("media_type", "image/png")
+                            data = src.get("data", "")
+                            oai_blocks.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{media};base64,{data}"},
+                            })
+                    content = oai_blocks
                 converted.append(
                     {
                         "role": msg["role"],
-                        "content": msg["content"],
+                        "content": content,
                     }
                 )
         return converted
