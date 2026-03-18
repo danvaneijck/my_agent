@@ -214,7 +214,7 @@ class BenchmarkerClient:
             body["organisation_name"] = organisation_name
         if organisation_short_name is not None:
             body["organisation_short_name"] = organisation_short_name
-        params = {"dry_run": "true"} if dry_run else None
+        params = {"dry_run": "true" if dry_run else "false"}
         return await self._request(
             "POST",
             "/api/agent/v1/device/assign-organisation",
