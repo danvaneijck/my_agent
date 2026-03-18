@@ -228,7 +228,6 @@ class AgentSlackBot:
                         "thread_ts": thread_ts,
                         "recipient_user_id": user_id,
                         "recipient_team_id": team_id,
-                        "markdown_text": ":hourglass_flowing_sand: Thinking...",
                     },
                 )
                 if stream_resp.get("ok"):
@@ -275,11 +274,15 @@ class AgentSlackBot:
                                     continue
 
                                 if event_type == "thinking":
-                                    pass  # startStream already shows initial state
+                                    pass  # stream already started
                                 elif event_type == "content":
-                                    text = event_data.get("text", "")
-                                    if text:
-                                        status_lines.append(text)
+                                    # Don't stream content text — stopStream
+                                    # sets the final response to avoid duplication.
+                                    # Only track for the fallback (chat_update) path.
+                                    if not use_native_stream:
+                                        text = event_data.get("text", "")
+                                        if text:
+                                            status_lines.append(text)
                                 elif event_type == "tool_call":
                                     tool = event_data.get("tool", "")
                                     args = event_data.get("arguments", {})
