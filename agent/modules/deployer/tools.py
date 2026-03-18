@@ -326,6 +326,7 @@ class DeployerTools:
                     url=f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}",
                     status=status,
                     created_at=created_at,
+                    user_id=labels.get("deploy.user_id"),
                 )
                 self.deployments[deploy_id] = deployment
                 self._used_ports.add(port)
@@ -407,6 +408,26 @@ class DeployerTools:
                     primary_port = all_ports[0]["host"]
                     primary_url = f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
 
+                # Try to recover URL and user_id from the proxy container
+                # (deploy-{deploy_id}) which carries Traefik labels and
+                # a deploy.user_id label.
+                user_id = None
+                proxy_name = f"deploy-{deploy_id}"
+                proxy_info = await self._inspect_container(proxy_name)
+                if proxy_info:
+                    proxy_labels = proxy_info.get("Config", {}).get("Labels", {})
+                    # Recover user_id
+                    user_id = proxy_labels.get("deploy.user_id")
+                    # Recover URL from Traefik router rule
+                    if not primary_url:
+                        rule = proxy_labels.get(
+                            f"traefik.http.routers.{proxy_name}.rule", ""
+                        )
+                        # Rule looks like: Host(`car-maintenance.apps.danvan.xyz`)
+                        host_match = re.search(r"Host\(`([^`]+)`\)", rule)
+                        if host_match:
+                            primary_url = f"https://{host_match.group(1)}"
+
                 deployment = Deployment(
                     id=deploy_id,
                     project_name=deploy_id,  # Best guess without metadata
@@ -419,6 +440,7 @@ class DeployerTools:
                     deploy_compose_file=deploy_file,
                     env_vars=env_vars,
                     all_ports=all_ports,
+                    user_id=user_id,
                 )
                 self.deployments[deploy_id] = deployment
                 recovered += 1
@@ -783,7 +805,7 @@ class DeployerTools:
             # --- Step 3: run container ---
             cid = await self._run_container(
                 container_name, image_name, port, internal_port,
-                deploy_id, env_vars,
+                deploy_id, env_vars, user_id=user_id,
             )
             deployment.container_id = cid
 
@@ -1147,6 +1169,7 @@ class DeployerTools:
         self,
         deploy_id: str,
         allocated_ports: list[dict],
+        user_id: str | None = None,
     ) -> list[str]:
         """Create lightweight nginx proxies bridging compose network to deploy-net.
 
@@ -1208,6 +1231,10 @@ class DeployerTools:
                     "-l", f"traefik.http.routers.{proxy_name}.tls.domains[0].sans=*.{DEPLOY_BASE_DOMAIN}",
                     "-l", f"traefik.http.routers.{proxy_name}.middlewares=security-headers@file",
                     "-l", f"traefik.http.services.{proxy_name}.loadbalancer.server.port=3000",
+                    *(
+                        ["-l", f"deploy.user_id={user_id}"]
+                        if user_id else []
+                    ),
                     "nginx:alpine",
                     "sh", "-c",
                     f"echo '{nginx_conf}' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'",
@@ -1409,7 +1436,7 @@ class DeployerTools:
             # Create proxy containers to bridge compose network → deploy-net
             # One proxy per HTTP service so each gets its own subdomain
             if allocated_ports:
-                await self._create_compose_proxies(deploy_id, allocated_ports)
+                await self._create_compose_proxies(deploy_id, allocated_ports, user_id=user_id)
 
                 # Add URLs to each port entry:
                 # - HTTP services get subdomain URLs (via proxy)
@@ -1739,6 +1766,7 @@ class DeployerTools:
         internal_port: int,
         deploy_id: str,
         env_vars: dict[str, str],
+        user_id: str | None = None,
     ) -> str:
         """Start a deployment container. Returns the container ID."""
         cmd: list[str] = [
@@ -1756,6 +1784,9 @@ class DeployerTools:
             "-l", f"traefik.http.routers.{deploy_id}.middlewares=security-headers@file",
             "-l", f"traefik.http.services.{deploy_id}.loadbalancer.server.port={internal_port}",
         ]
+        # Persist user_id so rediscovery can restore ownership after restarts
+        if user_id:
+            cmd.extend(["-l", f"deploy.user_id={user_id}"])
 
         for key, value in env_vars.items():
             cmd.extend(["-e", f"{key}={value}"])
