@@ -217,8 +217,8 @@ class AgentLoop:
                             continue
                         img_bytes = resp.content
 
-                    # Cap at 5 MB for vision (base64 inflates ~33%)
-                    if len(img_bytes) > 5 * 1024 * 1024:
+                    # Cap at 20 MB for vision (Anthropic API limit)
+                    if len(img_bytes) > 20 * 1024 * 1024:
                         logger.info("image_too_large_for_vision", size=len(img_bytes))
                         other_atts.append(att)
                         continue
