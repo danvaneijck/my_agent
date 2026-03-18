@@ -138,9 +138,14 @@ class ClaudeCodeCLIProvider(LLMProvider):
                     f"  Parameters: {json.dumps(params)}\n"
                 )
             tool_section += (
-                "\nTo use a tool, respond with a JSON object like:\n"
+                "\nCRITICAL TOOL CALLING RULES:\n"
+                "When you need to perform an action, you MUST output ONLY a JSON object:\n"
                 '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n'
-                "If you don't need a tool, respond normally with text.\n"
+                "Do NOT describe what you would do — actually call the tool.\n"
+                "Do NOT say 'Let me deploy' then respond with text — emit the tool call JSON.\n"
+                "Do NOT narrate actions. Either call a tool or give a final text answer.\n"
+                "You may call multiple tools at once in the tool_calls array.\n"
+                "Only respond with plain text when you have NO more actions to take.\n"
                 "</available_tools>\n"
             )
             parts.append(tool_section)
