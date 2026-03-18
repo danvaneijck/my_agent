@@ -49,8 +49,12 @@ class ClaudeCodeCLIProvider(LLMProvider):
         self._session_factory = session_factory
 
         # Set by the agent loop before each call so the MCP bridge
-        # can save tool calls to the conversation history.
+        # can save tool calls and inject platform context.
         self.conversation_id: str | None = None
+        self.platform: str | None = None
+        self.platform_channel_id: str | None = None
+        self.platform_thread_id: str | None = None
+        self.platform_server_id: str | None = None
 
         if not get_access_token(credentials_json):
             raise ValueError("No OAuth access token found in credentials_json")
@@ -117,6 +121,10 @@ class ClaudeCodeCLIProvider(LLMProvider):
             "MCP_USER_ID": self._user_id or "",
             "MCP_USER_PERMISSION": "owner",
             "MCP_CONVERSATION_ID": self.conversation_id or "",
+            "MCP_PLATFORM": self.platform or "",
+            "MCP_PLATFORM_CHANNEL_ID": self.platform_channel_id or "",
+            "MCP_PLATFORM_THREAD_ID": self.platform_thread_id or "",
+            "MCP_PLATFORM_SERVER_ID": self.platform_server_id or "",
         }
         service_token = os.environ.get("SERVICE_AUTH_TOKEN", "")
         if service_token:

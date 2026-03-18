@@ -36,12 +36,21 @@ MCP_USER_ID = os.environ.get("MCP_USER_ID", "")
 MCP_USER_PERMISSION = os.environ.get("MCP_USER_PERMISSION", "owner")
 MCP_CONVERSATION_ID = os.environ.get("MCP_CONVERSATION_ID", "")
 
+# Platform context — injected into scheduler/location/crew tool calls
+# so they can send notifications back to the right channel.
+MCP_PLATFORM = os.environ.get("MCP_PLATFORM", "")
+MCP_PLATFORM_CHANNEL_ID = os.environ.get("MCP_PLATFORM_CHANNEL_ID", "")
+MCP_PLATFORM_THREAD_ID = os.environ.get("MCP_PLATFORM_THREAD_ID", "")
+MCP_PLATFORM_SERVER_ID = os.environ.get("MCP_PLATFORM_SERVER_ID", "")
+
 # Type mapping from our tool schemas to Python types
 _TYPE_MAP = {
     "string": str,
     "integer": int,
     "number": float,
     "boolean": bool,
+    "object": dict,
+    "array": list,
 }
 
 
@@ -67,6 +76,21 @@ def _fetch_tools() -> list[dict]:
 
 def _call_tool(tool_name: str, arguments: dict) -> str:
     """Execute a tool via core's /execute endpoint (synchronous)."""
+    # Inject platform context for scheduler/location/crew tools
+    # (these need to know where to send notifications)
+    if tool_name.startswith(("scheduler.", "location.", "crew.")):
+        if MCP_PLATFORM and "platform" not in arguments:
+            arguments["platform"] = MCP_PLATFORM
+        if MCP_PLATFORM_CHANNEL_ID and "platform_channel_id" not in arguments:
+            arguments["platform_channel_id"] = MCP_PLATFORM_CHANNEL_ID
+        if MCP_PLATFORM_THREAD_ID and "platform_thread_id" not in arguments:
+            arguments["platform_thread_id"] = MCP_PLATFORM_THREAD_ID
+        if MCP_PLATFORM_SERVER_ID and "platform_server_id" not in arguments:
+            arguments["platform_server_id"] = MCP_PLATFORM_SERVER_ID
+        if tool_name == "scheduler.add_job" and MCP_CONVERSATION_ID:
+            if "conversation_id" not in arguments:
+                arguments["conversation_id"] = MCP_CONVERSATION_ID
+
     payload = {"tool_name": tool_name, "arguments": arguments}
     if MCP_USER_ID:
         payload["user_id"] = MCP_USER_ID

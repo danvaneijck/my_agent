@@ -383,9 +383,13 @@ class AgentLoop:
                     cli_provider = provider
 
             if cli_provider and hasattr(cli_provider, "chat_stream"):
-                # Set conversation_id so MCP bridge saves tool calls to history
-                if hasattr(cli_provider, "conversation_id"):
-                    cli_provider.conversation_id = str(conversation.id)
+                # Set context so MCP bridge can save tool calls and inject
+                # platform info into scheduler/location/crew tool calls.
+                cli_provider.conversation_id = str(conversation.id)
+                cli_provider.platform = conversation.platform
+                cli_provider.platform_channel_id = conversation.platform_channel_id
+                cli_provider.platform_thread_id = conversation.platform_thread_id
+                cli_provider.platform_server_id = incoming.platform_server_id
 
                 # Streaming path: CLI handles the full tool loop via MCP.
                 # Forward intermediate events and collect the final response.
