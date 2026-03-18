@@ -228,7 +228,8 @@ class ClaudeCodeCLIProvider(LLMProvider):
                 "-p", prompt,
                 "--output-format", "json",
                 "--model", cli_model,
-                "--permission-mode", "bypassPermissions",
+                # Disable built-in tools (Bash, Edit, etc.) — we only want MCP tools
+                "--tools", "",
             ]
 
             # Add MCP config if tools are available
