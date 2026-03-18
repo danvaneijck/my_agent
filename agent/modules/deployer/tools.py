@@ -1372,11 +1372,23 @@ class DeployerTools:
                 "up", "-d", "--build",
             ]
 
+            # Use a clean environment so that the agent's own env vars
+            # (DATABASE_URL, API keys, etc.) don't leak into user projects
+            # via docker-compose variable interpolation.
+            clean_env = {
+                k: v for k, v in os.environ.items()
+                if k in ("PATH", "HOME", "USER", "DOCKER_HOST",
+                         "DOCKER_CONFIG", "DOCKER_BUILDKIT")
+            }
+            # Add the project's own .env vars so compose can interpolate them
+            clean_env.update(deployment.env_vars or {})
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=project_path,
+                env=clean_env,
             )
 
             stdout, stderr = await asyncio.wait_for(
