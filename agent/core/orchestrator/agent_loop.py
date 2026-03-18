@@ -606,6 +606,25 @@ class AgentLoop:
                 tools_sequence=tool_call_summaries,
             )
 
+        # Guard: detect broken follow-up promises.
+        # If the response mentions following up but no scheduler job was created,
+        # strip the false promise and add a note.
+        import re as _re
+        _followup_pattern = _re.compile(
+            r"I'?ll\s+(notify|update|check back|follow up|let you know|monitor|keep you|"
+            r"get back to you|watch|ping you)",
+            _re.IGNORECASE,
+        )
+        scheduler_was_called = any(
+            tc.name.startswith("scheduler.") for tc in tool_call_summaries
+        )
+        if final_content and _followup_pattern.search(final_content) and not scheduler_was_called:
+            logger.warning("false_followup_detected", content_snippet=final_content[:200])
+            # Remove the false promise sentence(s)
+            final_content = _followup_pattern.sub("", final_content).strip()
+            # Clean up orphaned punctuation
+            final_content = _re.sub(r"\s+[.!]\s*$", ".", final_content)
+
         yield StreamEvent(event="done", data=AgentResponse(
             content=final_content, files=files, tool_calls_metadata=tool_metadata
         ).model_dump())
