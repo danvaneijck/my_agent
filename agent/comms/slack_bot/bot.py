@@ -212,19 +212,45 @@ class AgentSlackBot:
             # Call Orchestrator (streaming)
             response: AgentResponse | None = None
             status_lines: list[str] = []
-            status_msg_ts: str | None = None
-            last_edit_text = ""
+            stream_ts: str | None = None
+            use_native_stream = False
 
-            # Post an initial status message
+            # Try Slack's native chat streaming API (chat.startStream)
             try:
-                status_resp = await client.chat_postMessage(
-                    channel=channel_id,
-                    text=":hourglass_flowing_sand: Thinking...",
-                    thread_ts=thread_ts,
+                # Get team/user context for streaming
+                team_id = event.get("team")
+                user_id = event.get("user")
+
+                stream_resp = await client.api_call(
+                    "chat.startStream",
+                    json={
+                        "channel": channel_id,
+                        "thread_ts": thread_ts,
+                        "recipient_user_id": user_id,
+                        "recipient_team_id": team_id,
+                        "markdown_text": ":hourglass_flowing_sand: Thinking...",
+                    },
                 )
-                status_msg_ts = status_resp.get("ts")
-            except Exception:
-                pass
+                if stream_resp.get("ok"):
+                    stream_ts = stream_resp.get("ts")
+                    use_native_stream = True
+                    logger.info("slack_native_stream_started", ts=stream_ts)
+            except Exception as e:
+                logger.info("slack_native_stream_unavailable", error=str(e))
+
+            # Fallback: post a regular message to edit
+            if not use_native_stream:
+                try:
+                    status_resp = await client.chat_postMessage(
+                        channel=channel_id,
+                        text=":hourglass_flowing_sand: Thinking...",
+                        thread_ts=thread_ts,
+                    )
+                    stream_ts = status_resp.get("ts")
+                except Exception:
+                    pass
+
+            last_streamed_text = ""
 
             try:
                 async with httpx.AsyncClient(
@@ -277,17 +303,27 @@ class AgentSlackBot:
                                         error=event_data.get("error"),
                                     )
 
-                                # Update the status message
-                                if event_type in ("thinking", "content", "tool_call", "tool_result") and status_msg_ts:
+                                # Stream progress updates
+                                if event_type in ("thinking", "content", "tool_call", "tool_result") and stream_ts:
                                     new_text = "\n".join(status_lines[-15:])
-                                    if new_text and new_text != last_edit_text:
+                                    if new_text and new_text != last_streamed_text:
                                         try:
-                                            await client.chat_update(
-                                                channel=channel_id,
-                                                ts=status_msg_ts,
-                                                text=new_text[:3000],
-                                            )
-                                            last_edit_text = new_text
+                                            if use_native_stream:
+                                                await client.api_call(
+                                                    "chat.appendStream",
+                                                    json={
+                                                        "channel": channel_id,
+                                                        "ts": stream_ts,
+                                                        "markdown_text": new_text[:12000],
+                                                    },
+                                                )
+                                            else:
+                                                await client.chat_update(
+                                                    channel=channel_id,
+                                                    ts=stream_ts,
+                                                    text=new_text[:3000],
+                                                )
+                                            last_streamed_text = new_text
                                         except Exception:
                                             pass
             except Exception as e_stream:
@@ -303,20 +339,40 @@ class AgentSlackBot:
                     error="Stream ended without done event",
                 )
 
-            # Delete the status message
-            if status_msg_ts:
+            # Finalize the stream
+            if stream_ts and use_native_stream:
                 try:
-                    await client.chat_delete(channel=channel_id, ts=status_msg_ts)
-                except Exception:
-                    pass
+                    await client.api_call(
+                        "chat.stopStream",
+                        json={
+                            "channel": channel_id,
+                            "ts": stream_ts,
+                            "markdown_text": response.content[:12000],
+                        },
+                    )
+                except Exception as e:
+                    logger.warning("slack_stop_stream_failed", error=str(e))
+                    # Fallback to regular message
+                    await BlockBuilder.post_response(
+                        client=client,
+                        channel_id=channel_id,
+                        text=response.content,
+                        thread_ts=thread_ts,
+                    )
+            else:
+                # Delete status message and post final response
+                if stream_ts:
+                    try:
+                        await client.chat_delete(channel=channel_id, ts=stream_ts)
+                    except Exception:
+                        pass
 
-            # Post the final response
-            await BlockBuilder.post_response(
-                client=client,
-                channel_id=channel_id,
-                text=response.content,
-                thread_ts=thread_ts,
-            )
+                await BlockBuilder.post_response(
+                    client=client,
+                    channel_id=channel_id,
+                    text=response.content,
+                    thread_ts=thread_ts,
+                )
 
             # Upload response files natively to Slack (if any)
             for f in response.files:
