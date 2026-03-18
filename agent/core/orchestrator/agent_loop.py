@@ -197,22 +197,20 @@ class AgentLoop:
             image_blocks: list[dict] = []
             for att in image_atts:
                 try:
-                    url = att.get("url", "")
-                    if not url:
+                    minio_key = att.get("minio_key", "")
+                    if not minio_key:
                         continue
-                    # Download from MinIO internal URL (rewrite public URL to internal)
-                    internal_url = url
-                    if self.settings.minio_public_url:
-                        internal_url = url.replace(
-                            self.settings.minio_public_url.rstrip("/"),
-                            f"http://{self.settings.minio_endpoint}",
-                        )
+                    # Download directly from MinIO using internal endpoint + bucket + key
+                    internal_url = (
+                        f"http://{self.settings.minio_endpoint}"
+                        f"/{self.settings.minio_bucket}/{minio_key}"
+                    )
                     async with httpx.AsyncClient(timeout=15.0) as http:
                         resp = await http.get(internal_url)
                         if resp.status_code != 200:
                             logger.warning(
                                 "image_download_failed",
-                                url=url, status=resp.status_code,
+                                url=internal_url, status=resp.status_code,
                             )
                             # Fall back to treating as a regular file
                             other_atts.append(att)
