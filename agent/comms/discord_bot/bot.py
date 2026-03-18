@@ -147,15 +147,19 @@ class AgentDiscordBot(discord.Client):
                                     status_lines.append(text)
                             elif event_type == "tool_call":
                                 tool = event_data.get("tool", "")
-                                status_lines.append(f"🔧 `{tool}`")
+                                args = event_data.get("arguments", {})
+                                args_str = self._format_tool_args(args)
+                                display = f"🔧 `{tool}`{args_str}"
+                                status_lines.append(display)
                             elif event_type == "tool_result":
                                 tool = event_data.get("tool", "")
                                 success = event_data.get("success", False)
                                 icon = "✅" if success else "❌"
                                 # Replace the last tool_call line with result
                                 for i in range(len(status_lines) - 1, -1, -1):
-                                    if status_lines[i] == f"🔧 `{tool}`":
-                                        status_lines[i] = f"{icon} `{tool}`"
+                                    if f"🔧 `{tool}`" in status_lines[i]:
+                                        # Keep args, just swap the icon
+                                        status_lines[i] = status_lines[i].replace("🔧", icon)
                                         break
                             elif event_type == "done":
                                 response = AgentResponse(**event_data)
@@ -204,6 +208,25 @@ class AgentDiscordBot(discord.Client):
                 await message.reply(chunk, files=discord_files, mention_author=False)
             else:
                 await message.reply(chunk, mention_author=False)
+
+    @staticmethod
+    def _format_tool_args(args: dict, max_len: int = 120) -> str:
+        """Format tool arguments compactly for status display."""
+        if not args:
+            return ""
+        parts = []
+        for k, v in args.items():
+            if isinstance(v, str) and len(v) > 50:
+                v = v[:47] + "..."
+            elif isinstance(v, dict):
+                v = "{...}"
+            elif isinstance(v, list):
+                v = f"[{len(v)} items]"
+            parts.append(f"{k}={v}")
+        result = "(" + ", ".join(parts) + ")"
+        if len(result) > max_len:
+            result = result[:max_len - 3] + "...)"
+        return " " + result
 
     @staticmethod
     def _parse_sse(raw: str) -> tuple[str, dict]:

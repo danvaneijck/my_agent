@@ -257,14 +257,17 @@ class AgentSlackBot:
                                         status_lines.append(text)
                                 elif event_type == "tool_call":
                                     tool = event_data.get("tool", "")
-                                    status_lines.append(f":wrench: `{tool}`")
+                                    args = event_data.get("arguments", {})
+                                    args_str = self._format_tool_args(args)
+                                    display = f":wrench: `{tool}`{args_str}"
+                                    status_lines.append(display)
                                 elif event_type == "tool_result":
                                     tool = event_data.get("tool", "")
                                     success = event_data.get("success", False)
                                     icon = ":white_check_mark:" if success else ":x:"
                                     for i in range(len(status_lines) - 1, -1, -1):
-                                        if status_lines[i] == f":wrench: `{tool}`":
-                                            status_lines[i] = f"{icon} `{tool}`"
+                                        if f":wrench: `{tool}`" in status_lines[i]:
+                                            status_lines[i] = status_lines[i].replace(":wrench:", icon)
                                             break
                                 elif event_type == "done":
                                     response = AgentResponse(**event_data)
@@ -327,6 +330,25 @@ class AgentSlackBot:
                 text=f":warning: I encountered an error: {str(e)}",
                 thread_ts=thread_ts,
             )
+
+    @staticmethod
+    def _format_tool_args(args: dict, max_len: int = 120) -> str:
+        """Format tool arguments compactly for status display."""
+        if not args:
+            return ""
+        parts = []
+        for k, v in args.items():
+            if isinstance(v, str) and len(v) > 50:
+                v = v[:47] + "..."
+            elif isinstance(v, dict):
+                v = "{...}"
+            elif isinstance(v, list):
+                v = f"[{len(v)} items]"
+            parts.append(f"{k}={v}")
+        result = "(" + ", ".join(parts) + ")"
+        if len(result) > max_len:
+            result = result[:max_len - 3] + "...)"
+        return " " + result
 
     @staticmethod
     def _parse_sse(raw: str) -> tuple[str, dict]:
