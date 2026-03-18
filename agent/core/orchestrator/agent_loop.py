@@ -9,7 +9,6 @@ import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import httpx
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,6 +55,19 @@ class AgentLoop:
         self.context_builder = context_builder
         self.session_factory = session_factory
         self.credential_store = credential_store
+
+        # MinIO client for downloading image attachments (vision support)
+        self._minio = None
+        try:
+            from minio import Minio
+            self._minio = Minio(
+                settings.minio_endpoint,
+                access_key=settings.minio_access_key,
+                secret_key=settings.minio_secret_key,
+                secure=False,
+            )
+        except Exception as e:
+            logger.warning("minio_client_init_failed", error=str(e))
 
     async def run(self, incoming: IncomingMessage) -> AgentResponse:
         """Execute the agent loop for an incoming message."""
@@ -198,24 +210,18 @@ class AgentLoop:
             for att in image_atts:
                 try:
                     minio_key = att.get("minio_key", "")
-                    if not minio_key:
+                    if not minio_key or not self._minio:
+                        other_atts.append(att)
                         continue
-                    # Download directly from MinIO using internal endpoint + bucket + key
-                    internal_url = (
-                        f"http://{self.settings.minio_endpoint}"
-                        f"/{self.settings.minio_bucket}/{minio_key}"
+                    # Download from MinIO using authenticated client
+                    resp = self._minio.get_object(
+                        self.settings.minio_bucket, minio_key,
                     )
-                    async with httpx.AsyncClient(timeout=15.0) as http:
-                        resp = await http.get(internal_url)
-                        if resp.status_code != 200:
-                            logger.warning(
-                                "image_download_failed",
-                                url=internal_url, status=resp.status_code,
-                            )
-                            # Fall back to treating as a regular file
-                            other_atts.append(att)
-                            continue
-                        img_bytes = resp.content
+                    try:
+                        img_bytes = resp.read()
+                    finally:
+                        resp.close()
+                        resp.release_conn()
 
                     # Cap at 20 MB for vision (Anthropic API limit)
                     if len(img_bytes) > 20 * 1024 * 1024:
