@@ -251,6 +251,9 @@ class AgentSlackBot:
                     pass
 
             last_streamed_text = ""
+            # For native streaming, track lines already sent so we only
+            # send deltas (appendStream APPENDS, doesn't replace).
+            lines_sent_count = 0
 
             try:
                 async with httpx.AsyncClient(
@@ -272,11 +275,7 @@ class AgentSlackBot:
                                     continue
 
                                 if event_type == "thinking":
-                                    iteration = event_data.get("iteration", 1)
-                                    if iteration == 1:
-                                        status_lines = [":hourglass_flowing_sand: Thinking..."]
-                                    else:
-                                        status_lines.append(":hourglass_flowing_sand: Thinking...")
+                                    pass  # startStream already shows initial state
                                 elif event_type == "content":
                                     text = event_data.get("text", "")
                                     if text:
@@ -285,8 +284,7 @@ class AgentSlackBot:
                                     tool = event_data.get("tool", "")
                                     args = event_data.get("arguments", {})
                                     args_str = self._format_tool_args(args)
-                                    display = f":wrench: `{tool}`{args_str}"
-                                    status_lines.append(display)
+                                    status_lines.append(f":wrench: `{tool}`{args_str}")
                                 elif event_type == "tool_result":
                                     tool = event_data.get("tool", "")
                                     success = event_data.get("success", False)
@@ -304,28 +302,37 @@ class AgentSlackBot:
                                     )
 
                                 # Stream progress updates
-                                if event_type in ("thinking", "content", "tool_call", "tool_result") and stream_ts:
-                                    new_text = "\n".join(status_lines[-15:])
-                                    if new_text and new_text != last_streamed_text:
-                                        try:
-                                            if use_native_stream:
+                                if event_type in ("content", "tool_call", "tool_result") and stream_ts:
+                                    if use_native_stream:
+                                        # appendStream APPENDS — only send new lines
+                                        new_lines = status_lines[lines_sent_count:]
+                                        if new_lines:
+                                            delta = "\n".join(new_lines)
+                                            try:
                                                 await client.api_call(
                                                     "chat.appendStream",
                                                     json={
                                                         "channel": channel_id,
                                                         "ts": stream_ts,
-                                                        "markdown_text": new_text[:12000],
+                                                        "markdown_text": delta[:12000],
                                                     },
                                                 )
-                                            else:
+                                                lines_sent_count = len(status_lines)
+                                            except Exception:
+                                                pass
+                                    else:
+                                        # chat_update REPLACES — send full text
+                                        new_text = "\n".join(status_lines[-15:])
+                                        if new_text and new_text != last_streamed_text:
+                                            try:
                                                 await client.chat_update(
                                                     channel=channel_id,
                                                     ts=stream_ts,
                                                     text=new_text[:3000],
                                                 )
-                                            last_streamed_text = new_text
-                                        except Exception:
-                                            pass
+                                                last_streamed_text = new_text
+                                            except Exception:
+                                                pass
             except Exception as e_stream:
                 logger.error("slack_stream_error", error=str(e_stream))
                 response = AgentResponse(
