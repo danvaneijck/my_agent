@@ -41,3 +41,19 @@ class AgentResponse(BaseModel):
     files: list[dict] = []  # [{filename, url}]
     error: str | None = None
     tool_calls_metadata: ToolCallsMetadata | None = None
+
+
+class StreamEvent(BaseModel):
+    """Server-Sent Event emitted during the agent loop.
+
+    Event types:
+    - ``thinking``: The LLM is being called (shows intermediate text).
+    - ``tool_call``: A tool is about to be executed.
+    - ``tool_result``: A tool has finished executing.
+    - ``content``: Intermediate assistant text (alongside tool calls).
+    - ``done``: Final response — carries the full ``AgentResponse``.
+    - ``error``: An error occurred.
+    """
+
+    event: str  # thinking | tool_call | tool_result | content | done | error
+    data: dict = {}  # payload varies by event type

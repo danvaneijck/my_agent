@@ -30,9 +30,11 @@ from shared.models.user import User, UserPlatformLink
 from shared.schemas.messages import (
     AgentResponse,
     IncomingMessage,
+    StreamEvent,
     ToolCallsMetadata,
     ToolCallSummary,
 )
+from typing import AsyncGenerator
 
 logger = structlog.get_logger()
 
@@ -70,10 +72,32 @@ class AgentLoop:
             logger.warning("minio_client_init_failed", error=str(e))
 
     async def run(self, incoming: IncomingMessage) -> AgentResponse:
-        """Execute the agent loop for an incoming message."""
+        """Execute the agent loop for an incoming message (non-streaming).
+
+        Consumes the streaming generator and returns the final AgentResponse.
+        """
+        final_response = AgentResponse(
+            content="I encountered an internal error. Please try again.",
+            error="No response generated",
+        )
+        async for event in self.run_stream(incoming):
+            if event.event == "done":
+                final_response = AgentResponse(**event.data)
+            elif event.event == "error":
+                final_response = AgentResponse(
+                    content="I encountered an internal error. Please try again.",
+                    error=event.data.get("error", "Unknown error"),
+                )
+        return final_response
+
+    async def run_stream(
+        self, incoming: IncomingMessage
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """Execute the agent loop, yielding StreamEvents as work progresses."""
         async with self.session_factory() as session:
             try:
-                return await self._run_inner(session, incoming)
+                async for event in self._run_inner(session, incoming):
+                    yield event
             except Exception as e:
                 logger.error("agent_loop_error", error=str(e), exc_info=True)
                 asyncio.create_task(
@@ -85,16 +109,13 @@ class AgentLoop:
                         stack_trace=traceback.format_exc(),
                     )
                 )
-                return AgentResponse(
-                    content="I encountered an internal error. Please try again.",
-                    error=str(e),
-                )
+                yield StreamEvent(event="error", data={"error": str(e)})
 
     async def _run_inner(
         self,
         session: AsyncSession,
         incoming: IncomingMessage,
-    ) -> AgentResponse:
+    ) -> AsyncGenerator[StreamEvent, None]:
         # 1. Resolve user
         user = await self._resolve_user(session, incoming)
 
@@ -141,9 +162,10 @@ class AgentLoop:
 
         # 2b. Check token budget — skipped when user brings their own API keys.
         if not user_has_own_keys and not self._check_budget(user):
-            return AgentResponse(
+            yield StreamEvent(event="done", data=AgentResponse(
                 content="You've exceeded your monthly token budget. Please contact an admin to increase your limit."
-            )
+            ).model_dump())
+            return
 
         # 3. Resolve persona
         persona = await self._resolve_persona(session, incoming)
@@ -333,6 +355,11 @@ class AgentLoop:
         while iteration < self.settings.max_agent_iterations:
             iteration += 1
 
+            # Emit thinking event before LLM call
+            yield StreamEvent(event="thinking", data={
+                "iteration": iteration,
+            })
+
             # Call LLM — use per-user router when the user has personal API keys.
             try:
                 llm_response: LLMResponse = await active_router.chat(
@@ -413,6 +440,10 @@ class AgentLoop:
             if llm_response.content:
                 # Some models return text alongside tool calls
                 final_content = llm_response.content
+                yield StreamEvent(event="content", data={
+                    "text": llm_response.content,
+                    "iteration": iteration,
+                })
 
             for tool_call in llm_response.tool_calls:
                 tool_use_id = f"tool_{uuid.uuid4().hex[:12]}"
@@ -444,6 +475,12 @@ class AgentLoop:
                     if tool_call.tool_name == "scheduler.add_job":
                         tool_call.arguments["conversation_id"] = str(conversation.id)
 
+                # Emit tool_call event before execution
+                yield StreamEvent(event="tool_call", data={
+                    "tool": tool_call.tool_name,
+                    "arguments": tool_call.arguments,
+                })
+
                 # Execute tool (with server-side permission check)
                 result = await self.tool_registry.execute_tool(
                     tool_call, user_permission=user.permission_level,
@@ -459,6 +496,13 @@ class AgentLoop:
                     result = await self.tool_registry.execute_tool(
                         tool_call, user_permission=user.permission_level,
                     )
+
+                # Emit tool_result event
+                yield StreamEvent(event="tool_result", data={
+                    "tool": tool_call.tool_name,
+                    "success": result.success,
+                    "error": result.error if not result.success else None,
+                })
 
                 # Track tool call for metadata
                 tool_call_summaries.append(
@@ -548,9 +592,9 @@ class AgentLoop:
                 tools_sequence=tool_call_summaries,
             )
 
-        return AgentResponse(
+        yield StreamEvent(event="done", data=AgentResponse(
             content=final_content, files=files, tool_calls_metadata=tool_metadata
-        )
+        ).model_dump())
 
     async def _resolve_user(
         self,

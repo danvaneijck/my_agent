@@ -25,7 +25,8 @@ from shared.error_capture import capture_error
 from shared.models.persona import Persona
 from shared.redis import close_redis
 from shared.schemas.common import HealthResponse
-from shared.schemas.messages import AgentResponse, IncomingMessage
+from fastapi.responses import StreamingResponse
+from shared.schemas.messages import AgentResponse, IncomingMessage, StreamEvent
 
 structlog.configure(
     processors=[
@@ -225,6 +226,36 @@ async def handle_message(incoming: IncomingMessage, _=Depends(require_service_au
     )
 
     return response
+
+
+@app.post("/message/stream")
+async def handle_message_stream(
+    incoming: IncomingMessage, _=Depends(require_service_auth)
+):
+    """SSE endpoint that streams agent loop events as they happen."""
+    if agent_loop is None:
+        raise HTTPException(status_code=503, detail="Orchestrator not ready")
+
+    logger.info(
+        "incoming_message_stream",
+        platform=incoming.platform,
+        user=incoming.platform_user_id,
+        channel=incoming.platform_channel_id,
+    )
+
+    async def event_generator():
+        async for event in agent_loop.run_stream(incoming):
+            yield f"event: {event.event}\ndata: {json.dumps(event.data)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/health", response_model=HealthResponse)

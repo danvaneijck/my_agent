@@ -209,20 +209,105 @@ class AgentSlackBot:
             if not incoming.content:
                 incoming.content = "(attached files)"
 
-            # Call Orchestrator
-            async with httpx.AsyncClient(timeout=120.0, headers=get_service_auth_headers()) as http_client:
-                resp = await http_client.post(
-                    f"{self.settings.orchestrator_url}/message",
-                    json=incoming.model_dump(),
-                )
-                if resp.status_code == 200:
-                    response = AgentResponse(**resp.json())
-                else:
-                    response = AgentResponse(
-                        content="Sorry, I encountered an error processing your request.",
-                        error=f"HTTP {resp.status_code}",
-                    )
+            # Call Orchestrator (streaming)
+            response: AgentResponse | None = None
+            status_lines: list[str] = []
+            status_msg_ts: str | None = None
+            last_edit_text = ""
 
+            # Post an initial status message
+            try:
+                status_resp = await client.chat_postMessage(
+                    channel=channel_id,
+                    text=":hourglass_flowing_sand: Thinking...",
+                    thread_ts=thread_ts,
+                )
+                status_msg_ts = status_resp.get("ts")
+            except Exception:
+                pass
+
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(timeout=300, connect=10),
+                    headers=get_service_auth_headers(),
+                ) as http_client:
+                    async with http_client.stream(
+                        "POST",
+                        f"{self.settings.orchestrator_url}/message/stream",
+                        json=incoming.model_dump(),
+                    ) as stream:
+                        buffer = ""
+                        async for chunk in stream.aiter_text():
+                            buffer += chunk
+                            while "\n\n" in buffer:
+                                raw_event, buffer = buffer.split("\n\n", 1)
+                                event_type, event_data = self._parse_sse(raw_event)
+                                if not event_type:
+                                    continue
+
+                                if event_type == "thinking":
+                                    iteration = event_data.get("iteration", 1)
+                                    if iteration == 1:
+                                        status_lines = [":hourglass_flowing_sand: Thinking..."]
+                                    else:
+                                        status_lines.append(":hourglass_flowing_sand: Thinking...")
+                                elif event_type == "content":
+                                    text = event_data.get("text", "")
+                                    if text:
+                                        status_lines.append(text)
+                                elif event_type == "tool_call":
+                                    tool = event_data.get("tool", "")
+                                    status_lines.append(f":wrench: `{tool}`")
+                                elif event_type == "tool_result":
+                                    tool = event_data.get("tool", "")
+                                    success = event_data.get("success", False)
+                                    icon = ":white_check_mark:" if success else ":x:"
+                                    for i in range(len(status_lines) - 1, -1, -1):
+                                        if status_lines[i] == f":wrench: `{tool}`":
+                                            status_lines[i] = f"{icon} `{tool}`"
+                                            break
+                                elif event_type == "done":
+                                    response = AgentResponse(**event_data)
+                                elif event_type == "error":
+                                    response = AgentResponse(
+                                        content="I encountered an internal error. Please try again.",
+                                        error=event_data.get("error"),
+                                    )
+
+                                # Update the status message
+                                if event_type in ("thinking", "content", "tool_call", "tool_result") and status_msg_ts:
+                                    new_text = "\n".join(status_lines[-15:])
+                                    if new_text and new_text != last_edit_text:
+                                        try:
+                                            await client.chat_update(
+                                                channel=channel_id,
+                                                ts=status_msg_ts,
+                                                text=new_text[:3000],
+                                            )
+                                            last_edit_text = new_text
+                                        except Exception:
+                                            pass
+            except Exception as e_stream:
+                logger.error("slack_stream_error", error=str(e_stream))
+                response = AgentResponse(
+                    content="Sorry, I'm having trouble connecting to my brain. Please try again.",
+                    error=str(e_stream),
+                )
+
+            if response is None:
+                response = AgentResponse(
+                    content="Sorry, I didn't receive a complete response. Please try again.",
+                    error="Stream ended without done event",
+                )
+
+            # Delete the status message
+            if status_msg_ts:
+                try:
+                    await client.chat_delete(channel=channel_id, ts=status_msg_ts)
+                except Exception:
+                    pass
+
+            # Post the final response
             await BlockBuilder.post_response(
                 client=client,
                 channel_id=channel_id,
@@ -242,6 +327,25 @@ class AgentSlackBot:
                 text=f":warning: I encountered an error: {str(e)}",
                 thread_ts=thread_ts,
             )
+
+    @staticmethod
+    def _parse_sse(raw: str) -> tuple[str, dict]:
+        """Parse a single SSE event block into (event_type, data_dict)."""
+        import json as _json
+
+        event_type = ""
+        data_str = ""
+        for line in raw.strip().splitlines():
+            if line.startswith("event: "):
+                event_type = line[7:].strip()
+            elif line.startswith("data: "):
+                data_str = line[6:]
+        if not event_type or not data_str:
+            return "", {}
+        try:
+            return event_type, _json.loads(data_str)
+        except (ValueError, TypeError):
+            return event_type, {"raw": data_str}
 
     async def _should_reply_to_thread(self, client, event, bot_user_id: str | None = None) -> bool:
         """Check if the bot should reply to a generic thread message."""

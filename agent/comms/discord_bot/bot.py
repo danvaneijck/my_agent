@@ -106,36 +106,95 @@ class AgentDiscordBot(discord.Client):
             message, incoming.platform_user_id
         )
 
-        # Show typing indicator while processing
-        async with message.channel.typing():
-            try:
-                async with httpx.AsyncClient(timeout=120, headers=get_service_auth_headers()) as client:
-                    resp = await client.post(
-                        f"{self.settings.orchestrator_url}/message",
-                        json=incoming.model_dump(),
-                    )
-                    if resp.status_code == 200:
-                        from shared.schemas.messages import AgentResponse
+        # Send an initial placeholder that we'll edit with progress
+        status_msg = await message.reply("🔄 Thinking...", mention_author=False)
 
-                        response = AgentResponse(**resp.json())
-                    else:
-                        from shared.schemas.messages import AgentResponse
+        from shared.schemas.messages import AgentResponse
 
-                        response = AgentResponse(
-                            content="Sorry, I encountered an error processing your request.",
-                            error=f"HTTP {resp.status_code}",
-                        )
-            except Exception as e:
-                logger.error("discord_orchestrator_error", error=str(e))
-                from shared.schemas.messages import AgentResponse
+        response: AgentResponse | None = None
+        status_lines: list[str] = []
+        last_edit_text = ""
 
-                response = AgentResponse(
-                    content="Sorry, I'm having trouble connecting to my brain. Please try again.",
-                    error=str(e),
-                )
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(timeout=300, connect=10),
+                headers=get_service_auth_headers(),
+            ) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.settings.orchestrator_url}/message/stream",
+                    json=incoming.model_dump(),
+                ) as stream:
+                    buffer = ""
+                    async for chunk in stream.aiter_text():
+                        buffer += chunk
+                        # Parse SSE events from the buffer
+                        while "\n\n" in buffer:
+                            raw_event, buffer = buffer.split("\n\n", 1)
+                            event_type, event_data = self._parse_sse(raw_event)
+                            if not event_type:
+                                continue
+
+                            if event_type == "thinking":
+                                iteration = event_data.get("iteration", 1)
+                                if iteration == 1:
+                                    status_lines = ["🔄 Thinking..."]
+                                else:
+                                    status_lines.append("🔄 Thinking...")
+                            elif event_type == "content":
+                                text = event_data.get("text", "")
+                                if text:
+                                    status_lines.append(text)
+                            elif event_type == "tool_call":
+                                tool = event_data.get("tool", "")
+                                status_lines.append(f"🔧 `{tool}`")
+                            elif event_type == "tool_result":
+                                tool = event_data.get("tool", "")
+                                success = event_data.get("success", False)
+                                icon = "✅" if success else "❌"
+                                # Replace the last tool_call line with result
+                                for i in range(len(status_lines) - 1, -1, -1):
+                                    if status_lines[i] == f"🔧 `{tool}`":
+                                        status_lines[i] = f"{icon} `{tool}`"
+                                        break
+                            elif event_type == "done":
+                                response = AgentResponse(**event_data)
+                            elif event_type == "error":
+                                response = AgentResponse(
+                                    content="I encountered an internal error. Please try again.",
+                                    error=event_data.get("error"),
+                                )
+
+                            # Edit the status message (throttle to avoid rate limits)
+                            if event_type in ("thinking", "content", "tool_call", "tool_result"):
+                                new_text = "\n".join(status_lines[-15:])  # Keep last 15 lines
+                                if new_text and new_text != last_edit_text:
+                                    try:
+                                        await status_msg.edit(content=new_text[:2000])
+                                        last_edit_text = new_text
+                                    except discord.HTTPException:
+                                        pass  # Rate limited, skip this edit
+        except Exception as e:
+            logger.error("discord_orchestrator_error", error=str(e))
+            response = AgentResponse(
+                content="Sorry, I'm having trouble connecting to my brain. Please try again.",
+                error=str(e),
+            )
+
+        if response is None:
+            response = AgentResponse(
+                content="Sorry, I didn't receive a complete response. Please try again.",
+                error="Stream ended without done event",
+            )
 
         # Download response file attachments from MinIO
         discord_files = await self._download_files(response.files)
+
+        # Delete the status message and send the final response
+        try:
+            await status_msg.delete()
+        except discord.HTTPException:
+            pass
 
         # Send response chunks
         chunks = self.normalizer.format_response(response)
@@ -145,6 +204,25 @@ class AgentDiscordBot(discord.Client):
                 await message.reply(chunk, files=discord_files, mention_author=False)
             else:
                 await message.reply(chunk, mention_author=False)
+
+    @staticmethod
+    def _parse_sse(raw: str) -> tuple[str, dict]:
+        """Parse a single SSE event block into (event_type, data_dict)."""
+        import json as _json
+
+        event_type = ""
+        data_str = ""
+        for line in raw.strip().splitlines():
+            if line.startswith("event: "):
+                event_type = line[7:].strip()
+            elif line.startswith("data: "):
+                data_str = line[6:]
+        if not event_type or not data_str:
+            return "", {}
+        try:
+            return event_type, _json.loads(data_str)
+        except (ValueError, TypeError):
+            return event_type, {"raw": data_str}
 
     async def _ingest_attachments(
         self, message: discord.Message, platform_user_id: str
