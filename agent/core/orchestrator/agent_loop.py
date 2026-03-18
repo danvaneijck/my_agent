@@ -96,6 +96,7 @@ class AgentLoop:
             user_settings = self.settings.model_copy(update=user_overrides)
             active_router = LLMRouter(user_settings)
             user_has_own_keys = True
+            using_claude_oauth = False
             logger.info("using_user_llm_keys", user_id=str(user.id))
         else:
             # 2a-bis. Fall back to Claude Code OAuth credentials.
@@ -119,10 +120,12 @@ class AgentLoop:
                     self.settings, "anthropic", oauth_provider,
                 )
                 user_has_own_keys = True
+                using_claude_oauth = True
                 logger.info("using_claude_code_oauth", user_id=str(user.id))
             else:
                 active_router = self.llm_router
                 user_has_own_keys = False
+                using_claude_oauth = False
 
         # 2b. Check token budget — skipped when user brings their own API keys.
         if not user_has_own_keys and not self._check_budget(user):
@@ -347,12 +350,16 @@ class AgentLoop:
             # Log token usage (including Anthropic prompt cache tokens)
             cache_write = llm_response.cache_creation_input_tokens
             cache_read = llm_response.cache_read_input_tokens
-            cost = estimate_cost(
-                llm_response.model or model,
-                llm_response.input_tokens,
-                llm_response.output_tokens,
-                cache_creation_input_tokens=cache_write,
-                cache_read_input_tokens=cache_read,
+            # Zero cost for Claude Code OAuth — billed to subscription, not API
+            cost = (
+                0.0 if using_claude_oauth
+                else estimate_cost(
+                    llm_response.model or model,
+                    llm_response.input_tokens,
+                    llm_response.output_tokens,
+                    cache_creation_input_tokens=cache_write,
+                    cache_read_input_tokens=cache_read,
+                )
             )
             token_log = TokenLog(
                 id=uuid.uuid4(),
@@ -368,14 +375,15 @@ class AgentLoop:
             )
             session.add(token_log)
 
-            # Update user token usage — include cache tokens so the budget
-            # counter reflects real API consumption.
-            user.tokens_used_this_month += (
-                llm_response.input_tokens
-                + llm_response.output_tokens
-                + cache_write
-                + cache_read
-            )
+            # Update user token usage — skip for Claude Code OAuth users
+            # since their usage is billed to their subscription, not our API.
+            if not using_claude_oauth:
+                user.tokens_used_this_month += (
+                    llm_response.input_tokens
+                    + llm_response.output_tokens
+                    + cache_write
+                    + cache_read
+                )
 
             # If LLM returns final text
             if llm_response.stop_reason != "tool_use" or not llm_response.tool_calls:
