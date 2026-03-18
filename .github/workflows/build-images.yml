@@ -67,6 +67,7 @@ jobs:
             "benchmarker|agent/modules/benchmarker/Dockerfile|./agent|agent/modules/benchmarker/"
             "crew|agent/modules/crew/Dockerfile|./agent|agent/modules/crew/"
             "injective|agent/modules/injective/Dockerfile|./agent|agent/modules/injective/"
+            "error-manager|agent/modules/error_manager/Dockerfile|./agent|agent/modules/error_manager/"
           )
 
           # ── Manual dispatch: build explicitly listed services (or all) ──

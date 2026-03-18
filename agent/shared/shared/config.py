@@ -196,6 +196,7 @@ class Settings(BaseSettings):
         "crew": "http://crew:8000",
         "weather": "http://weather:8000",
         "benchmarker": "http://benchmarker:8000",
+        "error_manager": "http://error-manager:8000",
     }
 
     # Model routing (set via JSON in .env if overriding)

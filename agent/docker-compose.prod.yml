@@ -329,6 +329,17 @@ services:
         max-size: "5m"
         max-file: "3"
 
+  error-manager:
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
   # --- Portal ---
   portal:
     deploy:
