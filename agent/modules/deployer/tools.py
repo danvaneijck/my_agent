@@ -1220,7 +1220,9 @@ class DeployerTools:
                 cmd: list[str] = [
                     "docker", "run", "-d",
                     "--name", proxy_name,
-                    f"--network={compose_network}",
+                    # Start on the proxy network so Traefik sees it immediately.
+                    # The compose network is added after via docker network connect.
+                    "--network=proxy",
                     "--restart=unless-stopped",
                     # Traefik labels for subdomain routing
                     "-l", "traefik.enable=true",
@@ -1256,29 +1258,28 @@ class DeployerTools:
                     )
                     continue
 
-                # Connect the proxy to deploy-net
+                # Connect to the compose network so nginx can reach the app
+                compose_net_proc = await asyncio.create_subprocess_exec(
+                    "docker", "network", "connect", compose_network, proxy_name,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr_cn = await compose_net_proc.communicate()
+                if compose_net_proc.returncode != 0:
+                    logger.warning(
+                        "compose_proxy_compose_network_failed",
+                        deploy_id=deploy_id,
+                        service=service_name,
+                        error=stderr_cn.decode("utf-8", errors="replace")[:500],
+                    )
+
+                # Connect to deploy-net
                 proc2 = await asyncio.create_subprocess_exec(
                     "docker", "network", "connect", self._network, proxy_name,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                _, stderr2 = await proc2.communicate()
-
-                if proc2.returncode != 0:
-                    logger.warning(
-                        "compose_proxy_network_connect_failed",
-                        deploy_id=deploy_id,
-                        service=service_name,
-                        error=stderr2.decode("utf-8", errors="replace")[:500],
-                    )
-
-                # Connect to the proxy network so Traefik can reach it
-                proxy_net_proc = await asyncio.create_subprocess_exec(
-                    "docker", "network", "connect", "proxy", proxy_name,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await proxy_net_proc.communicate()
+                await proc2.communicate()
 
 
                 created.append(proxy_name)
