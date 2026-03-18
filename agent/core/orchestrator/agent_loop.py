@@ -111,25 +111,25 @@ class AgentLoop:
             using_claude_oauth = False
             logger.info("using_user_llm_keys", user_id=str(user.id))
         else:
-            # 2a-bis. Fall back to Claude Code OAuth credentials.
-            # Users with a Claude Code subscription can use their OAuth
-            # tokens for regular chat without a separate API key.
+            # 2a-bis. Fall back to Claude Code CLI with OAuth credentials.
+            # Users with a Claude Code subscription can use the CLI as
+            # the LLM backend without a separate API key.
             oauth_json = await get_user_claude_code_oauth(
                 session, user.id, self.credential_store
             )
             if oauth_json:
                 from core.llm_router.providers.claude_code_oauth import (
-                    ClaudeCodeOAuthProvider,
+                    ClaudeCodeCLIProvider,
                 )
 
-                oauth_provider = ClaudeCodeOAuthProvider(
+                cli_provider = ClaudeCodeCLIProvider(
                     credentials_json=oauth_json,
                     credential_store=self.credential_store,
                     user_id=str(user.id),
                     session_factory=self.session_factory,
                 )
                 active_router = LLMRouter.with_provider_override(
-                    self.settings, "anthropic", oauth_provider,
+                    self.settings, "anthropic", cli_provider,
                 )
                 user_has_own_keys = True
                 using_claude_oauth = True
