@@ -27,6 +27,7 @@ from shared.models.memory import MemorySummary
 from shared.models.persona import Persona
 from shared.models.token_usage import TokenLog
 from shared.models.user import User, UserPlatformLink
+from shared.models.user_credential import UserCredential
 
 app = FastAPI(title="Agent Admin Dashboard", version="1.0.0")
 settings = get_settings()
@@ -758,12 +759,42 @@ async def admin_users_list():
         )
         users = users_result.scalars().all()
 
+        # Batch-fetch which users have Claude Code OAuth credentials
+        cred_result = await s.execute(
+            select(UserCredential.user_id).where(
+                UserCredential.service == "claude_code",
+                UserCredential.credential_key == "credentials_json",
+            )
+        )
+        users_with_oauth = {row[0] for row in cred_result.all()}
+
+        # Also check which users have their own LLM API keys
+        llm_result = await s.execute(
+            select(UserCredential.user_id).where(
+                UserCredential.service == "llm_settings",
+                UserCredential.credential_key.in_([
+                    "anthropic_api_key", "openai_api_key", "google_api_key",
+                ]),
+            )
+        )
+        users_with_api_keys = {row[0] for row in llm_result.all()}
+
         data = []
         for u in users:
             links_result = await s.execute(
                 select(UserPlatformLink).where(UserPlatformLink.user_id == u.id)
             )
             links = links_result.scalars().all()
+
+            # Determine LLM auth source
+            has_api_keys = u.id in users_with_api_keys
+            has_claude_oauth = u.id in users_with_oauth
+            if has_api_keys:
+                llm_auth = "api_key"
+            elif has_claude_oauth:
+                llm_auth = "claude_code_oauth"
+            else:
+                llm_auth = "global"
 
             data.append({
                 "id": str(u.id),
@@ -772,6 +803,7 @@ async def admin_users_list():
                 "tokens_used_this_month": u.tokens_used_this_month,
                 "budget_reset_at": u.budget_reset_at.isoformat() if u.budget_reset_at else None,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
+                "llm_auth": llm_auth,
                 "platforms": [
                     {
                         "id": str(lnk.id),

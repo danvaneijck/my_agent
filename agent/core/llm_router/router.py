@@ -35,6 +35,32 @@ class LLMRouter:
         self.model_map: dict[str, str] = {}  # model prefix -> provider name
         self._setup_providers()
 
+    @classmethod
+    def with_provider_override(
+        cls,
+        base_settings: Settings,
+        provider_name: str,
+        provider_instance: LLMProvider,
+    ) -> "LLMRouter":
+        """Create a router with one provider replaced by an external instance.
+
+        Builds a normal router from *base_settings* (which registers any
+        providers that have global API keys configured), then replaces the
+        named provider with *provider_instance*.  This preserves embedding
+        fallback logic and model routing while injecting, for example, a
+        Claude Code OAuth provider for the ``anthropic`` slot.
+        """
+        router = cls(base_settings)
+        router.providers[provider_name] = provider_instance
+        # Re-resolve defaults now that a new provider is available
+        router._resolve_effective_defaults()
+        logger.info(
+            "provider_override_applied",
+            provider=provider_name,
+            provider_type=type(provider_instance).__name__,
+        )
+        return router
+
     def _setup_providers(self) -> None:
         """Register providers based on available API keys."""
         if self.settings.anthropic_api_key:

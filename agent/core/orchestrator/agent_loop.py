@@ -20,7 +20,7 @@ from core.orchestrator.tool_registry import ToolRegistry
 from shared.config import Settings, parse_list
 from shared.error_capture import capture_error
 from shared.utils.tokens import count_tokens, count_messages_tokens
-from shared.llm_settings_resolver import get_user_llm_overrides
+from shared.llm_settings_resolver import get_user_llm_overrides, get_user_claude_code_oauth
 from shared.models.conversation import Conversation, Message
 from shared.models.file import FileRecord
 from shared.models.persona import Persona
@@ -96,8 +96,31 @@ class AgentLoop:
             user_has_own_keys = True
             logger.info("using_user_llm_keys", user_id=str(user.id))
         else:
-            active_router = self.llm_router
-            user_has_own_keys = False
+            # 2a-bis. Fall back to Claude Code OAuth credentials.
+            # Users with a Claude Code subscription can use their OAuth
+            # tokens for regular chat without a separate API key.
+            oauth_json = await get_user_claude_code_oauth(
+                session, user.id, self.credential_store
+            )
+            if oauth_json:
+                from core.llm_router.providers.claude_code_oauth import (
+                    ClaudeCodeOAuthProvider,
+                )
+
+                oauth_provider = ClaudeCodeOAuthProvider(
+                    credentials_json=oauth_json,
+                    credential_store=self.credential_store,
+                    user_id=str(user.id),
+                    session_factory=self.session_factory,
+                )
+                active_router = LLMRouter.with_provider_override(
+                    self.settings, "anthropic", oauth_provider,
+                )
+                user_has_own_keys = True
+                logger.info("using_claude_code_oauth", user_id=str(user.id))
+            else:
+                active_router = self.llm_router
+                user_has_own_keys = False
 
         # 2b. Check token budget — skipped when user brings their own API keys.
         if not user_has_own_keys and not self._check_budget(user):

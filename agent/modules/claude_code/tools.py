@@ -149,10 +149,7 @@ async def _resolve_network_name(hint: str = WORKER_NETWORK) -> str:
         pass
     return hint
 
-# Anthropic OAuth constants (same as Claude Code CLI uses)
-_CLAUDE_CODE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-_CLAUDE_OAUTH_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
-_TOKEN_REFRESH_THRESHOLD_MS = 30 * 60 * 1000  # refresh if < 30 min remaining
+from shared.oauth_refresh import refresh_and_persist
 
 
 def _validate_git_ref(value: str, label: str) -> None:
@@ -167,86 +164,30 @@ async def _maybe_refresh_credentials(user_id: str, credentials_json: str) -> str
     Returns the (possibly updated) credentials JSON string.  On refresh failure,
     returns the original credentials so the task can still attempt to run.
     Also persists refreshed tokens to the database for future tasks.
+
+    Delegates to the shared :func:`shared.oauth_refresh.refresh_and_persist`.
     """
+    from shared.config import get_settings
+    from shared.credential_store import CredentialStore
+    from shared.database import get_session_factory
+
+    credential_store = None
+    session_factory = None
     try:
-        creds = json.loads(credentials_json)
-        oauth = creds.get("claudeAiOauth", {})
-        if not oauth:
-            return credentials_json
+        settings = get_settings()
+        if settings.credential_encryption_key:
+            credential_store = CredentialStore(settings.credential_encryption_key)
+            session_factory = get_session_factory()
+    except Exception:
+        pass
 
-        expires_at_ms = oauth.get("expiresAt") or oauth.get("expires_at", 0)
-        now_ms = int(time.time() * 1000)
-
-        if expires_at_ms and (expires_at_ms - now_ms) > _TOKEN_REFRESH_THRESHOLD_MS:
-            # Token is still fresh — no refresh needed
-            return credentials_json
-
-        refresh_tok = oauth.get("refreshToken") or oauth.get("refresh_token")
-        if not refresh_tok:
-            logger.warning("token_expiring_no_refresh_token", user_id=user_id)
-            return credentials_json
-
-        logger.info(
-            "proactive_token_refresh",
-            user_id=user_id,
-            expires_in_ms=max(0, expires_at_ms - now_ms) if expires_at_ms else 0,
-        )
-
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                _CLAUDE_OAUTH_TOKEN_URL,
-                json={
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_tok,
-                    "client_id": _CLAUDE_CODE_CLIENT_ID,
-                },
-                headers={"Content-Type": "application/json"},
-            )
-            if resp.status_code != 200:
-                logger.warning(
-                    "proactive_token_refresh_failed",
-                    user_id=user_id,
-                    status=resp.status_code,
-                )
-                return credentials_json
-
-            new_tokens = resp.json()
-
-        # Update the credentials structure
-        new_now_ms = int(time.time() * 1000)
-        expires_in = new_tokens.get("expires_in", 28800)
-        oauth["accessToken"] = new_tokens["access_token"]
-        if new_tokens.get("refresh_token"):
-            oauth["refreshToken"] = new_tokens["refresh_token"]
-        oauth["expiresAt"] = new_now_ms + (expires_in * 1000)
-        creds["claudeAiOauth"] = oauth
-        updated_json = json.dumps(creds)
-
-        # Persist refreshed tokens to DB so future tasks use them
-        try:
-            from shared.config import get_settings
-            from shared.credential_store import CredentialStore
-            from shared.database import get_session_factory
-
-            settings = get_settings()
-            if settings.credential_encryption_key:
-                store = CredentialStore(settings.credential_encryption_key)
-                factory = get_session_factory()
-                async with factory() as session:
-                    await store.set(
-                        session, user_id, "claude_code", "credentials_json",
-                        updated_json,
-                    )
-                logger.info("proactive_token_refresh_persisted", user_id=user_id)
-        except Exception as e:
-            logger.warning("proactive_token_refresh_persist_failed", error=str(e))
-
-        logger.info("proactive_token_refresh_success", user_id=user_id)
-        return updated_json
-
-    except Exception as e:
-        logger.warning("proactive_token_refresh_error", user_id=user_id, error=str(e))
-        return credentials_json
+    return await refresh_and_persist(
+        credentials_json,
+        user_id=user_id,
+        threshold_ms=30 * 60 * 1000,  # 30 min for container tasks
+        credential_store=credential_store,
+        session_factory=session_factory,
+    )
 
 
 # ---------------------------------------------------------------------------

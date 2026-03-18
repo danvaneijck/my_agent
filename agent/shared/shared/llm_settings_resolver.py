@@ -56,3 +56,33 @@ async def get_user_llm_overrides(
         for k in ("anthropic_api_key", "openai_api_key", "google_api_key")
     )
     return overrides if has_api_key else None
+
+
+async def get_user_claude_code_oauth(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    credential_store,  # CredentialStore | None
+) -> str | None:
+    """Return the user's Claude Code OAuth credentials JSON, or None.
+
+    Checks the ``claude_code`` service for a ``credentials_json`` key that
+    contains a valid ``claudeAiOauth.accessToken``.  Used as a fallback when
+    the user has no explicit LLM API keys — their Claude Code subscription
+    can still power the agent's LLM calls.
+    """
+    if credential_store is None:
+        return None
+
+    credentials_json = await credential_store.get(
+        session, user_id, "claude_code", "credentials_json"
+    )
+    if not credentials_json:
+        return None
+
+    # Validate that it actually contains OAuth tokens
+    from shared.oauth_refresh import parse_oauth_credentials
+
+    if parse_oauth_credentials(credentials_json) is None:
+        return None
+
+    return credentials_json
