@@ -217,7 +217,13 @@ class ContextBuilder:
         """Build the system prompt from persona configuration."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         scheduler_guidance = (
-            "\n\nWhen you submit a long-running task (like claude_code.run_task), "
+            "\n\nIMPORTANT — You have NO ability to follow up, monitor, or check back "
+            "on anything after this response ends. Each message you handle is a "
+            "one-shot invocation. If you need something to happen later (monitor a "
+            "task, deploy after a build, notify the user), you MUST use "
+            "scheduler.add_job before your response ends. Never say 'I'll check back' "
+            "or 'I'll update you' without actually calling the scheduler.\n"
+            "When you submit a long-running task (like claude_code.run_task), "
             "use scheduler.add_job to monitor it. For multi-step workflows "
             "(e.g. build then deploy), use on_complete='resume_conversation' "
             "so the conversation resumes automatically when the task completes "
