@@ -26,6 +26,29 @@ logger = structlog.get_logger()
 # Timeout for CLI subprocess (seconds)
 _CLI_TIMEOUT = 120
 
+# Default model for CLI provider
+_DEFAULT_CLI_MODEL = "claude-opus-4-6"
+
+# Map API model names to CLI-compatible short names
+_MODEL_MAP = {
+    "claude-opus-4-6": "claude-opus-4-6",
+    "claude-sonnet-4-6": "claude-sonnet-4-6",
+    "claude-sonnet-4-20250514": "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001": "claude-haiku-4-5",
+    "claude-haiku-4-5": "claude-haiku-4-5",
+}
+
+
+def _resolve_cli_model(model: str) -> str:
+    """Map an API model name to a CLI-compatible model name."""
+    if model in _MODEL_MAP:
+        return _MODEL_MAP[model]
+    # If it starts with claude, pass through (CLI might accept it)
+    if model.startswith("claude-"):
+        return model
+    # Non-Claude models can't run on the CLI
+    return _DEFAULT_CLI_MODEL
+
 
 class ClaudeCodeCLIProvider(LLMProvider):
     """LLM provider that uses the Claude Code CLI subprocess.
@@ -143,91 +166,73 @@ class ClaudeCodeCLIProvider(LLMProvider):
 
         return "\n\n".join(parts)
 
-    def _parse_cli_output(self, stdout: str) -> LLMResponse:
-        """Parse the CLI JSON output into an LLMResponse."""
-        # CLI with --output-format json returns newline-delimited JSON objects
-        json_objects = []
-        for line in stdout.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                json_objects.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+    def _parse_cli_output(self, stdout: str, requested_model: str) -> LLMResponse:
+        """Parse the CLI JSON output into an LLMResponse.
 
-        content = None
-        tool_calls: list[ToolCall] = []
-        input_tokens = 0
-        output_tokens = 0
-        model = ""
-        stop_reason = "end_turn"
+        The CLI with ``--output-format json`` returns a single JSON object
+        with ``type: "result"`` containing the response text, usage, model
+        info, and cost.
 
-        for obj in json_objects:
-            obj_type = obj.get("type", "")
+        Example output::
 
-            if obj_type == "assistant":
-                msg = obj.get("message", {})
-                # Extract usage
-                usage = msg.get("usage", {})
-                input_tokens += usage.get("input_tokens", 0)
-                output_tokens += usage.get("output_tokens", 0)
-                model = msg.get("model", model)
+            {
+              "type": "result",
+              "subtype": "success",
+              "result": "Hello! How can I help you?",
+              "stop_reason": "end_turn",
+              "usage": {"input_tokens": 3, "output_tokens": 12, ...},
+              "modelUsage": {"claude-sonnet-4-6": {"inputTokens": 3, ...}},
+              ...
+            }
+        """
+        try:
+            obj = json.loads(stdout.strip())
+        except json.JSONDecodeError:
+            # Try to find a JSON object in the output (might have extra lines)
+            obj = None
+            for line in stdout.strip().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    parsed = json.loads(line)
+                    if isinstance(parsed, dict) and parsed.get("type") == "result":
+                        obj = parsed
+                        break
+                except json.JSONDecodeError:
+                    continue
 
-                # Extract stop reason
-                sr = msg.get("stop_reason", "")
-                if sr:
-                    stop_reason = sr
+        if not obj:
+            return LLMResponse(
+                content=stdout.strip() or None,
+                model=requested_model,
+                stop_reason="end_turn",
+            )
 
-            elif obj_type == "content_block_start":
-                block = obj.get("content_block", {})
-                if block.get("type") == "text":
-                    content = block.get("text", "")
-                elif block.get("type") == "tool_use":
-                    # Will be populated by content_block_delta
-                    pass
+        # Extract response text
+        content = obj.get("result", "")
 
-            elif obj_type == "content_block_delta":
-                delta = obj.get("delta", {})
-                if delta.get("type") == "text_delta":
-                    if content is None:
-                        content = ""
-                    content += delta.get("text", "")
+        # Extract usage
+        usage = obj.get("usage", {})
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        cache_creation = usage.get("cache_creation_input_tokens", 0)
+        cache_read = usage.get("cache_read_input_tokens", 0)
 
-            elif obj_type == "result":
-                # Final result object from CLI
-                result_text = obj.get("result", "")
-                if result_text and content is None:
-                    content = result_text
-                # Check for tool use in the result
-                sub = obj.get("subtype", "")
-                if sub == "tool_use":
-                    stop_reason = "tool_use"
+        # Extract model name from modelUsage keys
+        model_usage = obj.get("modelUsage", {})
+        model = next(iter(model_usage), "") if model_usage else ""
 
-            elif obj_type == "message":
-                # Some CLI versions output a message object
-                msg_content = obj.get("content", [])
-                if isinstance(msg_content, list):
-                    for block in msg_content:
-                        if block.get("type") == "text":
-                            content = block.get("text", content)
-                        elif block.get("type") == "tool_use":
-                            tool_calls.append(ToolCall(
-                                tool_name=block.get("name", ""),
-                                arguments=block.get("input", {}),
-                            ))
-                            stop_reason = "tool_use"
-
-        # If no structured output, use raw stdout as content
-        if content is None and not tool_calls:
-            content = stdout.strip() if stdout.strip() else None
+        # Extract stop reason
+        stop_reason = obj.get("stop_reason", "end_turn") or "end_turn"
 
         return LLMResponse(
-            content=content,
-            tool_calls=tool_calls,
+            content=content or None,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            model=model,
+            cache_creation_input_tokens=cache_creation,
+            cache_read_input_tokens=cache_read,
+            model=model or requested_model,
             stop_reason=stop_reason,
         )
 
@@ -235,13 +240,14 @@ class ClaudeCodeCLIProvider(LLMProvider):
         self,
         messages: list[dict],
         tools: list[dict] | None = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-opus-4-6",
         max_tokens: int = 4000,
         temperature: float = 0.7,
     ) -> LLMResponse:
         """Run a chat completion via the Claude Code CLI."""
         await self._ensure_fresh_token()
 
+        model = _resolve_cli_model(model)
         prompt = self._serialize_context(messages, tools, max_tokens)
 
         # Write credentials to a temp directory
@@ -309,7 +315,7 @@ class ClaudeCodeCLIProvider(LLMProvider):
                 )
                 raise RuntimeError(f"Claude CLI exited with code {proc.returncode}: {error_msg[:200]}")
 
-            response = self._parse_cli_output(stdout)
+            response = self._parse_cli_output(stdout, model)
             logger.info(
                 "claude_cli_response",
                 user_id=self._user_id,
