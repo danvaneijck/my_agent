@@ -26,28 +26,8 @@ logger = structlog.get_logger()
 # Timeout for CLI subprocess (seconds)
 _CLI_TIMEOUT = 120
 
-# Default model for CLI provider
-_DEFAULT_CLI_MODEL = "claude-opus-4-6"
-
-# Map API model names to CLI-compatible short names
-_MODEL_MAP = {
-    "claude-opus-4-6": "claude-opus-4-6",
-    "claude-sonnet-4-6": "claude-sonnet-4-6",
-    "claude-sonnet-4-20250514": "claude-sonnet-4-6",
-    "claude-haiku-4-5-20251001": "claude-haiku-4-5",
-    "claude-haiku-4-5": "claude-haiku-4-5",
-}
-
-
-def _resolve_cli_model(model: str) -> str:
-    """Map an API model name to a CLI-compatible model name."""
-    if model in _MODEL_MAP:
-        return _MODEL_MAP[model]
-    # If it starts with claude, pass through (CLI might accept it)
-    if model.startswith("claude-"):
-        return model
-    # Non-Claude models can't run on the CLI
-    return _DEFAULT_CLI_MODEL
+# Default model for CLI provider — use alias for best compatibility
+_DEFAULT_CLI_MODEL = "opus"
 
 
 class ClaudeCodeCLIProvider(LLMProvider):
@@ -247,7 +227,8 @@ class ClaudeCodeCLIProvider(LLMProvider):
         """Run a chat completion via the Claude Code CLI."""
         await self._ensure_fresh_token()
 
-        model = _resolve_cli_model(model)
+        # Always use the CLI default model (Opus) — the CLI uses short aliases
+        cli_model = _DEFAULT_CLI_MODEL
         prompt = self._serialize_context(messages, tools, max_tokens)
 
         # Write credentials to a temp directory
@@ -271,13 +252,13 @@ class ClaudeCodeCLIProvider(LLMProvider):
                 "claude",
                 "-p", prompt,
                 "--output-format", "json",
-                "--model", model,
+                "--model", cli_model,
             ]
 
             logger.info(
                 "claude_cli_call",
                 user_id=self._user_id,
-                model=model,
+                model=cli_model,
                 prompt_len=len(prompt),
             )
 
@@ -315,7 +296,7 @@ class ClaudeCodeCLIProvider(LLMProvider):
                 )
                 raise RuntimeError(f"Claude CLI exited with code {proc.returncode}: {error_msg[:200]}")
 
-            response = self._parse_cli_output(stdout, model)
+            response = self._parse_cli_output(stdout, cli_model)
             logger.info(
                 "claude_cli_response",
                 user_id=self._user_id,
