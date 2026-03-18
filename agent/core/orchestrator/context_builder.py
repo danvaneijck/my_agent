@@ -121,7 +121,7 @@ class ContextBuilder:
         messages: list[dict] = []
 
         # 1. System prompt
-        system_prompt = self._build_system_prompt(persona)
+        system_prompt = self._build_system_prompt(persona, platform=conversation.platform)
         messages.append({"role": "system", "content": system_prompt})
 
         # 2. Active project summaries
@@ -213,9 +213,34 @@ class ContextBuilder:
 
         return messages
 
-    def _build_system_prompt(self, persona: Persona | None) -> str:
+    def _build_system_prompt(self, persona: Persona | None, platform: str = "") -> str:
         """Build the system prompt from persona configuration."""
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+        # Platform-specific formatting guidance
+        _platform_formatting = {
+            "discord": (
+                "\n\nYou are responding on Discord. Formatting rules:"
+                "\n- Discord does NOT support markdown tables. Use bullet points or code blocks instead."
+                "\n- Use **bold**, *italic*, `code`, ```code blocks```, > quotes."
+                "\n- Keep messages under 2000 characters. Split longer responses."
+                "\n- Use emojis sparingly for visual cues."
+            ),
+            "slack": (
+                "\n\nYou are responding on Slack. Formatting rules:"
+                "\n- Slack uses mrkdwn, not standard markdown. *bold*, _italic_, `code`, ```code blocks```."
+                "\n- Slack does NOT support markdown tables. Use bullet points or code blocks instead."
+                "\n- Links: <url|display text>. Do NOT use [text](url) markdown links."
+                "\n- Keep messages concise — Slack truncates long messages."
+            ),
+            "telegram": (
+                "\n\nYou are responding on Telegram. Formatting rules:"
+                "\n- Use Telegram markdown: **bold**, __italic__, `code`, ```code blocks```."
+                "\n- Tables are not supported. Use bullet points or code blocks."
+                "\n- Keep messages under 4096 characters."
+            ),
+        }
+        formatting_guidance = _platform_formatting.get(platform, "")
         scheduler_guidance = (
             "\n\nIMPORTANT — You have NO ability to follow up, monitor, or check back "
             "on anything after this response ends. Each message you handle is a "
@@ -252,6 +277,7 @@ class ContextBuilder:
                 f"You have access to tools. Use them when needed to accomplish tasks."
                 f"{scheduler_guidance}"
                 f"{claude_code_guidance}"
+                f"{formatting_guidance}"
             )
         return (
             "You are a helpful AI assistant with access to various tools. "
@@ -260,6 +286,7 @@ class ContextBuilder:
             "You have access to tools. Use them when needed to accomplish tasks."
             f"{scheduler_guidance}"
             f"{claude_code_guidance}"
+            f"{formatting_guidance}"
         )
 
     async def _get_active_projects(
