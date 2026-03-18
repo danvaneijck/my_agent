@@ -88,6 +88,22 @@ class ClaudeCodeCLIProvider(LLMProvider):
         """
         parts: list[str] = []
 
+        # Lead with the tool calling protocol so the model sees it FIRST,
+        # before the 100K+ tokens of context and tool definitions.
+        if tools:
+            parts.append(
+                "<system>\n"
+                "YOU ARE AN AGENT WITH TOOL CALLING CAPABILITY.\n"
+                "When you need to perform an action, output ONLY this JSON:\n"
+                '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n'
+                "RULES:\n"
+                "- Output the JSON tool call, nothing else. No narration before or after.\n"
+                "- NEVER write fake tool calls/results in your text. NEVER role-play calling tools.\n"
+                "- NEVER describe what you would do — DO IT by outputting the JSON.\n"
+                "- Only write plain text when you have completed ALL actions.\n"
+                "</system>"
+            )
+
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
@@ -140,7 +156,8 @@ class ClaudeCodeCLIProvider(LLMProvider):
                 "</system>"
             )
 
-        # Append tool definitions if present
+        # Append tool definitions — use compact format to reduce token count.
+        # Full JSON schemas bloat the prompt by ~40K tokens for 178 tools.
         if tools:
             tool_section = "\n<available_tools>\n"
             for tool in tools:
@@ -148,19 +165,24 @@ class ClaudeCodeCLIProvider(LLMProvider):
                 name = func.get("name", "")
                 desc = func.get("description", "")
                 params = func.get("parameters", {})
-                tool_section += (
-                    f"- {name}: {desc}\n"
-                    f"  Parameters: {json.dumps(params)}\n"
-                )
+                # Compact param summary: just names, types, and required flag
+                props = params.get("properties", {})
+                required = set(params.get("required", []))
+                if props:
+                    param_parts = []
+                    for pname, pdef in props.items():
+                        ptype = pdef.get("type", "string")
+                        req = " (required)" if pname in required else ""
+                        pdesc = pdef.get("description", "")
+                        short_desc = f" - {pdesc[:80]}" if pdesc else ""
+                        param_parts.append(f"    {pname}: {ptype}{req}{short_desc}")
+                    param_str = "\n".join(param_parts)
+                    tool_section += f"- {name}: {desc}\n{param_str}\n"
+                else:
+                    tool_section += f"- {name}: {desc}\n"
             tool_section += (
-                "\nCRITICAL TOOL CALLING RULES:\n"
-                "When you need to perform an action, you MUST output ONLY a JSON object:\n"
-                '{"tool_calls": [{"name": "tool_name", "arguments": {...}}]}\n'
-                "Do NOT describe what you would do — actually call the tool.\n"
-                "Do NOT say 'Let me deploy' then respond with text — emit the tool call JSON.\n"
-                "Do NOT narrate actions. Either call a tool or give a final text answer.\n"
-                "You may call multiple tools at once in the tool_calls array.\n"
-                "Only respond with plain text when you have NO more actions to take.\n"
+                "\nRemember: output ONLY {\"tool_calls\": [{\"name\": \"...\", \"arguments\": {...}}]} "
+                "to call tools. No narration.\n"
                 "</available_tools>\n"
             )
             parts.append(tool_section)
