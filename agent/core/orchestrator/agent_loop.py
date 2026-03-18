@@ -312,6 +312,20 @@ class AgentLoop:
             else:
                 message_content = incoming.content + file_context
 
+        # 7b. Vision fallback — the CLI provider can't pass images, so when
+        # images are attached and we're on Claude OAuth, fall back to the
+        # global LLM router (which uses the API key and supports vision).
+        has_images = isinstance(message_content, list) and any(
+            b.get("type") == "image" for b in message_content
+        )
+        if has_images and using_claude_oauth:
+            if self.llm_router.providers:
+                logger.info("vision_fallback_to_api", user_id=str(user.id))
+                active_router = self.llm_router
+                using_claude_oauth = False
+            else:
+                logger.warning("vision_no_api_fallback", user_id=str(user.id))
+
         # 8. Build context — pass the active router so semantic memory embeddings
         # also use the user's own keys when configured.
         context = await self.context_builder.build(
