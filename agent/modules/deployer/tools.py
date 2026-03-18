@@ -1390,6 +1390,9 @@ class DeployerTools:
                 if first_http:
                     deployment.url = f"https://{deploy_id}.{DEPLOY_BASE_DOMAIN}"
 
+            # Pre-build: patch Dockerfiles for known issues (Prisma, etc.)
+            await self._patch_dockerfiles(project_path)
+
             # Build and start services
             logger.info("compose_build_starting", deploy_id=deploy_id)
             cmd = [
@@ -1727,6 +1730,65 @@ class DeployerTools:
     # ------------------------------------------------------------------
     # Docker helpers
     # ------------------------------------------------------------------
+
+    async def _patch_dockerfiles(self, project_path: str) -> None:
+        """Patch Dockerfiles in the project for known build issues.
+
+        Currently handles:
+        - **Prisma on Alpine**: Adds ``openssl`` and fixes ownership of
+          ``@prisma/engines`` so ``prisma migrate deploy`` works at runtime
+          when the container runs as a non-root user (e.g. ``nextjs``).
+        """
+        import glob as _glob
+
+        dockerfiles = _glob.glob(os.path.join(project_path, "**/Dockerfile"), recursive=True)
+        dockerfiles += _glob.glob(os.path.join(project_path, "**/Dockerfile.*"), recursive=True)
+
+        for df_path in dockerfiles:
+            try:
+                with open(df_path, "r") as f:
+                    content = f.read()
+
+                patched = False
+
+                # Prisma fix: if the Dockerfile mentions prisma and uses a
+                # non-root USER, insert openssl + chown before the USER switch.
+                if "prisma" in content.lower() and "USER" in content:
+                    # Check if openssl is already installed
+                    if "openssl" not in content:
+                        # Find the last USER directive and insert fixes before it
+                        lines = content.split("\n")
+                        last_user_idx = None
+                        user_name = "nextjs"
+                        for i, line in enumerate(lines):
+                            stripped = line.strip()
+                            if stripped.startswith("USER "):
+                                last_user_idx = i
+                                user_name = stripped.split()[1]
+
+                        if last_user_idx is not None:
+                            # Insert RUN commands before the USER line
+                            fix_lines = [
+                                "# [deployer] Fix Prisma permissions and OpenSSL for Alpine",
+                                "RUN apk add --no-cache openssl 2>/dev/null || apt-get update && apt-get install -y openssl 2>/dev/null || true",
+                                f"RUN chown -R {user_name} /app/node_modules/@prisma/engines 2>/dev/null || true",
+                            ]
+                            for j, fix_line in enumerate(fix_lines):
+                                lines.insert(last_user_idx + j, fix_line)
+
+                            content = "\n".join(lines)
+                            patched = True
+
+                if patched:
+                    with open(df_path, "w") as f:
+                        f.write(content)
+                    logger.info(
+                        "dockerfile_patched",
+                        path=df_path,
+                        fixes=["prisma_openssl_permissions"],
+                    )
+            except Exception as exc:
+                logger.warning("dockerfile_patch_failed", path=df_path, error=str(exc))
 
     async def _build_image(
         self, project_path: str, image_name: str, dockerfile: str
