@@ -264,6 +264,39 @@ async def health():
     return HealthResponse(status="ok")
 
 
+@app.get("/tools")
+async def list_tools(
+    permission: str = "owner",
+    _=Depends(require_service_auth),
+):
+    """List all available tools (for MCP bridge)."""
+    if tool_registry is None:
+        raise HTTPException(status_code=503, detail="Tool registry not ready")
+    from shared.config import parse_list
+    settings = get_settings()
+    allowed = list(tool_registry.manifests.keys())
+    tools = tool_registry.get_tools_for_user(permission, allowed)
+    return {"tools": [t.model_dump() for t in tools]}
+
+
+@app.post("/execute")
+async def execute_tool(
+    payload: dict,
+    _=Depends(require_service_auth),
+):
+    """Execute a single tool call (for MCP bridge)."""
+    if tool_registry is None:
+        raise HTTPException(status_code=503, detail="Tool registry not ready")
+    from shared.schemas.tools import ToolCall, ToolResult
+    call = ToolCall(
+        tool_name=payload["tool_name"],
+        arguments=payload.get("arguments", {}),
+        user_id=payload.get("user_id"),
+    )
+    result = await tool_registry.execute_tool(call)
+    return result.model_dump()
+
+
 @app.post("/refresh-tools")
 async def refresh_tools(_=Depends(require_service_auth)):
     """Re-discover all module manifests."""
