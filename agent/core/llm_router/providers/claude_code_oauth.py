@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import tempfile
 
 import structlog
@@ -146,6 +147,83 @@ class ClaudeCodeCLIProvider(LLMProvider):
 
         return "\n\n".join(parts)
 
+    def _extract_tool_calls(self, text: str) -> tuple[list[ToolCall], str]:
+        """Extract tool call JSON from the model's text response.
+
+        The CLI returns tool calls as text (since ``-p`` mode is one-shot).
+        The model is instructed to output::
+
+            {"tool_calls": [{"name": "tool_name", "arguments": {...}}]}
+
+        Returns (tool_calls, remaining_text) where remaining_text is the
+        content with the JSON block removed.
+        """
+        if not text or "tool_calls" not in text:
+            return [], text
+
+        # Try to find a JSON object containing "tool_calls" in the text.
+        # The model may wrap it in markdown code fences or output it inline.
+        # Strategy: find the outermost { } that contains "tool_calls".
+
+        # Strip markdown code fences if present
+        cleaned = text.strip()
+        cleaned = re.sub(r"^```(?:json)?\s*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```\s*$", "", cleaned)
+
+        # Try parsing the entire cleaned text as JSON
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict) and "tool_calls" in parsed:
+                calls = []
+                for tc in parsed["tool_calls"]:
+                    calls.append(ToolCall(
+                        tool_name=tc.get("name", ""),
+                        arguments=tc.get("arguments", {}),
+                    ))
+                if calls:
+                    # Extract any text before/after the JSON block
+                    remaining = ""
+                    return calls, remaining
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Try to find JSON embedded in surrounding text
+        # Look for {"tool_calls": ...} pattern
+        brace_depth = 0
+        start_idx = None
+        for i, ch in enumerate(text):
+            if ch == "{" and brace_depth == 0:
+                # Check if this could be our tool_calls object
+                start_idx = i
+                brace_depth = 1
+            elif ch == "{":
+                brace_depth += 1
+            elif ch == "}":
+                brace_depth -= 1
+                if brace_depth == 0 and start_idx is not None:
+                    candidate = text[start_idx : i + 1]
+                    try:
+                        parsed = json.loads(candidate)
+                        if isinstance(parsed, dict) and "tool_calls" in parsed:
+                            calls = []
+                            for tc in parsed["tool_calls"]:
+                                calls.append(ToolCall(
+                                    tool_name=tc.get("name", ""),
+                                    arguments=tc.get("arguments", {}),
+                                ))
+                            if calls:
+                                remaining = (
+                                    text[:start_idx].strip()
+                                    + " "
+                                    + text[i + 1 :].strip()
+                                ).strip()
+                                return calls, remaining
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                    start_idx = None
+
+        return [], text
+
     def _parse_cli_output(self, stdout: str, requested_model: str) -> LLMResponse:
         """Parse the CLI JSON output into an LLMResponse.
 
@@ -206,8 +284,23 @@ class ClaudeCodeCLIProvider(LLMProvider):
         # Extract stop reason
         stop_reason = obj.get("stop_reason", "end_turn") or "end_turn"
 
+        # Check if the response text contains tool calls (CLI can't do
+        # structured tool_use, so the model writes them as JSON text)
+        tool_calls: list[ToolCall] = []
+        if content:
+            tool_calls, remaining_text = self._extract_tool_calls(content)
+            if tool_calls:
+                content = remaining_text or None
+                stop_reason = "tool_use"
+                logger.info(
+                    "cli_tool_calls_extracted",
+                    tool_count=len(tool_calls),
+                    tools=[tc.tool_name for tc in tool_calls],
+                )
+
         return LLMResponse(
             content=content or None,
+            tool_calls=tool_calls,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_creation_input_tokens=cache_creation,
