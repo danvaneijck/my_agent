@@ -20,9 +20,8 @@ router = APIRouter(prefix="/api/errors", tags=["errors"])
 ADMIN_LEVELS = {"admin", "owner"}
 
 
-def _require_admin(user: PortalUser) -> None:
-    if user.permission_level not in ADMIN_LEVELS:
-        raise HTTPException(status_code=403, detail="Admin or owner permission required")
+def _is_admin(user: PortalUser) -> bool:
+    return user.permission_level in ADMIN_LEVELS
 
 
 def _format_error(err: ErrorLog) -> dict:
@@ -42,6 +41,20 @@ def _format_error(err: ErrorLog) -> dict:
     }
 
 
+def _scope_query(query, user: PortalUser):
+    """Scope a query to the user's own errors unless they are admin/owner."""
+    if not _is_admin(user):
+        query = query.where(ErrorLog.user_id == user.user_id)
+    return query
+
+
+def _scope_filter(user: PortalUser):
+    """Return a WHERE clause for scoping counts to the user."""
+    if _is_admin(user):
+        return True  # no filter
+    return ErrorLog.user_id == user.user_id
+
+
 @router.get("")
 async def list_errors(
     status: str | None = None,
@@ -53,13 +66,12 @@ async def list_errors(
 ) -> dict:
     """List error log entries with optional filters.
 
-    Defaults to showing all errors (open, dismissed, resolved).
-    Pass status=open to show only unresolved errors.
+    Admins/owners see all errors. Regular users see only their own.
     """
-    _require_admin(user)
     factory = get_session_factory()
     async with factory() as session:
         query = select(ErrorLog).order_by(ErrorLog.created_at.desc())
+        query = _scope_query(query, user)
 
         if status:
             query = query.where(ErrorLog.status == status)
@@ -74,10 +86,12 @@ async def list_errors(
         )
         total = count_result.scalar_one()
 
-        # Open count
-        open_result = await session.execute(
-            select(func.count()).where(ErrorLog.status == "open")
-        )
+        # Open count (scoped)
+        open_query = select(func.count()).where(ErrorLog.status == "open")
+        scope = _scope_filter(user)
+        if scope is not True:
+            open_query = open_query.where(scope)
+        open_result = await session.execute(open_query)
         open_count = open_result.scalar_one()
 
         paginated = query.offset(offset).limit(limit)
@@ -97,11 +111,25 @@ async def list_errors(
 async def error_summary(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
-    """Count of open errors grouped by service and error_type."""
-    _require_admin(user)
+    """Count of open errors grouped by service and error_type.
+
+    Admins/owners see all errors. Regular users see only their own.
+    """
     factory = get_session_factory()
     async with factory() as session:
-        rows = await session.execute(
+        scope = _scope_filter(user)
+
+        def _scoped_count(status_val: str):
+            q = select(func.count()).where(ErrorLog.status == status_val)
+            if scope is not True:
+                q = q.where(scope)
+            return q
+
+        total_open = await session.execute(_scoped_count("open"))
+        total_dismissed = await session.execute(_scoped_count("dismissed"))
+        total_resolved = await session.execute(_scoped_count("resolved"))
+
+        breakdown = (
             select(
                 ErrorLog.service,
                 ErrorLog.error_type,
@@ -111,17 +139,10 @@ async def error_summary(
             .group_by(ErrorLog.service, ErrorLog.error_type)
             .order_by(func.count(ErrorLog.id).desc())
         )
+        if scope is not True:
+            breakdown = breakdown.where(scope)
+        rows = await session.execute(breakdown)
         groups = rows.all()
-
-        total_open = await session.execute(
-            select(func.count()).where(ErrorLog.status == "open")
-        )
-        total_dismissed = await session.execute(
-            select(func.count()).where(ErrorLog.status == "dismissed")
-        )
-        total_resolved = await session.execute(
-            select(func.count()).where(ErrorLog.status == "resolved")
-        )
 
     return {
         "open": total_open.scalar_one(),
@@ -140,12 +161,11 @@ async def get_error(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Get full detail for a single error including stack trace."""
-    _require_admin(user)
     factory = get_session_factory()
     async with factory() as session:
-        result = await session.execute(
-            select(ErrorLog).where(ErrorLog.id == error_id)
-        )
+        query = select(ErrorLog).where(ErrorLog.id == error_id)
+        query = _scope_query(query, user)
+        result = await session.execute(query)
         err = result.scalar_one_or_none()
         if not err:
             raise HTTPException(status_code=404, detail="Error not found")
@@ -158,12 +178,11 @@ async def dismiss_error(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Mark an error as dismissed (acknowledged, not necessarily fixed)."""
-    _require_admin(user)
     factory = get_session_factory()
     async with factory() as session:
-        result = await session.execute(
-            select(ErrorLog).where(ErrorLog.id == error_id)
-        )
+        query = select(ErrorLog).where(ErrorLog.id == error_id)
+        query = _scope_query(query, user)
+        result = await session.execute(query)
         err = result.scalar_one_or_none()
         if not err:
             raise HTTPException(status_code=404, detail="Error not found")
@@ -178,12 +197,11 @@ async def resolve_error(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Mark an error as resolved (fix deployed)."""
-    _require_admin(user)
     factory = get_session_factory()
     async with factory() as session:
-        result = await session.execute(
-            select(ErrorLog).where(ErrorLog.id == error_id)
-        )
+        query = select(ErrorLog).where(ErrorLog.id == error_id)
+        query = _scope_query(query, user)
+        result = await session.execute(query)
         err = result.scalar_one_or_none()
         if not err:
             raise HTTPException(status_code=404, detail="Error not found")
@@ -199,12 +217,11 @@ async def reopen_error(
     user: PortalUser = Depends(require_auth),
 ) -> dict:
     """Reopen a previously dismissed or resolved error."""
-    _require_admin(user)
     factory = get_session_factory()
     async with factory() as session:
-        result = await session.execute(
-            select(ErrorLog).where(ErrorLog.id == error_id)
-        )
+        query = select(ErrorLog).where(ErrorLog.id == error_id)
+        query = _scope_query(query, user)
+        result = await session.execute(query)
         err = result.scalar_one_or_none()
         if not err:
             raise HTTPException(status_code=404, detail="Error not found")

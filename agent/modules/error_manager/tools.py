@@ -13,6 +13,10 @@ from shared.models.error_log import ErrorLog
 
 logger = structlog.get_logger()
 
+# Admin permission levels — users with these levels see all errors.
+# Regular users only see errors associated with their own user_id.
+_ADMIN_LEVELS = {"admin", "owner"}
+
 
 def _format_error(err: ErrorLog, include_trace: bool = False) -> dict:
     """Format an ErrorLog row for tool output."""
@@ -34,11 +38,28 @@ def _format_error(err: ErrorLog, include_trace: bool = False) -> dict:
     return data
 
 
+async def _get_user_permission(session, user_id: str) -> str:
+    """Look up the user's permission level."""
+    from shared.models.user import User
+
+    result = await session.execute(
+        select(User.permission_level).where(User.id == uuid.UUID(user_id))
+    )
+    row = result.scalar_one_or_none()
+    return row or "guest"
+
+
 class ErrorManagerTools:
     """Tool implementations for error log management."""
 
     def __init__(self) -> None:
         self._session_factory = get_session_factory()
+
+    def _scope_query(self, query, user_id: str | None, is_admin: bool):
+        """Scope a query to the user's own errors unless admin."""
+        if not is_admin and user_id:
+            query = query.where(ErrorLog.user_id == uuid.UUID(user_id))
+        return query
 
     async def list_errors(
         self,
@@ -46,11 +67,15 @@ class ErrorManagerTools:
         service: str | None = None,
         error_type: str | None = None,
         limit: int = 20,
+        user_id: str | None = None,
         **_,
     ) -> dict:
         """List errors with optional filters."""
         async with self._session_factory() as session:
+            is_admin = (await _get_user_permission(session, user_id)) in _ADMIN_LEVELS if user_id else False
+
             query = select(ErrorLog).order_by(ErrorLog.created_at.desc())
+            query = self._scope_query(query, user_id, is_admin)
 
             if status:
                 query = query.where(ErrorLog.status == status)
@@ -63,10 +88,11 @@ class ErrorManagerTools:
             result = await session.execute(query)
             errors = result.scalars().all()
 
-            # Also get total open count for context
-            open_result = await session.execute(
-                select(func.count()).where(ErrorLog.status == "open")
-            )
+            # Scoped open count
+            open_query = select(func.count()).where(ErrorLog.status == "open")
+            if not is_admin and user_id:
+                open_query = open_query.where(ErrorLog.user_id == uuid.UUID(user_id))
+            open_result = await session.execute(open_query)
             open_count = open_result.scalar_one()
 
         return {
@@ -80,25 +106,22 @@ class ErrorManagerTools:
             },
         }
 
-    async def error_summary(self, **_) -> dict:
+    async def error_summary(self, user_id: str | None = None, **_) -> dict:
         """Get summary counts of errors by status and service."""
         async with self._session_factory() as session:
-            # Counts by status
-            for status_name in ("open", "dismissed", "resolved"):
-                pass  # computed below
+            is_admin = (await _get_user_permission(session, user_id)) in _ADMIN_LEVELS if user_id else False
 
-            total_open = await session.execute(
-                select(func.count()).where(ErrorLog.status == "open")
-            )
-            total_dismissed = await session.execute(
-                select(func.count()).where(ErrorLog.status == "dismissed")
-            )
-            total_resolved = await session.execute(
-                select(func.count()).where(ErrorLog.status == "resolved")
-            )
+            def _scoped_count(status_val: str):
+                q = select(func.count()).where(ErrorLog.status == status_val)
+                if not is_admin and user_id:
+                    q = q.where(ErrorLog.user_id == uuid.UUID(user_id))
+                return q
 
-            # Breakdown of open errors by service and type
-            rows = await session.execute(
+            total_open = await session.execute(_scoped_count("open"))
+            total_dismissed = await session.execute(_scoped_count("dismissed"))
+            total_resolved = await session.execute(_scoped_count("resolved"))
+
+            breakdown = (
                 select(
                     ErrorLog.service,
                     ErrorLog.error_type,
@@ -108,6 +131,9 @@ class ErrorManagerTools:
                 .group_by(ErrorLog.service, ErrorLog.error_type)
                 .order_by(func.count(ErrorLog.id).desc())
             )
+            if not is_admin and user_id:
+                breakdown = breakdown.where(ErrorLog.user_id == uuid.UUID(user_id))
+            rows = await session.execute(breakdown)
             groups = rows.all()
 
         return {
@@ -120,23 +146,27 @@ class ErrorManagerTools:
             ],
         }
 
-    async def get_error(self, error_id: str, **_) -> dict:
+    async def get_error(self, error_id: str, user_id: str | None = None, **_) -> dict:
         """Get full details of a single error."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(ErrorLog).where(ErrorLog.id == uuid.UUID(error_id))
-            )
+            is_admin = (await _get_user_permission(session, user_id)) in _ADMIN_LEVELS if user_id else False
+
+            query = select(ErrorLog).where(ErrorLog.id == uuid.UUID(error_id))
+            query = self._scope_query(query, user_id, is_admin)
+            result = await session.execute(query)
             err = result.scalar_one_or_none()
             if not err:
                 raise ValueError(f"Error not found: {error_id}")
             return _format_error(err, include_trace=True)
 
-    async def dismiss_error(self, error_id: str, **_) -> dict:
+    async def dismiss_error(self, error_id: str, user_id: str | None = None, **_) -> dict:
         """Mark a single error as dismissed."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(ErrorLog).where(ErrorLog.id == uuid.UUID(error_id))
-            )
+            is_admin = (await _get_user_permission(session, user_id)) in _ADMIN_LEVELS if user_id else False
+
+            query = select(ErrorLog).where(ErrorLog.id == uuid.UUID(error_id))
+            query = self._scope_query(query, user_id, is_admin)
+            result = await session.execute(query)
             err = result.scalar_one_or_none()
             if not err:
                 raise ValueError(f"Error not found: {error_id}")
@@ -144,12 +174,14 @@ class ErrorManagerTools:
             await session.commit()
             return {"id": error_id, "status": "dismissed"}
 
-    async def resolve_error(self, error_id: str, **_) -> dict:
+    async def resolve_error(self, error_id: str, user_id: str | None = None, **_) -> dict:
         """Mark a single error as resolved."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(ErrorLog).where(ErrorLog.id == uuid.UUID(error_id))
-            )
+            is_admin = (await _get_user_permission(session, user_id)) in _ADMIN_LEVELS if user_id else False
+
+            query = select(ErrorLog).where(ErrorLog.id == uuid.UUID(error_id))
+            query = self._scope_query(query, user_id, is_admin)
+            result = await session.execute(query)
             err = result.scalar_one_or_none()
             if not err:
                 raise ValueError(f"Error not found: {error_id}")
@@ -158,15 +190,17 @@ class ErrorManagerTools:
             await session.commit()
             return {"id": error_id, "status": "resolved"}
 
-    async def bulk_dismiss(self, error_ids: list[str], **_) -> dict:
+    async def bulk_dismiss(self, error_ids: list[str], user_id: str | None = None, **_) -> dict:
         """Dismiss multiple errors at once."""
         dismissed = []
         not_found = []
         async with self._session_factory() as session:
+            is_admin = (await _get_user_permission(session, user_id)) in _ADMIN_LEVELS if user_id else False
+
             for eid in error_ids:
-                result = await session.execute(
-                    select(ErrorLog).where(ErrorLog.id == uuid.UUID(eid))
-                )
+                query = select(ErrorLog).where(ErrorLog.id == uuid.UUID(eid))
+                query = self._scope_query(query, user_id, is_admin)
+                result = await session.execute(query)
                 err = result.scalar_one_or_none()
                 if err:
                     err.status = "dismissed"
@@ -179,16 +213,18 @@ class ErrorManagerTools:
             "not_found": not_found,
         }
 
-    async def bulk_resolve(self, error_ids: list[str], **_) -> dict:
+    async def bulk_resolve(self, error_ids: list[str], user_id: str | None = None, **_) -> dict:
         """Resolve multiple errors at once."""
         resolved = []
         not_found = []
         now = datetime.now(timezone.utc)
         async with self._session_factory() as session:
+            is_admin = (await _get_user_permission(session, user_id)) in _ADMIN_LEVELS if user_id else False
+
             for eid in error_ids:
-                result = await session.execute(
-                    select(ErrorLog).where(ErrorLog.id == uuid.UUID(eid))
-                )
+                query = select(ErrorLog).where(ErrorLog.id == uuid.UUID(eid))
+                query = self._scope_query(query, user_id, is_admin)
+                result = await session.execute(query)
                 err = result.scalar_one_or_none()
                 if err:
                     err.status = "resolved"
