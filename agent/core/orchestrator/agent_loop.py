@@ -374,27 +374,62 @@ class AgentLoop:
                 "iteration": iteration,
             })
 
-            # Call LLM — use per-user router when the user has personal API keys.
-            try:
-                llm_response: LLMResponse = await active_router.chat(
-                    messages=context,
-                    tools=openai_tools,
-                    model=model,
-                    max_tokens=max_tokens,
-                )
-            except PromptTooLongError:
-                logger.warning(
-                    "prompt_too_long_recovering",
-                    context_messages=len(context),
-                    iteration=iteration,
-                )
-                context = self._emergency_trim(context)
-                llm_response = await active_router.chat(
-                    messages=context,
-                    tools=openai_tools,
-                    model=model,
-                    max_tokens=max_tokens,
-                )
+            # Call LLM — use streaming for CLI provider (it handles the tool loop)
+            cli_provider = getattr(active_router, "_cli_provider", None)
+            if cli_provider is None and using_claude_oauth:
+                # Get the actual provider from the router
+                provider = active_router.providers.get("anthropic")
+                if provider and hasattr(provider, "chat_stream"):
+                    cli_provider = provider
+
+            if cli_provider and hasattr(cli_provider, "chat_stream"):
+                # Streaming path: CLI handles the full tool loop via MCP.
+                # Forward intermediate events and collect the final response.
+                try:
+                    async for event_or_response in cli_provider.chat_stream(
+                        messages=context,
+                        tools=openai_tools,
+                        model=model,
+                        max_tokens=max_tokens,
+                    ):
+                        if isinstance(event_or_response, StreamEvent):
+                            yield event_or_response
+                        elif isinstance(event_or_response, LLMResponse):
+                            llm_response = event_or_response
+                except PromptTooLongError:
+                    context = self._emergency_trim(context)
+                    async for event_or_response in cli_provider.chat_stream(
+                        messages=context,
+                        tools=openai_tools,
+                        model=model,
+                        max_tokens=max_tokens,
+                    ):
+                        if isinstance(event_or_response, StreamEvent):
+                            yield event_or_response
+                        elif isinstance(event_or_response, LLMResponse):
+                            llm_response = event_or_response
+            else:
+                # Standard path: non-streaming API call
+                try:
+                    llm_response: LLMResponse = await active_router.chat(
+                        messages=context,
+                        tools=openai_tools,
+                        model=model,
+                        max_tokens=max_tokens,
+                    )
+                except PromptTooLongError:
+                    logger.warning(
+                        "prompt_too_long_recovering",
+                        context_messages=len(context),
+                        iteration=iteration,
+                    )
+                    context = self._emergency_trim(context)
+                    llm_response = await active_router.chat(
+                        messages=context,
+                        tools=openai_tools,
+                        model=model,
+                        max_tokens=max_tokens,
+                    )
 
             # Log token usage (including Anthropic prompt cache tokens)
             cache_write = llm_response.cache_creation_input_tokens
