@@ -34,6 +34,7 @@ CORE_URL = os.environ.get("CORE_URL", "http://localhost:8000")
 SERVICE_AUTH_TOKEN = os.environ.get("SERVICE_AUTH_TOKEN", "")
 MCP_USER_ID = os.environ.get("MCP_USER_ID", "")
 MCP_USER_PERMISSION = os.environ.get("MCP_USER_PERMISSION", "owner")
+MCP_CONVERSATION_ID = os.environ.get("MCP_CONVERSATION_ID", "")
 
 # Type mapping from our tool schemas to Python types
 _TYPE_MAP = {
@@ -69,6 +70,8 @@ def _call_tool(tool_name: str, arguments: dict) -> str:
     payload = {"tool_name": tool_name, "arguments": arguments}
     if MCP_USER_ID:
         payload["user_id"] = MCP_USER_ID
+    if MCP_CONVERSATION_ID:
+        payload["conversation_id"] = MCP_CONVERSATION_ID
     try:
         resp = httpx.post(
             f"{CORE_URL}/execute",

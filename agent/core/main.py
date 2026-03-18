@@ -284,16 +284,65 @@ async def execute_tool(
     payload: dict,
     _=Depends(require_service_auth),
 ):
-    """Execute a single tool call (for MCP bridge)."""
+    """Execute a single tool call (for MCP bridge).
+
+    If ``conversation_id`` is provided, the tool call and result are
+    saved as Messages in the conversation history.
+    """
     if tool_registry is None:
         raise HTTPException(status_code=503, detail="Tool registry not ready")
     from shared.schemas.tools import ToolCall, ToolResult
+
     call = ToolCall(
         tool_name=payload["tool_name"],
         arguments=payload.get("arguments", {}),
         user_id=payload.get("user_id"),
     )
+    conversation_id = payload.get("conversation_id")
+
     result = await tool_registry.execute_tool(call)
+
+    # Save tool call + result to conversation history
+    if conversation_id:
+        try:
+            from datetime import datetime, timezone
+            from shared.models.conversation import Message
+
+            tool_use_id = f"tool_{uuid.uuid4().hex[:12]}"
+            session_factory = get_session_factory()
+            async with session_factory() as session:
+                # Save tool call message
+                tc_msg = Message(
+                    id=uuid.uuid4(),
+                    conversation_id=uuid.UUID(conversation_id),
+                    role="tool_call",
+                    content=json.dumps({
+                        "name": call.tool_name,
+                        "arguments": call.arguments,
+                        "tool_use_id": tool_use_id,
+                    }),
+                    created_at=datetime.now(timezone.utc),
+                )
+                session.add(tc_msg)
+
+                # Save tool result message
+                tr_msg = Message(
+                    id=uuid.uuid4(),
+                    conversation_id=uuid.UUID(conversation_id),
+                    role="tool_result",
+                    content=json.dumps({
+                        "name": call.tool_name,
+                        "result": result.result if result.success else None,
+                        "error": result.error,
+                        "tool_use_id": tool_use_id,
+                    }),
+                    created_at=datetime.now(timezone.utc),
+                )
+                session.add(tr_msg)
+                await session.commit()
+        except Exception as e:
+            logger.warning("tool_history_save_failed", error=str(e))
+
     return result.model_dump()
 
 
