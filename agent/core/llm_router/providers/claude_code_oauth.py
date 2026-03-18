@@ -147,6 +147,25 @@ class ClaudeCodeCLIProvider(LLMProvider):
 
         return "\n\n".join(parts)
 
+    @staticmethod
+    def _strip_serialization_artifacts(text: str) -> str | None:
+        """Remove echoed XML-like context blocks from the model's response.
+
+        The CLI receives context serialized as ``<tool_call>...</tool_call>``,
+        ``<tool_result>...</tool_result>``, ``<system>...</system>``, etc.
+        The model sometimes echoes these blocks in its final answer.
+        """
+        # Remove <tag>...</tag> blocks for context-serialization tags
+        cleaned = re.sub(
+            r"<(tool_call|tool_result|system|available_tools)>.*?</\1>",
+            "",
+            text,
+            flags=re.DOTALL,
+        )
+        # Collapse excessive whitespace left behind
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        return cleaned or None
+
     def _extract_tool_calls(self, text: str) -> tuple[list[ToolCall], str]:
         """Extract tool call JSON from the model's text response.
 
@@ -297,6 +316,12 @@ class ClaudeCodeCLIProvider(LLMProvider):
                     tool_count=len(tool_calls),
                     tools=[tc.tool_name for tc in tool_calls],
                 )
+
+        # Strip serialization artifacts the model may echo back.
+        # The CLI gets context as XML-like blocks (<tool_call>, <tool_result>,
+        # <system>, etc.) and sometimes echoes them in its response.
+        if content:
+            content = self._strip_serialization_artifacts(content)
 
         return LLMResponse(
             content=content or None,
