@@ -10,6 +10,7 @@ agent system for regular chat without a separate Anthropic API key.
 from __future__ import annotations
 
 import asyncio
+import os
 
 import structlog
 from anthropic import AsyncAnthropic
@@ -19,6 +20,26 @@ from core.llm_router.providers.base import LLMResponse
 from shared.oauth_refresh import get_access_token, refresh_oauth_token
 
 logger = structlog.get_logger()
+
+# Lock to serialize env var manipulation during client creation
+_env_lock = asyncio.Lock()
+
+
+def _create_oauth_client(access_token: str) -> AsyncAnthropic:
+    """Create an AsyncAnthropic client using only OAuth Bearer auth.
+
+    The SDK auto-resolves ``ANTHROPIC_API_KEY`` from the environment.
+    If both ``api_key`` and ``auth_token`` are set, the API bills to
+    the API key.  We temporarily remove the env var so only the OAuth
+    token is sent.
+    """
+    saved = os.environ.pop("ANTHROPIC_API_KEY", None)
+    try:
+        client = AsyncAnthropic(auth_token=access_token)
+    finally:
+        if saved is not None:
+            os.environ["ANTHROPIC_API_KEY"] = saved
+    return client
 
 
 class ClaudeCodeOAuthProvider(AnthropicProvider):
@@ -47,8 +68,11 @@ class ClaudeCodeOAuthProvider(AnthropicProvider):
         if not access_token:
             raise ValueError("No OAuth access token found in credentials_json")
 
-        # Use auth_token= for Bearer auth (not api_key= which sets x-api-key)
-        self.client = AsyncAnthropic(auth_token=access_token)
+        # Use auth_token= for Bearer auth (not api_key= which sets x-api-key).
+        # Temporarily remove ANTHROPIC_API_KEY from env so the SDK doesn't
+        # pick it up and send both x-api-key AND Authorization headers —
+        # if both are present the API bills to the API key, not the subscription.
+        self.client = _create_oauth_client(access_token)
         logger.info(
             "claude_code_oauth_provider_initialized",
             user_id=user_id,
@@ -70,7 +94,7 @@ class ClaudeCodeOAuthProvider(AnthropicProvider):
 
             if was_refreshed:
                 self._credentials_json = updated_json
-                self.client = AsyncAnthropic(auth_token=access_token)
+                self.client = _create_oauth_client(access_token)
                 logger.info(
                     "claude_code_oauth_token_refreshed",
                     user_id=self._user_id,
@@ -132,7 +156,7 @@ class ClaudeCodeOAuthProvider(AnthropicProvider):
                     )
                     if was_refreshed:
                         self._credentials_json = updated_json
-                        self.client = AsyncAnthropic(auth_token=access_token)
+                        self.client = _create_oauth_client(access_token)
 
                         if self._credential_store and self._session_factory:
                             try:
