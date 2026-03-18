@@ -17,6 +17,14 @@ A module is an independent FastAPI microservice running in Docker. The orchestra
 - The orchestrator injects `user_id` into tool calls via the `ToolCall.user_id` field, so modules can associate data with users.
 - A default persona is auto-created/updated at startup with all modules in `module_services`. New modules are automatically included.
 
+**How tools reach the LLM (two paths):**
+
+1. **API providers** (Anthropic/OpenAI/Google API keys): Tool definitions are converted to the provider's native format and sent with each API call. The agent loop handles multi-round tool calling.
+
+2. **Claude Code CLI** (OAuth subscription users): Tools are exposed via an **MCP bridge server** (`core/mcp_bridge.py`). On each CLI invocation, the bridge fetches all tool definitions from the core's `GET /tools` endpoint and registers them as MCP tools. The CLI handles tool calling natively — no changes needed when adding modules. The bridge proxies tool execution through core's `POST /execute` endpoint, which routes to the correct module.
+
+**You do NOT need to modify the MCP bridge when adding a module.** It auto-discovers all tools dynamically.
+
 ---
 
 ## Step-by-Step: Create a Module

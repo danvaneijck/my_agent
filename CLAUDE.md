@@ -42,7 +42,9 @@ Makefile:       Makefile (top-level, wraps docker compose)
     Core Orchestrator (FastAPI :8000)
     ├── Agent Loop (reason/act/observe cycle, up to 10 iterations)
     ├── LLM Router (Anthropic, OpenAI, Google — with fallback chain)
+    │   └── Claude Code CLI provider (OAuth users → MCP bridge for tools)
     ├── Context Builder (system prompt + memories + history)
+    ├── MCP Bridge (mcp_bridge.py — exposes tools to Claude CLI via MCP protocol)
     └── Tool Registry (discovers modules via GET /manifest)
          │  POST /execute (ToolCall → ToolResult)
          ▼
@@ -660,6 +662,7 @@ The main reasoning cycle:
 - Fallback chain: tries next provider if primary fails
 - Providers only registered if their API key is set
 - Each provider normalizes to a common `LLMResponse` format
+- **Claude Code CLI provider** (`claude_code_oauth.py`): For users with a Claude Max subscription, the CLI is used as the LLM backend. Tools are exposed via an MCP bridge server (`mcp_bridge.py`) that the CLI spawns as a subprocess. The CLI handles the full tool calling loop internally and streams events back for real-time progress updates. Tool calls are saved to conversation history via the `/execute` endpoint.
 
 ### Tool Registry (`agent/core/orchestrator/tool_registry.py`)
 
