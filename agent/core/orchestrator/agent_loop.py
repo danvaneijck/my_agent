@@ -338,6 +338,7 @@ class AgentLoop:
             tool_count=len(tools),
             llm_router=active_router,
             tool_overhead_tokens=tool_overhead,
+            is_subscription=using_claude_oauth,
         )
 
         # Save the incoming user message (text only — images are ephemeral)
@@ -359,7 +360,9 @@ class AgentLoop:
         # 8. Agent loop
         # Pre-compute context budget for in-loop re-trimming
         target_model = model or self.settings.default_model
-        context_budget = self.context_builder._get_context_budget(target_model) - tool_overhead
+        context_budget = self.context_builder._get_context_budget(
+            target_model, is_subscription=using_claude_oauth
+        ) - tool_overhead
 
         final_content = ""
         files: list[dict] = []
@@ -382,6 +385,7 @@ class AgentLoop:
                 if provider and hasattr(provider, "chat_stream"):
                     cli_provider = provider
 
+            _used_cli = False
             if cli_provider and hasattr(cli_provider, "chat_stream"):
                 # Set context so MCP bridge can save tool calls and inject
                 # platform info into scheduler/location/crew tool calls.
@@ -393,31 +397,52 @@ class AgentLoop:
 
                 # Streaming path: CLI handles the full tool loop via MCP.
                 # Forward intermediate events and collect the final response.
+                _cli_max_turns = self.settings.max_agent_iterations
                 try:
                     async for event_or_response in cli_provider.chat_stream(
                         messages=context,
                         tools=openai_tools,
                         model=model,
                         max_tokens=max_tokens,
+                        max_turns=_cli_max_turns,
                     ):
                         if isinstance(event_or_response, StreamEvent):
                             yield event_or_response
                         elif isinstance(event_or_response, LLMResponse):
                             llm_response = event_or_response
+                    _used_cli = True
                 except PromptTooLongError:
                     context = self._emergency_trim(context)
-                    async for event_or_response in cli_provider.chat_stream(
-                        messages=context,
-                        tools=openai_tools,
-                        model=model,
-                        max_tokens=max_tokens,
-                    ):
-                        if isinstance(event_or_response, StreamEvent):
-                            yield event_or_response
-                        elif isinstance(event_or_response, LLMResponse):
-                            llm_response = event_or_response
-            else:
-                # Standard path: non-streaming API call
+                    try:
+                        async for event_or_response in cli_provider.chat_stream(
+                            messages=context,
+                            tools=openai_tools,
+                            model=model,
+                            max_tokens=max_tokens,
+                            max_turns=_cli_max_turns,
+                        ):
+                            if isinstance(event_or_response, StreamEvent):
+                                yield event_or_response
+                            elif isinstance(event_or_response, LLMResponse):
+                                llm_response = event_or_response
+                        _used_cli = True
+                    except Exception as cli_retry_err:
+                        logger.warning(
+                            "cli_provider_failed_after_trim",
+                            error=str(cli_retry_err),
+                            user_id=str(user.id),
+                        )
+                except Exception as cli_err:
+                    # CLI failed (binary missing, OAuth expired, subprocess crash).
+                    # Fall through to the standard API path below.
+                    logger.warning(
+                        "cli_provider_failed_falling_back",
+                        error=str(cli_err),
+                        user_id=str(user.id),
+                    )
+
+            if not _used_cli:
+                # Standard path: non-streaming API call (primary or CLI fallback)
                 try:
                     llm_response: LLMResponse = await active_router.chat(
                         messages=context,
@@ -544,16 +569,9 @@ class AgentLoop:
                     tool_call, user_permission=user.permission_level,
                 )
 
-                # If first attempt fails, retry once
-                if not result.success and "Permission denied" not in (result.error or ""):
-                    logger.warning(
-                        "tool_call_failed_retrying",
-                        tool=tool_call.tool_name,
-                        error=result.error,
-                    )
-                    result = await self.tool_registry.execute_tool(
-                        tool_call, user_permission=user.permission_level,
-                    )
+                # No blind retry — the error is appended to context so the
+                # LLM sees it in the next iteration and can adjust arguments
+                # or try a different approach.
 
                 # Emit tool_result event
                 yield StreamEvent(event="tool_result", data={

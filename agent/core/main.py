@@ -183,6 +183,14 @@ async def startup():
     summarizer = ConversationSummarizer(settings, llm_router, session_factory)
     _summarizer_task = asyncio.create_task(_summarization_loop())
 
+    # Start health monitor (checks module /health endpoints periodically)
+    if settings.health_check_interval_seconds > 0 and settings.health_alert_platform:
+        from core.health_monitor import HealthMonitor
+
+        _health_monitor = HealthMonitor(settings, settings.redis_url)
+        asyncio.create_task(_health_monitor.run())
+        logger.info("health_monitor_scheduled")
+
     logger.info("orchestrator_ready")
 
 
@@ -474,6 +482,46 @@ async def continue_conversation(req: ContinueRequest, _=Depends(require_service_
     )
 
     response = await agent_loop.run(incoming)
+
+    # Auto-update project task status based on result_data as a safety net.
+    # The LLM should also call update_task, but if it doesn't, the task
+    # won't stay stuck in "doing" forever.
+    if req.result_data and isinstance(req.result_data, dict):
+        _task_id_str = req.result_data.get("task_id")
+        _task_status = req.result_data.get("status")
+        if _task_id_str and _task_status:
+            try:
+                from datetime import datetime, timezone
+                from shared.models.project_task import ProjectTask
+
+                async with session_factory() as _session:
+                    _result = await _session.execute(
+                        sa_select(ProjectTask).where(
+                            ProjectTask.claude_task_id == _task_id_str
+                        )
+                    )
+                    _task = _result.scalar_one_or_none()
+                    if _task and _task.status == "doing":
+                        _now = datetime.now(timezone.utc)
+                        if _task_status == "completed":
+                            _task.status = "in_review"
+                            _task.completed_at = _now
+                        elif _task_status in ("failed", "timed_out"):
+                            _task.status = "failed"
+                            _task.error_message = req.result_data.get(
+                                "error", f"Task {_task_status}"
+                            )
+                            _task.completed_at = _now
+                        if _task.status != "doing":
+                            await _session.commit()
+                            logger.info(
+                                "auto_task_status_update",
+                                task_id=str(_task.id),
+                                claude_task_id=_task_id_str,
+                                new_status=_task.status,
+                            )
+            except Exception as e:
+                logger.warning("auto_task_status_update_failed", error=str(e))
 
     logger.info(
         "continue_conversation_complete",

@@ -73,12 +73,17 @@ class ContextBuilder:
         self.settings = settings
         self.llm_router = llm_router
 
-    def _get_context_budget(self, model: str) -> int:
-        """Get 80% of the model's context window."""
+    def _get_context_budget(self, model: str, is_subscription: bool = False) -> int:
+        """Get a percentage of the model's context window.
+
+        Subscription users (Claude Code CLI) get a higher ratio (95%) since
+        their usage is billed to the subscription, not per-token.
+        """
+        ratio = self.settings.subscription_context_ratio if is_subscription else 0.8
         for prefix, window in MODEL_CONTEXT_WINDOWS.items():
             if model.startswith(prefix):
-                return int(window * 0.8)
-        return int(DEFAULT_CONTEXT_WINDOW * 0.8)
+                return int(window * ratio)
+        return int(DEFAULT_CONTEXT_WINDOW * ratio)
 
     async def build(
         self,
@@ -91,6 +96,7 @@ class ContextBuilder:
         tool_count: int = 0,
         llm_router=None,
         tool_overhead_tokens: int | None = None,
+        is_subscription: bool = False,
     ) -> list[dict]:
         """Build the context messages list for an LLM call.
 
@@ -117,7 +123,7 @@ class ContextBuilder:
             tool_overhead = tool_overhead_tokens
         else:
             tool_overhead = getattr(self.settings, "tool_schema_token_budget", 4000) if tool_count > 0 else 0
-        budget = self._get_context_budget(target_model) - tool_overhead
+        budget = self._get_context_budget(target_model, is_subscription=is_subscription) - tool_overhead
         messages: list[dict] = []
 
         # 1. System prompt
@@ -158,7 +164,7 @@ class ContextBuilder:
         # 5. Working memory — load adaptively based on message content
         needs_full = self._needs_full_context(_message_text)
         recent_messages = await self._get_recent_messages(
-            session, conversation, full=needs_full,
+            session, conversation, full=needs_full, is_subscription=is_subscription,
         )
         logger.info(
             "context_depth",
@@ -474,18 +480,25 @@ class ContextBuilder:
         session: AsyncSession,
         conversation: Conversation,
         full: bool = True,
+        is_subscription: bool = False,
     ) -> list[Message]:
         """Get the most recent messages from a conversation.
 
         When *full* is False only the last few messages are loaded
         (``minimal_memory_messages``, default 4) — just enough to
         maintain basic conversational flow for standalone queries.
+
+        Subscription users get more history (``subscription_memory_messages``)
+        since their token usage is billed to the subscription.
         """
-        limit = (
-            self.settings.working_memory_messages
-            if full
-            else getattr(self.settings, "minimal_memory_messages", 4)
-        )
+        if full:
+            limit = (
+                self.settings.subscription_memory_messages
+                if is_subscription
+                else self.settings.working_memory_messages
+            )
+        else:
+            limit = getattr(self.settings, "minimal_memory_messages", 4)
         result = await session.execute(
             select(Message)
             .where(Message.conversation_id == conversation.id)

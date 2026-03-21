@@ -69,12 +69,26 @@ class Settings(BaseSettings):
     working_memory_messages: int = 12
     # Reduced history for standalone messages (no prior-context references)
     minimal_memory_messages: int = 2
+    # Higher context ratio for subscription users (Claude Code CLI) — uses
+    # more of the context window since usage is billed to the subscription.
+    subscription_context_ratio: float = 0.95
+    # More history messages for subscription users
+    subscription_memory_messages: int = 24
 
     # Tool execution timeout (seconds) for module HTTP calls
     tool_execution_timeout: int = 120
     # Modules that need extra time (Selenium, long-running tasks)
     # uses tool_execution_timeout; all others use 30s default
     slow_modules: str = "garmin,renpho_biometrics,claude_code,deployer"
+
+    # Hours after which an active (non-cron) job with no progress is stale
+    stale_job_threshold_hours: int = 24
+
+    # Health monitor — check module /health endpoints every N seconds (0 = disabled)
+    health_check_interval_seconds: int = 300
+    # Platform/channel to send health alerts (both must be set to enable)
+    health_alert_platform: str = ""
+    health_alert_channel_id: str = ""
 
     # Token efficiency
     # Max characters for a single tool result before truncation (in context)

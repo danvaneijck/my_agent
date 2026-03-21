@@ -143,7 +143,12 @@ class ClaudeCodeCLIProvider(LLMProvider):
         return json.dumps(config)
 
     def _build_cmd(
-        self, prompt: str, cli_model: str, tools: list[dict] | None, streaming: bool
+        self,
+        prompt: str,
+        cli_model: str,
+        tools: list[dict] | None,
+        streaming: bool,
+        max_turns: int | None = None,
     ) -> list[str]:
         """Build the CLI command."""
         output_format = "stream-json" if streaming else "json"
@@ -156,6 +161,8 @@ class ClaudeCodeCLIProvider(LLMProvider):
         ]
         if streaming:
             cmd.append("--verbose")
+        if max_turns is not None:
+            cmd.extend(["--max-turns", str(max_turns)])
         if tools:
             cmd.extend(["--mcp-config", self._build_mcp_config()])
         return cmd
@@ -202,6 +209,7 @@ class ClaudeCodeCLIProvider(LLMProvider):
         model: str = "claude-opus-4-6",
         max_tokens: int = 4000,
         temperature: float = 0.7,
+        max_turns: int | None = None,
     ) -> AsyncGenerator[StreamEvent | LLMResponse, None]:
         """Run a streaming chat completion via the CLI.
 
@@ -216,7 +224,7 @@ class ClaudeCodeCLIProvider(LLMProvider):
         try:
             self._write_credentials(tmp_dir)
             env = self._prepare_env(tmp_dir)
-            cmd = self._build_cmd(prompt, cli_model, tools, streaming=True)
+            cmd = self._build_cmd(prompt, cli_model, tools, streaming=True, max_turns=max_turns)
 
             logger.info(
                 "claude_cli_stream_call",
@@ -361,6 +369,7 @@ class ClaudeCodeCLIProvider(LLMProvider):
         model: str = "claude-opus-4-6",
         max_tokens: int = 4000,
         temperature: float = 0.7,
+        max_turns: int | None = None,
     ) -> LLMResponse:
         """Non-streaming chat — wraps chat_stream and returns final response."""
         final_response = LLMResponse(
@@ -374,6 +383,7 @@ class ClaudeCodeCLIProvider(LLMProvider):
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
+            max_turns=max_turns,
         ):
             if isinstance(event, LLMResponse):
                 final_response = event

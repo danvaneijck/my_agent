@@ -47,16 +47,68 @@ async def scheduler_loop(
     redis = aioredis.from_url(redis_url)
     logger.info("scheduler_worker_started")
 
+    loop_count = 0
+    # Run stale cleanup every ~100 iterations (~17 minutes at 10s interval)
+    _STALE_CLEANUP_INTERVAL = 100
+
     try:
         while True:
+            loop_count += 1
             try:
                 await _process_due_jobs(session_factory, settings, redis)
+                if loop_count % _STALE_CLEANUP_INTERVAL == 0:
+                    await _cleanup_stale_jobs(session_factory, settings, redis)
             except Exception as e:
                 logger.error("scheduler_loop_error", error=str(e))
 
             await asyncio.sleep(LOOP_INTERVAL_SECONDS)
     finally:
         await redis.aclose()
+
+
+async def _cleanup_stale_jobs(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    redis: aioredis.Redis,
+) -> None:
+    """Cancel non-cron jobs that have been active too long without completing."""
+    threshold_hours = getattr(settings, "stale_job_threshold_hours", 24)
+    threshold = datetime.now(timezone.utc) - timedelta(hours=threshold_hours)
+
+    async with session_factory() as session:
+        result = await session.execute(
+            select(ScheduledJob).where(
+                ScheduledJob.status == "active",
+                ScheduledJob.created_at < threshold,
+                # Cron jobs are intentionally long-lived — don't cancel them
+                ScheduledJob.job_type != "cron",
+            )
+        )
+        stale_jobs = list(result.scalars().all())
+
+        if not stale_jobs:
+            return
+
+        now = datetime.now(timezone.utc)
+        for job in stale_jobs:
+            job.status = "cancelled"
+            job.completed_at = now
+
+        await session.commit()
+
+    # Notify users outside the DB session
+    for job in stale_jobs:
+        try:
+            await _publish_notification(
+                job,
+                f"Scheduled job cancelled — it was active for over "
+                f"{threshold_hours} hours without completing.",
+                redis,
+            )
+        except Exception as e:
+            logger.warning("stale_job_notify_failed", job_id=str(job.id), error=str(e))
+
+    logger.info("stale_jobs_cleaned", count=len(stale_jobs))
 
 
 async def _process_due_jobs(
