@@ -49,32 +49,40 @@ class AgentDiscordBot(discord.Client):
             )
 
     async def _notification_listener(self):
-        """Subscribe to Redis notifications and send proactive messages."""
-        try:
-            r = aioredis.from_url(self.settings.redis_url)
-            pubsub = r.pubsub()
-            await pubsub.subscribe("notifications:discord")
-            logger.info("discord_notification_listener_started")
+        """Subscribe to Redis notifications and send proactive messages.
 
-            async for message in pubsub.listen():
-                if message["type"] != "message":
-                    continue
-                try:
-                    notification = Notification.model_validate_json(message["data"])
-                    channel = self.get_channel(int(notification.platform_channel_id))
-                    if channel is None:
-                        channel = await self.fetch_channel(int(notification.platform_channel_id))
-                    if channel:
-                        await channel.send(notification.content)
-                        logger.info(
-                            "notification_sent",
-                            channel_id=notification.platform_channel_id,
-                            job_id=notification.job_id,
-                        )
-                except Exception as e:
-                    logger.error("notification_send_failed", error=str(e))
-        except Exception as e:
-            logger.error("notification_listener_failed", error=str(e))
+        Retries with exponential backoff if the Redis connection fails.
+        """
+        backoff = 5
+        while True:
+            try:
+                r = aioredis.from_url(self.settings.redis_url)
+                pubsub = r.pubsub()
+                await pubsub.subscribe("notifications:discord")
+                logger.info("discord_notification_listener_started")
+                backoff = 5  # reset on successful connection
+
+                async for message in pubsub.listen():
+                    if message["type"] != "message":
+                        continue
+                    try:
+                        notification = Notification.model_validate_json(message["data"])
+                        channel = self.get_channel(int(notification.platform_channel_id))
+                        if channel is None:
+                            channel = await self.fetch_channel(int(notification.platform_channel_id))
+                        if channel:
+                            await channel.send(notification.content)
+                            logger.info(
+                                "notification_sent",
+                                channel_id=notification.platform_channel_id,
+                                job_id=notification.job_id,
+                            )
+                    except Exception as e:
+                        logger.error("notification_send_failed", error=str(e))
+            except Exception as e:
+                logger.error("notification_listener_failed", error=str(e), retry_in=backoff)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)
 
     async def on_message(self, message: discord.Message):
         # Ignore own messages

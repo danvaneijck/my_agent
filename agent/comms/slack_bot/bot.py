@@ -590,44 +590,52 @@ class AgentSlackBot:
         return None
 
     async def _notification_listener(self):
-        """Subscribe to Redis notifications and send proactive messages."""
-        try:
-            pubsub = self.redis.pubsub()
-            await pubsub.subscribe("notifications:slack")
-            logger.info("slack_notification_listener_started")
+        """Subscribe to Redis notifications and send proactive messages.
 
-            async for message in pubsub.listen():
-                if message["type"] != "message":
-                    continue
-                try:
-                    notification = Notification.model_validate_json(message["data"])
+        Retries with exponential backoff if the Redis connection fails.
+        """
+        backoff = 5
+        while True:
+            try:
+                pubsub = self.redis.pubsub()
+                await pubsub.subscribe("notifications:slack")
+                logger.info("slack_notification_listener_started")
+                backoff = 5  # reset on successful connection
 
-                    web_client = await self._get_client_for_team(
-                        notification.platform_server_id
-                    )
-                    if web_client is None:
-                        logger.error(
-                            "no_installation_for_notification",
-                            team_id=notification.platform_server_id,
-                            channel_id=notification.platform_channel_id,
-                        )
+                async for message in pubsub.listen():
+                    if message["type"] != "message":
                         continue
+                    try:
+                        notification = Notification.model_validate_json(message["data"])
 
-                    await web_client.chat_postMessage(
-                        channel=notification.platform_channel_id,
-                        text=notification.content,
-                        thread_ts=notification.platform_thread_id,
-                    )
-                    logger.info(
-                        "notification_sent",
-                        channel_id=notification.platform_channel_id,
-                        team_id=notification.platform_server_id,
-                        job_id=notification.job_id,
-                    )
-                except Exception as e:
-                    logger.error("notification_send_failed", error=str(e))
-        except Exception as e:
-            logger.error("notification_listener_failed", error=str(e))
+                        web_client = await self._get_client_for_team(
+                            notification.platform_server_id
+                        )
+                        if web_client is None:
+                            logger.error(
+                                "no_installation_for_notification",
+                                team_id=notification.platform_server_id,
+                                channel_id=notification.platform_channel_id,
+                            )
+                            continue
+
+                        await web_client.chat_postMessage(
+                            channel=notification.platform_channel_id,
+                            text=notification.content,
+                            thread_ts=notification.platform_thread_id,
+                        )
+                        logger.info(
+                            "notification_sent",
+                            channel_id=notification.platform_channel_id,
+                            team_id=notification.platform_server_id,
+                            job_id=notification.job_id,
+                        )
+                    except Exception as e:
+                        logger.error("notification_send_failed", error=str(e))
+            except Exception as e:
+                logger.error("notification_listener_failed", error=str(e), retry_in=backoff)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)
 
     async def _seed_legacy_installation(self):
         """If SLACK_BOT_TOKEN is set, ensure it exists in the installation store."""

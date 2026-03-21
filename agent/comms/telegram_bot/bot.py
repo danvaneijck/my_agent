@@ -67,33 +67,41 @@ class AgentTelegramBot:
         )
 
     async def _notification_listener(self, application: Application) -> None:
-        """Subscribe to Redis notifications and send proactive messages."""
-        try:
-            r = aioredis.from_url(self.settings.redis_url)
-            pubsub = r.pubsub()
-            await pubsub.subscribe("notifications:telegram")
-            logger.info("telegram_notification_listener_started")
+        """Subscribe to Redis notifications and send proactive messages.
 
-            async for message in pubsub.listen():
-                if message["type"] != "message":
-                    continue
-                try:
-                    notification = Notification.model_validate_json(message["data"])
-                    text = to_telegram_markdown_v2(notification.content)
-                    await _safe_send(
-                        application.bot,
-                        chat_id=notification.platform_channel_id,
-                        text=text,
-                    )
-                    logger.info(
-                        "notification_sent",
-                        chat_id=notification.platform_channel_id,
-                        job_id=notification.job_id,
-                    )
-                except Exception as e:
-                    logger.error("notification_send_failed", error=str(e))
-        except Exception as e:
-            logger.error("notification_listener_failed", error=str(e))
+        Retries with exponential backoff if the Redis connection fails.
+        """
+        backoff = 5
+        while True:
+            try:
+                r = aioredis.from_url(self.settings.redis_url)
+                pubsub = r.pubsub()
+                await pubsub.subscribe("notifications:telegram")
+                logger.info("telegram_notification_listener_started")
+                backoff = 5  # reset on successful connection
+
+                async for message in pubsub.listen():
+                    if message["type"] != "message":
+                        continue
+                    try:
+                        notification = Notification.model_validate_json(message["data"])
+                        text = to_telegram_markdown_v2(notification.content)
+                        await _safe_send(
+                            application.bot,
+                            chat_id=notification.platform_channel_id,
+                            text=text,
+                        )
+                        logger.info(
+                            "notification_sent",
+                            chat_id=notification.platform_channel_id,
+                            job_id=notification.job_id,
+                        )
+                    except Exception as e:
+                        logger.error("notification_send_failed", error=str(e))
+            except Exception as e:
+                logger.error("notification_listener_failed", error=str(e), retry_in=backoff)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)
 
     def _setup_handlers(self):
         """Register message handlers."""
