@@ -468,11 +468,27 @@ async def _check_poll_module(
     config = job.check_config
     module = config.get("module", "")
     tool = config.get("tool", "")
-    args = config.get("args", {})
-    success_field = config.get("success_field", "status")
-    success_values = config.get("success_values", ["completed", "failed"])
+    # Accept common aliases LLMs use for the arguments key
+    args = config.get("args") or config.get("params") or config.get("arguments") or {}
+    # Accept common aliases for the field/values keys
+    success_field = (
+        config.get("success_field")
+        or config.get("field")
+        or config.get("target_field")
+        or "status"
+    )
+    success_values = (
+        config.get("success_values")
+        or config.get("target_values")
+        or ["completed", "failed", "timed_out", "awaiting_input"]
+    )
+    # Single-value variant: "target_value" → wrap in list for "in" operator
+    if not config.get("success_values") and not config.get("target_values"):
+        single = config.get("target_value") or config.get("success_value")
+        if single is not None:
+            success_values = [single, "failed"]
     success_operator = config.get("success_operator", "in")
-    success_value = config.get("success_value")  # for non-"in" operators
+    success_value = config.get("success_value") or config.get("target_value")
 
     # Normalize tool name to "module.method" format.
     # LLMs sometimes write "claude_code_task_status" (underscores) instead of
@@ -531,7 +547,7 @@ async def _check_poll_module(
         condition_met = _evaluate_condition(field_value, success_operator, target)
 
     if condition_met:
-        task_failed = field_value in ("failed", "error", "errored")
+        task_failed = field_value in ("failed", "error", "errored", "timed_out")
         return True, task_failed, result_data
 
     return False, False, result_data
