@@ -276,6 +276,17 @@ class ContextBuilder:
             "pushed and a clean workspace is needed."
         )
 
+        mcp_tool_guidance = (
+            "\n\nIMPORTANT — Tool naming: Your tools are available as MCP tools "
+            "with names like mcp__agent-tools__module_tool (e.g. "
+            "mcp__agent-tools__deployer_deploy, mcp__agent-tools__scheduler_add_job, "
+            "mcp__agent-tools__claude_code_run_task). When the conversation history "
+            "references tools as module.tool (e.g. deployer.deploy), these are the "
+            "SAME tools — use the mcp__agent-tools__ prefixed version to call them. "
+            "You MUST use tools to accomplish tasks — do not describe tool calls in "
+            "text, actually invoke them."
+        )
+
         if persona:
             return (
                 f"{persona.system_prompt}\n\n"
@@ -283,6 +294,7 @@ class ContextBuilder:
                 f"You have access to tools. Use them when needed to accomplish tasks."
                 f"{scheduler_guidance}"
                 f"{claude_code_guidance}"
+                f"{mcp_tool_guidance}"
                 f"{formatting_guidance}"
             )
         return (
@@ -292,6 +304,7 @@ class ContextBuilder:
             "You have access to tools. Use them when needed to accomplish tasks."
             f"{scheduler_guidance}"
             f"{claude_code_guidance}"
+            f"{mcp_tool_guidance}"
             f"{formatting_guidance}"
         )
 

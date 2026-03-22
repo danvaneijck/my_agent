@@ -454,7 +454,7 @@ class ClaudeCodeTools:
                 f'PROMPT=$(cat {container_workspace}/prompt.txt)\n'
                 f'claude -p "$PROMPT" --output-format stream-json --verbose '
                 f'--model {model} --max-turns {max_turns} '
-                '--allowedTools \'mcp__agent-tools__*\' '
+                '--allowedTools "mcp__agent-tools__*" '
                 f'--mcp-config {container_workspace}/mcp_config.json '
                 '--dangerously-skip-permissions\n'
                 'INNER\n'
