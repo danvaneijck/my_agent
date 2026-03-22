@@ -440,7 +440,7 @@ class ClaudeCodeTools:
                 '    cp -a /tmp/.claude-ro/. "$CLAUDE_HOME/.claude/"\n'
                 '    chown -R claude:claude "$CLAUDE_HOME/.claude"\n'
                 'fi\n'
-                f'chown claude:claude {container_workspace}\n'
+                f'chown -R claude:claude {container_workspace}\n'
                 'cat > /tmp/run_chat.sh << \'INNER\'\n'
                 '#!/bin/sh\n'
                 'set -e\n'
@@ -523,19 +523,32 @@ class ClaudeCodeTools:
 
             await proc.wait()
 
+            # Always read and log stderr for debugging (MCP bridge logs go here)
+            stderr_bytes = await proc.stderr.read()
+            stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+            if stderr_text:
+                logger.info(
+                    "orchestrator_chat_stderr",
+                    chat_id=chat_id,
+                    stderr=stderr_text[:2000],
+                )
+
             if proc.returncode != 0:
-                stderr_bytes = await proc.stderr.read()
-                error_msg = stderr_bytes.decode("utf-8", errors="replace").strip()
-                if "prompt is too long" in error_msg.lower():
-                    yield {"type": "error", "error": "prompt_too_long", "message": error_msg}
+                if "prompt is too long" in stderr_text.lower():
+                    yield {"type": "error", "error": "prompt_too_long", "message": stderr_text}
                 else:
                     yield {
                         "type": "error",
                         "error": "cli_failed",
-                        "message": f"CLI exited with code {proc.returncode}: {error_msg[:500]}",
+                        "message": f"CLI exited with code {proc.returncode}: {stderr_text[:500]}",
                     }
 
-            logger.info("orchestrator_chat_finished", chat_id=chat_id, user_id=user_id)
+            logger.info(
+                "orchestrator_chat_finished",
+                chat_id=chat_id,
+                user_id=user_id,
+                exit_code=proc.returncode,
+            )
 
         finally:
             # Clean up ephemeral workspace + credentials
