@@ -448,7 +448,6 @@ class ClaudeCodeTools:
                 f'claude -p "$PROMPT" --output-format stream-json --verbose '
                 f'--model {model} --max-turns {max_turns} '
                 '--allowedTools \'mcp__agent-tools__*\' '
-                '--disallowedTools \'Bash,Read,Write,Edit,Glob,Grep,NotebookEdit\' '
                 f'--mcp-config {container_workspace}/mcp_config.json '
                 '--dangerously-skip-permissions\n'
                 'INNER\n'
