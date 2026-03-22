@@ -200,6 +200,9 @@ class ClaudeCodeCLIProvider(LLMProvider):
 
         url = f"{self._claude_code_url}/chat/stream"
         final_response: LLMResponse | None = None
+        # Accumulate text from assistant content blocks — the final "result"
+        # event may have an empty result field when the CLI did tool calls.
+        accumulated_text: list[str] = []
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(_STREAM_TIMEOUT, connect=30.0)) as client:
             async with client.stream(
@@ -254,6 +257,7 @@ class ClaudeCodeCLIProvider(LLMProvider):
                             if block.get("type") == "text":
                                 text = block.get("text", "")
                                 if text:
+                                    accumulated_text.append(text)
                                     yield StreamEvent(event="content", data={
                                         "text": text,
                                     })
@@ -296,6 +300,20 @@ class ClaudeCodeCLIProvider(LLMProvider):
                 content="No response received from CLI.",
                 model=cli_model,
                 stop_reason="end_turn",
+            )
+
+        # If the result field was empty but we accumulated text from
+        # assistant content blocks during streaming, use that instead.
+        if not final_response.content and accumulated_text:
+            final_response = LLMResponse(
+                content="\n\n".join(accumulated_text),
+                tool_calls=final_response.tool_calls,
+                input_tokens=final_response.input_tokens,
+                output_tokens=final_response.output_tokens,
+                cache_creation_input_tokens=final_response.cache_creation_input_tokens,
+                cache_read_input_tokens=final_response.cache_read_input_tokens,
+                model=final_response.model,
+                stop_reason=final_response.stop_reason,
             )
 
         yield final_response
