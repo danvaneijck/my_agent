@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
+
 import structlog
 from fastapi import Depends, FastAPI
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from modules.claude_code.manifest import MANIFEST
 from modules.claude_code.tools import ClaudeCodeTools
@@ -165,3 +169,74 @@ async def execute(call: ToolCall, _=Depends(require_service_auth)) -> ToolResult
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(status="ok")
+
+
+# ------------------------------------------------------------------
+# Orchestrator chat — containerized Claude CLI for OAuth provider
+# ------------------------------------------------------------------
+
+class OrchestratorChatRequest(BaseModel):
+    """Request for a containerized Claude CLI chat session."""
+
+    prompt: str  # serialized conversation context
+    credentials_json: str  # OAuth credentials JSON
+    user_id: str
+    user_permission: str = "guest"
+    model: str = "opus"
+    max_turns: int = 10
+    tools: list[dict] | None = None
+    conversation_id: str | None = None
+    platform: str | None = None
+    platform_channel_id: str | None = None
+    platform_thread_id: str | None = None
+    platform_server_id: str | None = None
+
+
+@app.post("/chat/stream")
+async def orchestrator_chat_stream(
+    req: OrchestratorChatRequest,
+    _=Depends(require_service_auth),
+):
+    """Run a Claude CLI chat in an isolated Docker container (SSE stream).
+
+    Used by the core's ClaudeCodeCLIProvider to isolate each user's
+    CLI session. Each request gets its own ephemeral container with
+    no access to host secrets or other users' data.
+    """
+    if tools is None:
+        return StreamingResponse(
+            iter(["event: error\ndata: {\"error\": \"Module not ready\"}\n\n"]),
+            media_type="text/event-stream",
+            status_code=503,
+        )
+
+    async def event_generator():
+        try:
+            async for obj in tools.run_orchestrator_chat(
+                prompt=req.prompt,
+                credentials_json=req.credentials_json,
+                user_id=req.user_id,
+                user_permission=req.user_permission,
+                model=req.model,
+                max_turns=req.max_turns,
+                tools=req.tools,
+                conversation_id=req.conversation_id,
+                platform=req.platform,
+                platform_channel_id=req.platform_channel_id,
+                platform_thread_id=req.platform_thread_id,
+                platform_server_id=req.platform_server_id,
+            ):
+                yield f"data: {json.dumps(obj)}\n\n"
+        except Exception as e:
+            logger.error("orchestrator_chat_error", error=str(e), exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

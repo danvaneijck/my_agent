@@ -148,6 +148,8 @@ class AgentLoop:
                     credential_store=self.credential_store,
                     user_id=str(user.id),
                     session_factory=self.session_factory,
+                    user_permission=user.permission_level,
+                    claude_code_url=self.settings.claude_code_url,
                 )
                 active_router = LLMRouter.with_provider_override(
                     self.settings, "anthropic", cli_provider,

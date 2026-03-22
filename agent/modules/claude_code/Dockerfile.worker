@@ -147,6 +147,12 @@ RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
 # =============================================================
 RUN npm install -g @anthropic-ai/claude-code
 
+# =============================================================
+# MCP bridge for orchestrator chat sessions
+# =============================================================
+COPY core/mcp_bridge.py /opt/mcp_bridge.py
+RUN pip3 install --no-cache-dir --break-system-packages mcp httpx
+
 # Create non-root user (claude CLI refuses --dangerously-skip-permissions as root)
 # Grant passwordless sudo so Claude Code can install tools at runtime
 # (the container is disposable and isolated, so this is safe)

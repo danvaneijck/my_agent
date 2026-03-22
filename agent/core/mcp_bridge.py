@@ -94,6 +94,8 @@ def _call_tool(tool_name: str, arguments: dict) -> str:
     payload = {"tool_name": tool_name, "arguments": arguments}
     if MCP_USER_ID:
         payload["user_id"] = MCP_USER_ID
+    if MCP_USER_PERMISSION:
+        payload["user_permission"] = MCP_USER_PERMISSION
     if MCP_CONVERSATION_ID:
         payload["conversation_id"] = MCP_CONVERSATION_ID
     try:

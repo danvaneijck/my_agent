@@ -307,8 +307,9 @@ async def execute_tool(
         user_id=payload.get("user_id"),
     )
     conversation_id = payload.get("conversation_id")
+    user_permission = payload.get("user_permission")
 
-    result = await tool_registry.execute_tool(call)
+    result = await tool_registry.execute_tool(call, user_permission=user_permission)
 
     # Save tool call + result to conversation history
     if conversation_id:

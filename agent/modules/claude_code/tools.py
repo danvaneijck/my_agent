@@ -7,10 +7,12 @@ import json
 import os
 import re
 import shutil
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import AsyncGenerator
 
 import httpx
 import structlog
@@ -35,6 +37,7 @@ CLAUDE_CODE_GIT_AUTHOR_EMAIL = os.environ.get("CLAUDE_CODE_GIT_AUTHOR_EMAIL", "c
 TASK_BASE_DIR = "/tmp/claude_tasks"
 
 MAX_OUTPUT = 50_000  # chars kept from stdout/stderr
+_CLI_TIMEOUT = 300  # seconds — timeout for orchestrator chat containers
 MAX_FILE_READ = 100_000  # max chars returned by read_workspace_file
 LOG_TAIL_DEFAULT = 100  # lines returned by task_logs when no limit given
 
@@ -344,7 +347,205 @@ class ClaudeCodeTools:
     async def async_init(self) -> None:
         """Resolve Docker network names (must be called after __init__)."""
         self._worker_network = await _resolve_network_name(WORKER_NETWORK)
-        logger.info("resolved_worker_network", network=self._worker_network)
+        self._agent_network = await _resolve_network_name("agent-net")
+        logger.info(
+            "resolved_networks",
+            worker=self._worker_network,
+            agent=self._agent_network,
+        )
+
+    # ------------------------------------------------------------------
+    # Orchestrator chat (containerized CLI for OAuth provider)
+    # ------------------------------------------------------------------
+
+    async def run_orchestrator_chat(
+        self,
+        prompt: str,
+        credentials_json: str,
+        user_id: str,
+        user_permission: str = "guest",
+        model: str = "opus",
+        max_turns: int = 10,
+        tools: list[dict] | None = None,
+        conversation_id: str | None = None,
+        platform: str | None = None,
+        platform_channel_id: str | None = None,
+        platform_thread_id: str | None = None,
+        platform_server_id: str | None = None,
+    ) -> AsyncGenerator[dict, None]:
+        """Run a Claude CLI chat in an isolated Docker container.
+
+        Yields JSON event dicts (stream-json format) as the CLI produces
+        output.  The container is ephemeral and destroyed after completion.
+
+        Used by the Claude Code OAuth LLM provider to isolate each user's
+        CLI session in its own container with no access to host secrets.
+        """
+        chat_id = uuid.uuid4().hex[:12]
+        container_name = f"chat-{chat_id}"
+        workspace = tempfile.mkdtemp(dir=TASK_BASE_DIR, prefix="chat_")
+        workspace_dir = os.path.basename(workspace)
+        host_workspace = os.path.join(TASK_VOLUME, workspace_dir) if TASK_VOLUME else workspace
+        container_workspace = workspace
+
+        try:
+            # Write OAuth credentials to staging directory
+            creds_dir = os.path.join(workspace, ".claude_creds")
+            claude_dir = os.path.join(creds_dir, ".claude")
+            os.makedirs(claude_dir, exist_ok=True)
+            creds_file = os.path.join(claude_dir, ".credentials.json")
+            with open(creds_file, "w") as f:
+                f.write(credentials_json)
+            os.chmod(creds_file, 0o600)
+
+            # Build MCP config for the container
+            service_token = os.environ.get("SERVICE_AUTH_TOKEN", "")
+            mcp_config = {
+                "mcpServers": {
+                    "agent-tools": {
+                        "type": "stdio",
+                        "command": "python3",
+                        "args": ["/opt/mcp_bridge.py"],
+                        "env": {
+                            "CORE_URL": "http://core:8000",
+                            "MCP_USER_ID": user_id,
+                            "MCP_USER_PERMISSION": user_permission,
+                            "MCP_CONVERSATION_ID": conversation_id or "",
+                            "MCP_PLATFORM": platform or "",
+                            "MCP_PLATFORM_CHANNEL_ID": platform_channel_id or "",
+                            "MCP_PLATFORM_THREAD_ID": platform_thread_id or "",
+                            "MCP_PLATFORM_SERVER_ID": platform_server_id or "",
+                            **({"SERVICE_AUTH_TOKEN": service_token} if service_token else {}),
+                        },
+                    }
+                }
+            }
+            mcp_config_path = os.path.join(workspace, "mcp_config.json")
+            with open(mcp_config_path, "w") as f:
+                json.dump(mcp_config, f)
+
+            # Build entrypoint script
+            entrypoint = (
+                'set -e\n'
+                'CLAUDE_HOME=/home/claude\n'
+                'if [ -d /tmp/.claude-ro ]; then\n'
+                '    mkdir -p "$CLAUDE_HOME/.claude"\n'
+                '    cp -a /tmp/.claude-ro/. "$CLAUDE_HOME/.claude/"\n'
+                '    chown -R claude:claude "$CLAUDE_HOME/.claude"\n'
+                'fi\n'
+                'chown claude:claude /workspace\n'
+                'cat > /tmp/run_chat.sh << \'INNER\'\n'
+                '#!/bin/sh\n'
+                'set -e\n'
+                'export HOME=/home/claude\n'
+                f'claude -p "$PROMPT" --output-format stream-json --verbose '
+                f'--model {model} --max-turns {max_turns} '
+                '--allowedTools \'mcp__agent-tools__*\' '
+                '--mcp-config /workspace/mcp_config.json '
+                '--dangerously-skip-permissions\n'
+                'INNER\n'
+                'chmod +x /tmp/run_chat.sh\n'
+                'exec su -p claude -c /tmp/run_chat.sh\n'
+            )
+
+            # Host path for credential staging
+            host_creds = os.path.join(host_workspace, ".claude_creds", ".claude")
+
+            cmd = [
+                "docker", "run", "--rm", "--init",
+                "--name", container_name,
+                f"--network={self._agent_network}",
+                "-v", f"{host_creds}:/tmp/.claude-ro:ro",
+                "-v", f"{host_workspace}:{container_workspace}",
+                "-w", "/workspace",
+                "-e", f"PROMPT={prompt}",
+                "-e", "LANG=C.UTF-8",
+                "-e", "TERM=xterm-256color",
+                CLAUDE_CODE_IMAGE,
+                "sh", "-c", entrypoint,
+            ]
+
+            logger.info(
+                "orchestrator_chat_starting",
+                chat_id=chat_id,
+                user_id=user_id,
+                user_permission=user_permission,
+                model=model,
+                prompt_len=len(prompt),
+                has_tools=bool(tools),
+            )
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                limit=10 * 1024 * 1024,
+            )
+
+            try:
+                while True:
+                    try:
+                        line = await asyncio.wait_for(
+                            proc.stdout.readline(), timeout=_CLI_TIMEOUT,
+                        )
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        await proc.wait()
+                        raise RuntimeError(
+                            f"Orchestrator chat timed out after {_CLI_TIMEOUT}s"
+                        )
+
+                    if not line:
+                        break
+
+                    line_str = line.decode("utf-8", errors="replace").strip()
+                    if not line_str:
+                        continue
+
+                    try:
+                        obj = json.loads(line_str)
+                        yield obj
+                    except json.JSONDecodeError:
+                        continue
+
+            except Exception:
+                proc.kill()
+                await proc.wait()
+                raise
+
+            await proc.wait()
+
+            if proc.returncode != 0:
+                stderr_bytes = await proc.stderr.read()
+                error_msg = stderr_bytes.decode("utf-8", errors="replace").strip()
+                if "prompt is too long" in error_msg.lower():
+                    yield {"type": "error", "error": "prompt_too_long", "message": error_msg}
+                else:
+                    yield {
+                        "type": "error",
+                        "error": "cli_failed",
+                        "message": f"CLI exited with code {proc.returncode}: {error_msg[:500]}",
+                    }
+
+            logger.info("orchestrator_chat_finished", chat_id=chat_id, user_id=user_id)
+
+        finally:
+            # Clean up ephemeral workspace + credentials
+            try:
+                import shutil
+                shutil.rmtree(workspace, ignore_errors=True)
+            except Exception:
+                pass
+            # Force-remove container if still running
+            try:
+                rm_proc = await asyncio.create_subprocess_exec(
+                    "docker", "rm", "-f", container_name,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await rm_proc.wait()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Persistence

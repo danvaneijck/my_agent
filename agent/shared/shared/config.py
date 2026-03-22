@@ -64,6 +64,7 @@ class Settings(BaseSettings):
 
     # Agent
     orchestrator_url: str = "http://core:8000"
+    claude_code_url: str = "http://claude-code:8000"
     max_agent_iterations: int = 10
     conversation_timeout_minutes: int = 30
     working_memory_messages: int = 12

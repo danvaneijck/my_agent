@@ -1,40 +1,49 @@
-"""Claude Code CLI LLM provider with MCP tool bridge and streaming.
+"""Claude Code CLI LLM provider — containerized execution via claude-code module.
 
-Uses the Claude Code CLI as the LLM backend, authenticated via OAuth.
-Tools are exposed through an MCP server (``mcp_bridge.py``) so the CLI
-handles tool calling natively with structured tool_use blocks.
+Delegates Claude CLI execution to the claude-code module's ``/chat/stream``
+endpoint, which runs each session in an isolated Docker container.  OAuth
+credentials are sent over the internal network and never touch the core
+container's filesystem.
 
-Supports streaming via ``--output-format stream-json --verbose`` which
-yields real-time events (tool calls, text chunks, results) that can be
-forwarded to Discord/Slack for progressive updates.
+Tools are exposed through an MCP bridge inside the worker container that
+calls back to core's ``/execute`` endpoint with proper user permissions.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import tempfile
 from typing import AsyncGenerator
 
+import httpx
 import structlog
 
 from core.llm_router.providers.base import LLMProvider, LLMResponse, PromptTooLongError
 from shared.oauth_refresh import refresh_and_persist, get_access_token
 from shared.schemas.messages import StreamEvent
-from shared.schemas.tools import ToolCall
 
 logger = structlog.get_logger()
 
-# Timeout for CLI subprocess — longer because CLI runs multi-step tool loops
-_CLI_TIMEOUT = 300
+# Timeout for the HTTP streaming connection — matches container-level timeout
+_STREAM_TIMEOUT = 360  # slightly longer than container's 300s to catch timeout errors
 
 # Default model alias for the CLI
 _DEFAULT_CLI_MODEL = "opus"
 
 
 class ClaudeCodeCLIProvider(LLMProvider):
-    """LLM provider using Claude Code CLI with MCP-based tool calling."""
+    """LLM provider that runs Claude CLI in isolated Docker containers.
+
+    Instead of running the CLI as a subprocess in the core container
+    (which leaks env vars and shares the filesystem), this provider
+    delegates to the claude-code module's ``/chat/stream`` endpoint.
+    Each user's session runs in its own ephemeral container with:
+
+    - No access to host secrets (DATABASE_URL, REDIS_PASSWORD, etc.)
+    - No access to other users' data
+    - Permission-gated tool access via MCP bridge
+    - Automatic cleanup after completion
+    """
 
     def __init__(
         self,
@@ -42,11 +51,15 @@ class ClaudeCodeCLIProvider(LLMProvider):
         credential_store=None,
         user_id: str | None = None,
         session_factory=None,
+        user_permission: str = "guest",
+        claude_code_url: str = "http://claude-code:8000",
     ) -> None:
         self._credentials_json = credentials_json
         self._credential_store = credential_store
         self._user_id = user_id
         self._session_factory = session_factory
+        self._user_permission = user_permission
+        self._claude_code_url = claude_code_url
 
         # Set by the agent loop before each call so the MCP bridge
         # can save tool calls and inject platform context.
@@ -114,75 +127,6 @@ class ClaudeCodeCLIProvider(LLMProvider):
 
         return "\n\n".join(parts)
 
-    def _build_mcp_config(self) -> str:
-        """Build the --mcp-config JSON for the MCP bridge server."""
-        settings_env = {
-            "CORE_URL": "http://localhost:8000",
-            "MCP_USER_ID": self._user_id or "",
-            "MCP_USER_PERMISSION": "owner",
-            "MCP_CONVERSATION_ID": self.conversation_id or "",
-            "MCP_PLATFORM": self.platform or "",
-            "MCP_PLATFORM_CHANNEL_ID": self.platform_channel_id or "",
-            "MCP_PLATFORM_THREAD_ID": self.platform_thread_id or "",
-            "MCP_PLATFORM_SERVER_ID": self.platform_server_id or "",
-        }
-        service_token = os.environ.get("SERVICE_AUTH_TOKEN", "")
-        if service_token:
-            settings_env["SERVICE_AUTH_TOKEN"] = service_token
-
-        config = {
-            "mcpServers": {
-                "agent-tools": {
-                    "type": "stdio",
-                    "command": "python",
-                    "args": ["/app/core/mcp_bridge.py"],
-                    "env": settings_env,
-                }
-            }
-        }
-        return json.dumps(config)
-
-    def _build_cmd(
-        self,
-        prompt: str,
-        cli_model: str,
-        tools: list[dict] | None,
-        streaming: bool,
-        max_turns: int | None = None,
-    ) -> list[str]:
-        """Build the CLI command."""
-        output_format = "stream-json" if streaming else "json"
-        cmd = [
-            "claude",
-            "-p", prompt,
-            "--output-format", output_format,
-            "--model", cli_model,
-            "--allowedTools", "mcp__agent-tools__*",
-        ]
-        if streaming:
-            cmd.append("--verbose")
-        if max_turns is not None:
-            cmd.extend(["--max-turns", str(max_turns)])
-        if tools:
-            cmd.extend(["--mcp-config", self._build_mcp_config()])
-        return cmd
-
-    def _prepare_env(self, tmp_dir: str) -> dict[str, str]:
-        """Prepare a clean environment for the CLI subprocess."""
-        env = os.environ.copy()
-        env["HOME"] = tmp_dir
-        env.pop("ANTHROPIC_API_KEY", None)
-        return env
-
-    def _write_credentials(self, tmp_dir: str) -> None:
-        """Write OAuth credentials to a temp directory."""
-        claude_dir = os.path.join(tmp_dir, ".claude")
-        os.makedirs(claude_dir, exist_ok=True)
-        creds_file = os.path.join(claude_dir, ".credentials.json")
-        with open(creds_file, "w") as f:
-            f.write(self._credentials_json)
-        os.chmod(creds_file, 0o600)
-
     @staticmethod
     def _parse_result_obj(obj: dict, requested_model: str) -> LLMResponse:
         """Parse a stream-json result object into LLMResponse."""
@@ -202,6 +146,13 @@ class ClaudeCodeCLIProvider(LLMProvider):
             stop_reason="end_turn",
         )
 
+    def _get_auth_headers(self) -> dict[str, str]:
+        """Build service auth headers for internal HTTP calls."""
+        token = os.environ.get("SERVICE_AUTH_TOKEN", "")
+        if token:
+            return {"Authorization": f"Bearer {token}"}
+        return {}
+
     async def chat_stream(
         self,
         messages: list[dict],
@@ -211,8 +162,10 @@ class ClaudeCodeCLIProvider(LLMProvider):
         temperature: float = 0.7,
         max_turns: int | None = None,
     ) -> AsyncGenerator[StreamEvent | LLMResponse, None]:
-        """Run a streaming chat completion via the CLI.
+        """Run a streaming chat completion via containerized CLI.
 
+        Sends the request to the claude-code module's ``/chat/stream``
+        endpoint, which runs the CLI in an isolated Docker container.
         Yields ``StreamEvent`` objects as the CLI produces output, then
         yields the final ``LLMResponse`` as the last item.
         """
@@ -220,58 +173,72 @@ class ClaudeCodeCLIProvider(LLMProvider):
         cli_model = _DEFAULT_CLI_MODEL
         prompt = self._serialize_context(messages)
 
-        tmp_dir = tempfile.mkdtemp(prefix="claude_creds_")
-        try:
-            self._write_credentials(tmp_dir)
-            env = self._prepare_env(tmp_dir)
-            cmd = self._build_cmd(prompt, cli_model, tools, streaming=True, max_turns=max_turns)
+        # Build request for the claude-code module
+        payload = {
+            "prompt": prompt,
+            "credentials_json": self._credentials_json,
+            "user_id": self._user_id or "",
+            "user_permission": self._user_permission,
+            "model": cli_model,
+            "max_turns": max_turns or 10,
+            "tools": tools,
+            "conversation_id": self.conversation_id,
+            "platform": self.platform,
+            "platform_channel_id": self.platform_channel_id,
+            "platform_thread_id": self.platform_thread_id,
+            "platform_server_id": self.platform_server_id,
+        }
 
-            logger.info(
-                "claude_cli_stream_call",
-                user_id=self._user_id,
-                model=cli_model,
-                prompt_len=len(prompt),
-                has_mcp=bool(tools),
-            )
+        logger.info(
+            "claude_cli_stream_call",
+            user_id=self._user_id,
+            model=cli_model,
+            prompt_len=len(prompt),
+            has_tools=bool(tools),
+            containerized=True,
+        )
 
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-                limit=10 * 1024 * 1024,
-            )
+        url = f"{self._claude_code_url}/chat/stream"
+        final_response: LLMResponse | None = None
 
-            final_response: LLMResponse | None = None
+        async with httpx.AsyncClient(timeout=httpx.Timeout(_STREAM_TIMEOUT, connect=30.0)) as client:
+            async with client.stream(
+                "POST", url,
+                json=payload,
+                headers=self._get_auth_headers(),
+            ) as resp:
+                if resp.status_code != 200:
+                    body = await resp.aread()
+                    raise RuntimeError(
+                        f"claude-code /chat/stream returned {resp.status_code}: "
+                        f"{body.decode('utf-8', errors='replace')[:500]}"
+                    )
 
-            try:
-                # Read stdout line-by-line for streaming events
-                while True:
-                    try:
-                        line = await asyncio.wait_for(
-                            proc.stdout.readline(), timeout=_CLI_TIMEOUT,
-                        )
-                    except asyncio.TimeoutError:
-                        proc.kill()
-                        await proc.wait()
-                        raise RuntimeError(f"Claude CLI timed out after {_CLI_TIMEOUT}s")
-
+                async for line in resp.aiter_lines():
+                    line = line.strip()
                     if not line:
-                        break  # EOF
-
-                    line_str = line.decode("utf-8", errors="replace").strip()
-                    if not line_str:
                         continue
 
+                    # Parse SSE data lines
+                    if line.startswith("data: "):
+                        line = line[6:]
+
                     try:
-                        obj = json.loads(line_str)
+                        obj = json.loads(line)
                     except json.JSONDecodeError:
                         continue
 
                     msg_type = obj.get("type", "")
 
+                    # Handle error events from the container
+                    if msg_type == "error":
+                        error = obj.get("error", "")
+                        message = obj.get("message", "")
+                        if error == "prompt_too_long":
+                            raise PromptTooLongError(message)
+                        raise RuntimeError(f"Container error: {message or error}")
+
                     if msg_type == "system":
-                        # Init event — MCP servers, tools loaded
                         mcp_servers = obj.get("mcp_servers", [])
                         tool_count = len(obj.get("tools", []))
                         yield StreamEvent(event="thinking", data={
@@ -281,7 +248,6 @@ class ClaudeCodeCLIProvider(LLMProvider):
                         })
 
                     elif msg_type == "assistant":
-                        # Assistant message — may contain text and/or tool_use blocks
                         message = obj.get("message", {})
                         content_blocks = message.get("content", [])
                         for block in content_blocks:
@@ -293,9 +259,6 @@ class ClaudeCodeCLIProvider(LLMProvider):
                                     })
                             elif block.get("type") == "tool_use":
                                 tool_name = block.get("name", "")
-                                # Only stream MCP tool calls — skip built-in
-                                # tools (Read, Glob, Bash, Edit, etc.) which
-                                # are internal CLI operations.
                                 if not tool_name.startswith("mcp__agent-tools__"):
                                     continue
                                 tool_name = tool_name[len("mcp__agent-tools__"):]
@@ -306,7 +269,6 @@ class ClaudeCodeCLIProvider(LLMProvider):
                                 })
 
                     elif msg_type == "tool_result":
-                        # Tool execution result — only for MCP tools
                         tool_name = obj.get("tool_name", "")
                         if not tool_name.startswith("mcp__agent-tools__"):
                             continue
@@ -319,7 +281,6 @@ class ClaudeCodeCLIProvider(LLMProvider):
                         })
 
                     elif msg_type == "result":
-                        # Final result
                         final_response = self._parse_result_obj(obj, cli_model)
                         logger.info(
                             "claude_cli_response",
@@ -330,37 +291,14 @@ class ClaudeCodeCLIProvider(LLMProvider):
                             stop_reason=final_response.stop_reason,
                         )
 
-            except Exception:
-                proc.kill()
-                await proc.wait()
-                raise
+        if final_response is None:
+            final_response = LLMResponse(
+                content="No response received from CLI.",
+                model=cli_model,
+                stop_reason="end_turn",
+            )
 
-            await proc.wait()
-
-            if proc.returncode != 0 and final_response is None:
-                stderr = await proc.stderr.read()
-                error_msg = stderr.decode("utf-8", errors="replace").strip()
-                if "prompt is too long" in error_msg.lower():
-                    raise PromptTooLongError(error_msg)
-                raise RuntimeError(
-                    f"Claude CLI exited with code {proc.returncode}: {error_msg[:200]}"
-                )
-
-            if final_response is None:
-                final_response = LLMResponse(
-                    content="No response received from CLI.",
-                    model=cli_model,
-                    stop_reason="end_turn",
-                )
-
-            yield final_response
-
-        finally:
-            import shutil
-            try:
-                shutil.rmtree(tmp_dir)
-            except Exception:
-                pass
+        yield final_response
 
     async def chat(
         self,
