@@ -372,15 +372,16 @@ class ClaudeCodeTools:
         platform_channel_id: str | None = None,
         platform_thread_id: str | None = None,
         platform_server_id: str | None = None,
-        user_credentials: dict[str, dict[str, str]] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """Run a Claude CLI chat in an isolated Docker container.
 
         Yields JSON event dicts (stream-json format) as the CLI produces
         output.  The container is ephemeral and destroyed after completion.
 
-        Used by the Claude Code OAuth LLM provider to isolate each user's
-        CLI session in its own container with no access to host secrets.
+        The orchestrator container only does LLM reasoning and tool calls
+        via MCP.  Built-in CLI tools (Bash, Read, Write, etc.) are disabled.
+        For repo operations the LLM uses ``claude_code.run_task`` which
+        spins up its own persistent workspace containers.
         """
         chat_id = uuid.uuid4().hex[:12]
         container_name = f"chat-{chat_id}"
@@ -389,13 +390,6 @@ class ClaudeCodeTools:
         host_workspace = os.path.join(TASK_VOLUME, workspace_dir) if TASK_VOLUME else workspace
         # Mount workspace at /workspace inside container (the worker's default WORKDIR)
         container_workspace = "/workspace"
-
-        # Prepare per-user credential mounts (SSH keys, git config, GitHub token)
-        user_mounts: dict[str, str] = {}
-        if user_credentials:
-            user_mounts = await self._prepare_user_credentials(
-                user_id, user_credentials
-            )
 
         try:
             # Write OAuth credentials to staging directory
@@ -433,46 +427,28 @@ class ClaudeCodeTools:
             with open(mcp_config_path, "w") as f:
                 json.dump(mcp_config, f)
 
-            # Build entrypoint script — copies credentials from read-only
-            # staging paths to /home/claude, then drops to the claude user
+            # Build entrypoint script — copies OAuth credentials from
+            # read-only staging, then drops to the claude user.
+            # No git/SSH setup needed: the orchestrator container only
+            # does LLM reasoning + tool calls via MCP. Repo operations
+            # go through claude_code.run_task which has its own containers.
             entrypoint = (
                 'set -e\n'
                 'CLAUDE_HOME=/home/claude\n'
-                # Claude CLI OAuth credentials
                 'if [ -d /tmp/.claude-ro ]; then\n'
                 '    mkdir -p "$CLAUDE_HOME/.claude"\n'
                 '    cp -a /tmp/.claude-ro/. "$CLAUDE_HOME/.claude/"\n'
+                '    chown -R claude:claude "$CLAUDE_HOME/.claude"\n'
                 'fi\n'
-                # SSH keys
-                'if [ -d /tmp/.ssh-ro ]; then\n'
-                '    mkdir -p "$CLAUDE_HOME/.ssh"\n'
-                '    cp -a /tmp/.ssh-ro/. "$CLAUDE_HOME/.ssh/"\n'
-                '    chmod 700 "$CLAUDE_HOME/.ssh"\n'
-                '    chmod 600 "$CLAUDE_HOME/.ssh"/* 2>/dev/null || true\n'
-                'fi\n'
-                # GitHub CLI config
-                'if [ -d /tmp/.gh-ro ]; then\n'
-                '    mkdir -p "$CLAUDE_HOME/.config/gh"\n'
-                '    cp -a /tmp/.gh-ro/. "$CLAUDE_HOME/.config/gh/"\n'
-                'fi\n'
-                # Git config
-                'if [ -f /tmp/.gitconfig-ro ]; then\n'
-                '    cp /tmp/.gitconfig-ro "$CLAUDE_HOME/.gitconfig"\n'
-                'fi\n'
-                'chown -R claude:claude "$CLAUDE_HOME"\n'
                 f'chown claude:claude {container_workspace}\n'
                 'cat > /tmp/run_chat.sh << \'INNER\'\n'
                 '#!/bin/sh\n'
                 'set -e\n'
                 'export HOME=/home/claude\n'
-                # Set up git credential helper for HTTPS operations
-                'if [ -n "$GITHUB_TOKEN" ]; then\n'
-                '    git config --global credential.helper '
-                '"!f() { echo username=x-access-token; echo password=$GITHUB_TOKEN; }; f"\n'
-                'fi\n'
                 f'claude -p "$PROMPT" --output-format stream-json --verbose '
                 f'--model {model} --max-turns {max_turns} '
                 '--allowedTools \'mcp__agent-tools__*\' '
+                '--disallowedTools \'Bash,Read,Write,Edit,Glob,Grep,NotebookEdit\' '
                 f'--mcp-config {container_workspace}/mcp_config.json '
                 '--dangerously-skip-permissions\n'
                 'INNER\n'
@@ -496,37 +472,6 @@ class ClaudeCodeTools:
                 CLAUDE_CODE_IMAGE,
                 "sh", "-c", entrypoint,
             ]
-
-            # Mount per-user credentials (SSH keys, git config, GitHub token)
-            ssh_key = user_mounts.get("ssh_key") or SSH_KEY_PATH
-            if ssh_key:
-                cmd[cmd.index(CLAUDE_CODE_IMAGE):cmd.index(CLAUDE_CODE_IMAGE)] = [
-                    "-v", f"{ssh_key}:/tmp/.ssh-ro:ro",
-                ]
-            git_config = user_mounts.get("git_config") or GIT_CONFIG_PATH
-            if git_config:
-                cmd[cmd.index(CLAUDE_CODE_IMAGE):cmd.index(CLAUDE_CODE_IMAGE)] = [
-                    "-v", f"{git_config}:/tmp/.gitconfig-ro:ro",
-                ]
-            if GH_CONFIG_PATH:
-                cmd[cmd.index(CLAUDE_CODE_IMAGE):cmd.index(CLAUDE_CODE_IMAGE)] = [
-                    "-v", f"{GH_CONFIG_PATH}:/tmp/.gh-ro:ro",
-                ]
-            # Git identity env vars
-            git_author_name = user_mounts.get("_git_author_name") or CLAUDE_CODE_GIT_AUTHOR_NAME
-            git_author_email = user_mounts.get("_git_author_email") or CLAUDE_CODE_GIT_AUTHOR_EMAIL
-            cmd[cmd.index(CLAUDE_CODE_IMAGE):cmd.index(CLAUDE_CODE_IMAGE)] = [
-                "-e", f"GIT_AUTHOR_NAME={git_author_name}",
-                "-e", f"GIT_AUTHOR_EMAIL={git_author_email}",
-                "-e", f"GIT_COMMITTER_NAME={git_author_name}",
-                "-e", f"GIT_COMMITTER_EMAIL={git_author_email}",
-            ]
-            # GitHub token for HTTPS git operations
-            github_token = user_mounts.get("_github_token") or GITHUB_TOKEN
-            if github_token:
-                cmd[cmd.index(CLAUDE_CODE_IMAGE):cmd.index(CLAUDE_CODE_IMAGE)] = [
-                    "-e", f"GITHUB_TOKEN={github_token}",
-                ]
 
             logger.info(
                 "orchestrator_chat_starting",

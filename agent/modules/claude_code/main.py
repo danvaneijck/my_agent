@@ -210,12 +210,6 @@ async def orchestrator_chat_stream(
             status_code=503,
         )
 
-    # Look up per-user credentials (SSH keys, GitHub token, git config)
-    # so the container can clone repos and push branches.
-    user_creds = None
-    if req.user_id:
-        user_creds = await _get_user_credentials(req.user_id)
-
     async def event_generator():
         try:
             async for obj in tools.run_orchestrator_chat(
@@ -231,7 +225,6 @@ async def orchestrator_chat_stream(
                 platform_channel_id=req.platform_channel_id,
                 platform_thread_id=req.platform_thread_id,
                 platform_server_id=req.platform_server_id,
-                user_credentials=user_creds,
             ):
                 yield f"data: {json.dumps(obj)}\n\n"
         except Exception as e:
