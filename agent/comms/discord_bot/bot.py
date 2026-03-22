@@ -202,20 +202,34 @@ class AgentDiscordBot(discord.Client):
         # Download response file attachments from MinIO
         discord_files = await self._download_files(response.files)
 
-        # Delete the status message and send the final response
-        try:
-            await status_msg.delete()
-        except discord.HTTPException:
-            pass
-
-        # Send response chunks
+        # Final response — edit the status message in-place instead of
+        # delete + re-send, so the streamed content doesn't flash.
         chunks = self.normalizer.format_response(response)
-        for i, chunk in enumerate(chunks):
-            is_last = i == len(chunks) - 1
-            if is_last and discord_files:
-                await message.reply(chunk, files=discord_files, mention_author=False)
+        if chunks:
+            # Edit the status message with the final formatted content
+            try:
+                await status_msg.edit(content=chunks[0][:2000])
+            except discord.HTTPException:
+                pass
+
+            # If the response is longer than 2000 chars or has multiple chunks,
+            # send the overflow as follow-up replies
+            for i, chunk in enumerate(chunks[1:], start=1):
+                is_last = i == len(chunks) - 1
+                if is_last and discord_files:
+                    await message.reply(chunk, files=discord_files, mention_author=False)
+                else:
+                    await message.reply(chunk, mention_author=False)
             else:
-                await message.reply(chunk, mention_author=False)
+                # Single chunk — attach files to a follow-up if any
+                if discord_files:
+                    await message.reply("", files=discord_files, mention_author=False)
+        else:
+            # No content — delete status message
+            try:
+                await status_msg.delete()
+            except discord.HTTPException:
+                pass
 
     @staticmethod
     def _format_tool_args(args: dict, max_len: int = 120) -> str:
