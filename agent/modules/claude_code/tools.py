@@ -386,7 +386,8 @@ class ClaudeCodeTools:
         workspace = tempfile.mkdtemp(dir=TASK_BASE_DIR, prefix="chat_")
         workspace_dir = os.path.basename(workspace)
         host_workspace = os.path.join(TASK_VOLUME, workspace_dir) if TASK_VOLUME else workspace
-        container_workspace = workspace
+        # Mount workspace at /workspace inside container (the worker's default WORKDIR)
+        container_workspace = "/workspace"
 
         try:
             # Write OAuth credentials to staging directory
@@ -433,7 +434,7 @@ class ClaudeCodeTools:
                 '    cp -a /tmp/.claude-ro/. "$CLAUDE_HOME/.claude/"\n'
                 '    chown -R claude:claude "$CLAUDE_HOME/.claude"\n'
                 'fi\n'
-                'chown claude:claude /workspace\n'
+                f'chown claude:claude {container_workspace}\n'
                 'cat > /tmp/run_chat.sh << \'INNER\'\n'
                 '#!/bin/sh\n'
                 'set -e\n'
@@ -441,7 +442,7 @@ class ClaudeCodeTools:
                 f'claude -p "$PROMPT" --output-format stream-json --verbose '
                 f'--model {model} --max-turns {max_turns} '
                 '--allowedTools \'mcp__agent-tools__*\' '
-                '--mcp-config /workspace/mcp_config.json '
+                f'--mcp-config {container_workspace}/mcp_config.json '
                 '--dangerously-skip-permissions\n'
                 'INNER\n'
                 'chmod +x /tmp/run_chat.sh\n'
@@ -457,7 +458,7 @@ class ClaudeCodeTools:
                 f"--network={self._agent_network}",
                 "-v", f"{host_creds}:/tmp/.claude-ro:ro",
                 "-v", f"{host_workspace}:{container_workspace}",
-                "-w", "/workspace",
+                "-w", container_workspace,
                 "-e", f"PROMPT={prompt}",
                 "-e", "LANG=C.UTF-8",
                 "-e", "TERM=xterm-256color",
