@@ -427,6 +427,12 @@ class ClaudeCodeTools:
             with open(mcp_config_path, "w") as f:
                 json.dump(mcp_config, f)
 
+            # Write prompt to file — env vars and shell args have size limits
+            # that silently truncate large prompts
+            prompt_path = os.path.join(workspace, "prompt.txt")
+            with open(prompt_path, "w") as f:
+                f.write(prompt)
+
             # Build entrypoint script — copies OAuth credentials from
             # read-only staging, then drops to the claude user.
             # No git/SSH setup needed: the orchestrator container only
@@ -445,6 +451,7 @@ class ClaudeCodeTools:
                 '#!/bin/sh\n'
                 'set -e\n'
                 'export HOME=/home/claude\n'
+                f'PROMPT=$(cat {container_workspace}/prompt.txt)\n'
                 f'claude -p "$PROMPT" --output-format stream-json --verbose '
                 f'--model {model} --max-turns {max_turns} '
                 '--allowedTools \'mcp__agent-tools__*\' '
@@ -465,7 +472,6 @@ class ClaudeCodeTools:
                 "-v", f"{host_creds}:/tmp/.claude-ro:ro",
                 "-v", f"{host_workspace}:{container_workspace}",
                 "-w", container_workspace,
-                "-e", f"PROMPT={prompt}",
                 "-e", "LANG=C.UTF-8",
                 "-e", "TERM=xterm-256color",
                 CLAUDE_CODE_IMAGE,
