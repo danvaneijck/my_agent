@@ -68,6 +68,7 @@ class ClaudeCodeCLIProvider(LLMProvider):
         self.platform_channel_id: str | None = None
         self.platform_thread_id: str | None = None
         self.platform_server_id: str | None = None
+        self.allowed_modules: list[str] | None = None
 
         if not get_access_token(credentials_json):
             raise ValueError("No OAuth access token found in credentials_json")
@@ -187,6 +188,7 @@ class ClaudeCodeCLIProvider(LLMProvider):
             "platform_channel_id": self.platform_channel_id,
             "platform_thread_id": self.platform_thread_id,
             "platform_server_id": self.platform_server_id,
+            "allowed_modules": self.allowed_modules,
         }
 
         logger.info(

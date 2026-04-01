@@ -396,6 +396,7 @@ class AgentLoop:
                 cli_provider.platform_channel_id = conversation.platform_channel_id
                 cli_provider.platform_thread_id = conversation.platform_thread_id
                 cli_provider.platform_server_id = incoming.platform_server_id
+                cli_provider.allowed_modules = allowed_modules
 
                 # Streaming path: CLI handles the full tool loop via MCP.
                 # Forward intermediate events and collect the final response.

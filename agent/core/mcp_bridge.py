@@ -43,6 +43,12 @@ MCP_PLATFORM_CHANNEL_ID = os.environ.get("MCP_PLATFORM_CHANNEL_ID", "")
 MCP_PLATFORM_THREAD_ID = os.environ.get("MCP_PLATFORM_THREAD_ID", "")
 MCP_PLATFORM_SERVER_ID = os.environ.get("MCP_PLATFORM_SERVER_ID", "")
 
+# Optional module filter — only register tools from these modules.
+# Comma-separated list of module names (e.g. "research,benchmarker,knowledge").
+# If empty, all tools are registered.
+_allowed_modules_str = os.environ.get("MCP_ALLOWED_MODULES", "")
+MCP_ALLOWED_MODULES = set(_allowed_modules_str.split(",")) if _allowed_modules_str else set()
+
 # Type mapping from our tool schemas to Python types
 _TYPE_MAP = {
     "string": str,
@@ -169,6 +175,12 @@ async def {func_name}({params_code}) -> str:
 mcp = FastMCP("agent-tools")
 
 _tools = _fetch_tools()
+
+# Filter to allowed modules if specified
+if MCP_ALLOWED_MODULES:
+    _tools = [t for t in _tools if t["name"].split(".")[0] in MCP_ALLOWED_MODULES]
+    log.info("Filtered to %d tools for modules: %s", len(_tools), MCP_ALLOWED_MODULES)
+
 _registered = 0
 
 for _tool_def in _tools:

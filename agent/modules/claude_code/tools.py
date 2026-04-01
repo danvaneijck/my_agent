@@ -372,6 +372,7 @@ class ClaudeCodeTools:
         platform_channel_id: str | None = None,
         platform_thread_id: str | None = None,
         platform_server_id: str | None = None,
+        allowed_modules: list[str] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """Run a Claude CLI chat in an isolated Docker container.
 
@@ -418,6 +419,7 @@ class ClaudeCodeTools:
                             "MCP_PLATFORM_CHANNEL_ID": platform_channel_id or "",
                             "MCP_PLATFORM_THREAD_ID": platform_thread_id or "",
                             "MCP_PLATFORM_SERVER_ID": platform_server_id or "",
+                            "MCP_ALLOWED_MODULES": ",".join(allowed_modules) if allowed_modules else "",
                             **({"SERVICE_AUTH_TOKEN": service_token} if service_token else {}),
                         },
                     }
@@ -454,7 +456,7 @@ class ClaudeCodeTools:
                 f'PROMPT=$(cat {container_workspace}/prompt.txt)\n'
                 f'claude -p "$PROMPT" --output-format stream-json --verbose '
                 f'--model {model} --max-turns {max_turns} '
-                '--allowedTools "mcp__agent-tools__*" '
+                '--allowedTools "mcp__agent-tools__*,ToolSearch" '
                 f'--mcp-config {container_workspace}/mcp_config.json '
                 '--dangerously-skip-permissions\n'
                 'INNER\n'

@@ -190,6 +190,7 @@ class OrchestratorChatRequest(BaseModel):
     platform_channel_id: str | None = None
     platform_thread_id: str | None = None
     platform_server_id: str | None = None
+    allowed_modules: list[str] | None = None
 
 
 @app.post("/chat/stream")
@@ -225,6 +226,7 @@ async def orchestrator_chat_stream(
                 platform_channel_id=req.platform_channel_id,
                 platform_thread_id=req.platform_thread_id,
                 platform_server_id=req.platform_server_id,
+                allowed_modules=req.allowed_modules,
             ):
                 yield f"data: {json.dumps(obj)}\n\n"
         except Exception as e:
