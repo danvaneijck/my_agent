@@ -279,5 +279,11 @@ jobs:
           script: |
             cd /var/lib/deploy/my_agent_deploy
             git pull
+            # Pull worker image separately — it's not a compose service
+            # but is spawned dynamically by the claude-code module
+            SERVICES="${{ needs.detect-changes.outputs.services }}"
+            if echo "$SERVICES" | grep -q "claude-code-worker"; then
+              docker pull ghcr.io/danvaneijck/my_agent/claude-code-worker:latest
+            fi
             make up
             make migrate
